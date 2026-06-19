@@ -4,6 +4,8 @@ Dwains Dashboard Next is the next generation of Dwains Dashboard for Home Assist
 
 It installs as a Home Assistant dashboard through HACS. It does not require a custom integration, Python files, YAML setup, or manual file uploads.
 
+See this as Dwains Dashboard v4: totally rebuilt from scratch, with a completely new design and new features.
+
 ## Status
 
 This is the first public release of the new dashboard codebase.
@@ -30,6 +32,20 @@ This is the first public release of the new dashboard codebase.
 - Runs fully in the frontend as a JavaScript dashboard resource.
 - Does not require installing a Home Assistant integration.
 
+## Development
+
+```bash
+npm install
+npm run type-check
+npm run build
+```
+
+The production dashboard file is generated at:
+
+```text
+dist/dwains-dashboard-next.js
+```
+
 ## HACS
 
 This repository is structured as a HACS Dashboard plugin.
@@ -42,6 +58,6 @@ dist/dwains-dashboard-next.js
 
 ## License
 
-Dwains Dashboard Next is proprietary software. You may install and use official, unmodified releases for your own Home Assistant setup. You may not copy, modify, redistribute, rebrand, sell, publish, or use this software in another project without prior written permission from Dwain Scheeren.
+Dwains Dashboard Next is proprietary software. The source is published for transparency and project development, but it is not open source. You may install and use official, unmodified releases for your own Home Assistant setup. You may not copy, modify, redistribute, rebrand, sell, publish, or use this software in another project without prior written permission from Dwain Scheeren.
 
 See [LICENSE](LICENSE) for the full license terms.

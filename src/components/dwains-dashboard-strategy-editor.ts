@@ -1,0 +1,2224 @@
+import { mdiArrowLeft, mdiDrag, mdiEye, mdiEyeOff, mdiThermometerWater } from "@mdi/js";
+import { css, html, LitElement, nothing } from "lit";
+import { customElement, property, state } from "lit/decorators.js";
+import { repeat } from "lit/directives/repeat.js";
+import type { HomeAssistant } from "../types/home-assistant";
+import type { DwainsDashboardConfig } from "../types/strategy";
+import { openReplacementManager } from "./dwains-replacement-manager-dialog";
+import {
+  AREA_STRATEGY_GROUPS,
+  AREA_STRATEGY_GROUP_ICONS,
+  type AreaStrategyGroup
+} from "../utils/area-entities";
+import { countReplacementRules } from "../utils/blueprint-replacements";
+import { ddLocalize } from "../utils/localize";
+
+// We'll create our own entity picker since ha-entity-picker is external
+
+@customElement("dwains-dashboard-strategy-editor")
+export class DwainsDashboardStrategyEditor extends LitElement {
+  private _hass?: HomeAssistant;
+
+  @property({ attribute: false })
+  public set hass(value: HomeAssistant | undefined) {
+    const oldValue = this._hass;
+    this._hass = value;
+    // Always fetch fresh data when hass becomes available
+    if (value && !oldValue) {
+      this._fetchData();
+      this._fetchDashboardInfo();
+    }
+  }
+
+  public get hass() {
+    return this._hass;
+  }
+
+  private _t = (key: string, vars?: Record<string, string | number>) =>
+    ddLocalize(this._hass, key, vars);
+
+  @state()
+  private _config?: DwainsDashboardConfig;
+
+  @state()
+  private _area?: string;
+
+  @state()
+  private _loading = true;
+
+  @state()
+  private _draggedAreaId?: string;
+
+  @state()
+  private _dragOverIndex?: number;
+
+  @state()
+  private _draggedEntityId?: string;
+
+  @state()
+  private _draggedEntityGroup?: string;
+
+  @state()
+  private _dragOverEntityIndex?: number;
+
+  @state()
+  private _showEntityPicker = false;
+
+  @state()
+  private _entitySearchFilter = '';
+
+  @state()
+  private _showWeatherPicker = false;
+
+  @state()
+  private _weatherSearchFilter = '';
+
+  // Dashboard-eigenschappen (naam + sidebar-icoon)
+  @state() private _dashboardId?: string;
+  @state() private _dashboardTitle = '';
+  @state() private _dashboardIcon = '';
+
+  private _getDashboardUrlPath(): string | undefined {
+    const seg = window.location.pathname.split('/')[1];
+    if (!seg || seg === 'lovelace') return undefined;
+    return seg;
+  }
+
+  private async _fetchDashboardInfo(): Promise<void> {
+    if (!this._hass) return;
+    try {
+      const urlPath = this._getDashboardUrlPath();
+      if (!urlPath) return; // standaard dashboard kan niet zo aangepast worden
+      const dashboards: any[] = await this._hass.callWS({ type: 'lovelace/dashboards/list' });
+      const db = (dashboards || []).find((d) => d.url_path === urlPath);
+      if (db) {
+        this._dashboardId = db.id;
+        this._dashboardTitle = db.title || '';
+        this._dashboardIcon = db.icon || '';
+      }
+    } catch (e) {
+      console.warn('Dashboard-info ophalen mislukt:', e);
+    }
+  }
+
+  private async _saveDashboardInfo(): Promise<void> {
+    if (!this._hass || !this._dashboardId) return;
+    try {
+      await this._hass.callWS({
+        type: 'lovelace/dashboards/update',
+        dashboard_id: this._dashboardId,
+        title: this._dashboardTitle || 'Dashboard',
+        icon: this._dashboardIcon || undefined,
+      });
+      console.log('✅ Dashboard-naam/icoon opgeslagen');
+    } catch (e) {
+      console.error('❌ Dashboard bijwerken mislukt:', e);
+      alert(this._t('strategy.save_name_failed', { error: String(e) }));
+    }
+  }
+
+  private _onDashboardTitleChanged(e: any) {
+    this._dashboardTitle = e.target.value;
+  }
+
+  private _onDashboardTitleCommit() {
+    this._saveDashboardInfo();
+  }
+
+  private _onDashboardIconChanged(e: any) {
+    this._dashboardIcon = e.detail?.value ?? e.target?.value ?? '';
+    this._saveDashboardInfo();
+  }
+
+  public async setConfig(config: any): Promise<void> {
+    // Only store the user configuration, not live data
+    this._config = {
+      type: config?.type || "custom:dwains",
+      areas_display: config?.areas_display || {},
+      areas_options: config?.areas_options || {},
+      blueprint_replacements: config?.blueprint_replacements || {},
+      device_admission: config?.device_admission || {},
+      favorites: config?.favorites || [],
+      settings: config?.settings || {},
+      // These will be populated from live data
+      areas: [],
+      devices: [],
+      entities: [],
+      floors: []
+    };
+
+    // Always fetch fresh data from Home Assistant
+    if (this.hass) {
+      await this._fetchData();
+    } else {
+      this._loading = false;
+    }
+  }
+
+  async connectedCallback() {
+    super.connectedCallback();
+    // Always fetch fresh data when component connects
+    if (this.hass) {
+      await this._fetchData();
+    }
+  }
+
+  private async _fetchData() {
+    if (!this.hass) return;
+
+    try {
+      const [areas, devices, entities] = await Promise.all([
+        this.hass.callWS<{ area_id: string; name: string; picture: string | null; icon: string | null }[]>({
+          type: 'config/area_registry/list'
+        }),
+        this.hass.callWS<{ id: string; name: string; name_by_user: string | null; area_id: string | null; created_at?: string | null }[]>({
+          type: 'config/device_registry/list'
+        }),
+        this.hass.callWS<{ entity_id: string; area_id: string | null; device_id: string | null; created_at?: string | null }[]>({
+          type: 'config/entity_registry/list'
+        })
+      ]);
+
+      // Update hass objects
+      this.hass.areas = areas.reduce((acc: any, area: any) => {
+        acc[area.area_id] = area;
+        return acc;
+      }, {});
+
+      this.hass.entities = entities.reduce((acc: any, entity: any) => {
+        acc[entity.entity_id] = entity;
+        return acc;
+      }, {});
+
+      this.hass.devices = devices.reduce((acc: any, device: any) => {
+        acc[device.id] = device;
+        return acc;
+      }, {});
+
+      // Store the live data in internal state, but don't include it in config
+      this._config = {
+        ...this._config!,
+        areas: areas.map(area => ({
+          area_id: area.area_id,
+          name: area.name,
+          picture: area.picture,
+          icon: area.icon
+        })),
+        devices: devices.map(device => ({
+          device_id: device.id,
+          name: device.name_by_user || device.name,
+          area_id: device.area_id,
+          created_at: device.created_at
+        })),
+        entities: entities.map(entity => ({
+          entity_id: entity.entity_id,
+          area_id: entity.area_id,
+          device_id: entity.device_id,
+          created_at: entity.created_at
+        }))
+      };
+
+      this._loading = false;
+      this.requestUpdate();
+    } catch (error) {
+      console.error('Failed to fetch data:', error);
+      this._loading = false;
+    }
+  }
+
+  protected render() {
+    if (!this.hass || !this._config) {
+      return nothing;
+    }
+
+    if (this._loading) {
+      return html`
+        <div class="loading">
+          <ha-circular-progress indeterminate></ha-circular-progress>
+        </div>
+      `;
+    }
+
+    return this._area ? this._renderAreaEditor() : this._renderAreasEditor();
+  }
+
+  private _renderAreasEditor() {
+    if (!this.hass || !this._config) {
+      return nothing;
+    }
+
+    const areas = Object.values(this.hass.areas || {});
+    const hiddenAreas = new Set(this._config.areas_display?.hidden || []);
+    const areaOrder = this._config.areas_display?.order || [];
+
+    // Sort areas according to order, then alphabetically
+    const sortedAreas = [...areas].sort((a, b) => {
+      const aIndex = areaOrder.indexOf(a.area_id);
+      const bIndex = areaOrder.indexOf(b.area_id);
+      if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex;
+      if (aIndex !== -1) return -1;
+      if (bIndex !== -1) return 1;
+      return a.name.localeCompare(b.name);
+    });
+
+    return html`
+      <div class="editor-container">
+        <!-- Sponsoring Section -->
+        <div class="sponsoring-section">
+          <div class="sponsoring-header">
+            <ha-icon icon="mdi:heart"></ha-icon>
+            <h3>Support Dwains Dashboard</h3>
+          </div>
+          <p class="sponsoring-text">
+            I built Dwains Dashboard as a free, open-source project in my spare time alongside my job.
+            My main daily venture is <strong>SmartHomeShop.io</strong>, where I develop hardware solutions for Home Assistant and ESPHome.
+          </p>
+
+          <div class="sponsor-label">Please consider a donation 💛</div>
+          <div class="sponsor-chips">
+            <a class="sponsor-chip" href="https://github.com/sponsors/dwainscheeren" target="_blank" rel="noopener noreferrer">
+              <ha-icon icon="mdi:github"></ha-icon><span>GitHub Sponsor</span>
+            </a>
+            <a class="sponsor-chip" href="https://www.paypal.me/dwainscheeren" target="_blank" rel="noopener noreferrer">
+              <ha-icon icon="mdi:cash"></ha-icon><span>PayPal</span>
+            </a>
+            <a class="sponsor-chip" href="https://www.buymeacoffee.com/FAkYvrx" target="_blank" rel="noopener noreferrer">
+              <ha-icon icon="mdi:coffee"></ha-icon><span>Buy me a coffee</span>
+            </a>
+          </div>
+
+          <div class="sponsor-divider"></div>
+
+          <div class="sponsor-label">Or help me by checking out my shop</div>
+          <a class="sponsor-chip primary" href="https://smarthomeshop.io/en" target="_blank" rel="noopener noreferrer">
+            <ha-icon icon="mdi:shopping"></ha-icon><span>Visit SmartHomeShop.io</span>
+          </a>
+        </div>
+
+        ${this._dashboardId ? html`
+          <ha-expansion-panel expanded outlined>
+            <div slot="header">
+              <ha-icon icon="mdi:view-dashboard"></ha-icon>
+              Dashboard
+            </div>
+            <p class="description">
+              ${this._t('strategy.dashboard_desc')}
+            </p>
+            <div class="dashboard-settings">
+              <div class="dd-field">
+                <label>${this._t('strategy.name')}</label>
+                <input
+                  class="dd-input"
+                  type="text"
+                  .value=${this._dashboardTitle}
+                  @input=${this._onDashboardTitleChanged}
+                  @change=${this._onDashboardTitleCommit}
+                />
+              </div>
+              <ha-icon-picker
+                .label=${this._t('strategy.sidebar_icon')}
+                .value=${this._dashboardIcon}
+                @value-changed=${this._onDashboardIconChanged}
+              ></ha-icon-picker>
+            </div>
+          </ha-expansion-panel>
+        ` : nothing}
+
+        <ha-expansion-panel expanded outlined>
+          <div slot="header">
+            <ha-icon icon="mdi:puzzle-edit-outline"></ha-icon>
+            Blueprint replacements
+          </div>
+          <p class="description">
+            Replace standard entity cards in area and devices views with replace-card blueprints.
+          </p>
+          <div class="replacement-section">
+            <div class="replacement-summary">
+              <div>
+                <div class="replacement-count">${this._replacementCount()} active replacement${this._replacementCount() === 1 ? '' : 's'}</div>
+                <div class="replacement-help">Domain rules apply to both area and devices views, like DD3.</div>
+              </div>
+              <ha-button appearance="accent" @click=${this._openReplacementManager}>
+                <ha-icon icon="mdi:puzzle-edit-outline"></ha-icon>
+                Manage replacements
+              </ha-button>
+            </div>
+          </div>
+        </ha-expansion-panel>
+
+        <ha-expansion-panel expanded outlined>
+          <div slot="header">
+            <ha-icon icon="mdi:star"></ha-icon>
+            Favorites
+          </div>
+          <p class="description">
+            Choose entities that you always want to see on the home page.
+          </p>
+          <div class="favorites-section">
+            <div class="entity-picker">
+              <div class="entity-picker-header">
+                <h4>Selected Entities</h4>
+                <mwc-button @click=${this._addFavoriteEntity} outlined>
+                  <svg viewBox="0 0 24 24" width="20" height="20" style="margin-right: 8px;">
+                    <path fill="currentColor" d="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z" />
+                  </svg>
+                  Add Entity
+                </mwc-button>
+              </div>
+
+              ${this._renderSelectedEntities()}
+
+              ${this._showEntityPicker ? this._renderEntityPicker() : ''}
+            </div>
+          </div>
+        </ha-expansion-panel>
+
+        <ha-expansion-panel expanded outlined>
+          <div slot="header">
+            <ha-icon icon="mdi:clock-outline"></ha-icon>
+            Time & Date Settings
+          </div>
+          <p class="description">
+            Configure the display of time and date in the header.
+          </p>
+          <div class="time-section">
+            <div class="time-toggle">
+              <ha-formfield label="Show time and date in header">
+                <ha-switch
+                  .checked=${this._config?.settings?.show_time !== false}
+                  @change=${this._toggleTimeDisplay}
+                ></ha-switch>
+              </ha-formfield>
+            </div>
+          </div>
+        </ha-expansion-panel>
+
+        <ha-expansion-panel expanded outlined>
+          <div slot="header">
+            <ha-icon icon="mdi:weather-cloudy"></ha-icon>
+            Weather Settings
+          </div>
+          <p class="description">
+            Choose which weather entity to display in the header, or disable weather display entirely.
+          </p>
+          <div class="weather-section">
+            <div class="weather-toggle">
+              <ha-formfield label="Show weather in header">
+                <ha-switch
+                  .checked=${this._config?.settings?.show_weather !== false}
+                  @change=${this._toggleWeatherDisplay}
+                ></ha-switch>
+              </ha-formfield>
+            </div>
+
+            ${this._config?.settings?.show_weather !== false ? html`
+              <div class="weather-picker">
+                <div class="weather-picker-header">
+                  <h4>Selected Weather Entity</h4>
+                  <mwc-button @click=${this._addWeatherEntity} outlined>
+                    <svg viewBox="0 0 24 24" width="20" height="20" style="margin-right: 8px;">
+                      <path fill="currentColor" d="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z" />
+                    </svg>
+                    Select Weather
+                  </mwc-button>
+                </div>
+
+                ${this._renderSelectedWeatherEntity()}
+
+                ${this._showWeatherPicker ? this._renderWeatherPicker() : ''}
+              </div>
+            ` : ''}
+          </div>
+        </ha-expansion-panel>
+
+        <ha-expansion-panel expanded outlined>
+          <div slot="header">
+            <ha-icon icon="mdi:eye-off"></ha-icon>
+            Entity Display Settings
+          </div>
+          <p class="description">
+            Configure how entities are displayed and which problematic entities to handle.
+          </p>
+          <div class="entity-display-section">
+            <div class="hide-unavailable-toggle">
+              <ha-formfield label="Hide unavailable/unknown entities">
+                <ha-switch
+                  .checked=${this._config?.settings?.hide_unavailable_entities === true}
+                  @change=${this._toggleHideUnavailableEntities}
+                ></ha-switch>
+              </ha-formfield>
+              <p class="toggle-description">
+                When enabled, entities with 'unavailable' or 'unknown' states will be hidden from the interface.
+                An info icon (ℹ️) will appear next to area names to show hidden entities in a modal.
+              </p>
+            </div>
+            <div class="hide-unavailable-toggle">
+              <ha-formfield label="Show New devices menu">
+                <ha-switch
+                  .checked=${this._config?.settings?.show_recent_devices_panel !== false}
+                  @change=${this._toggleRecentDevicesPanel}
+                ></ha-switch>
+              </ha-formfield>
+              <p class="toggle-description">
+                Shows devices added to Home Assistant in the last 48 hours, with a quick option to hide complete devices from Dwains Dashboard.
+              </p>
+            </div>
+          </div>
+        </ha-expansion-panel>
+
+        <ha-expansion-panel expanded outlined>
+          <div slot="header">
+            <ha-icon icon="mdi:account-multiple"></ha-icon>
+            Configure Persons
+          </div>
+          <p class="description">
+            Configure which persons are visible in the person cards and dashboard.
+          </p>
+          <div class="persons-section">
+            ${this._renderPersonsConfiguration()}
+          </div>
+        </ha-expansion-panel>
+
+        <ha-expansion-panel expanded outlined>
+          <div slot="header">
+            <ha-icon icon="mdi:floor-plan"></ha-icon>
+            Configure Areas
+          </div>
+          <p class="description">
+                          Configure which areas are visible and in what order they are shown.
+          </p>
+          <div class="sortable-container ${this._draggedAreaId ? 'dragging' : ''}">
+            ${repeat(
+              sortedAreas,
+              (area) => area.area_id,
+              (area, index) => {
+                const isHidden = hiddenAreas.has(area.area_id);
+                const isDragging = this._draggedAreaId === area.area_id;
+                const isDragOver = this._dragOverIndex === index && this._draggedAreaId && this._draggedAreaId !== area.area_id;
+
+                return html`
+                  <div
+                    class="sortable-item ${isHidden ? "hidden" : ""} ${isDragging ? "dragging" : ""} ${isDragOver ? "drag-over" : ""}"
+                    data-area-id="${area.area_id}"
+                    data-index="${index}"
+                    draggable="true"
+                    @dragstart=${(e: DragEvent) => this._handleAreaDragStart(e, area.area_id)}
+                    @dragend=${this._handleAreaDragEnd}
+                    @dragover=${(e: DragEvent) => this._handleAreaDragOver(e, index)}
+                    @dragleave=${this._handleAreaDragLeave}
+                    @drop=${(e: DragEvent) => this._handleAreaDrop(e, index)}
+                  >
+                    <div class="area-item">
+                      <div class="handle">
+                        <ha-svg-icon .path=${mdiDrag}></ha-svg-icon>
+                      </div>
+                      ${area.icon ? html`
+                        <ha-icon
+                          .icon=${area.icon}
+                          class="area-icon"
+                        ></ha-icon>
+                      ` : nothing}
+                      <span class="area-name clickable" @click=${() => this._editArea(area.area_id)}>
+                        ${area.name}
+                        <ha-icon icon="mdi:chevron-right" class="chevron"></ha-icon>
+                      </span>
+                      <div class="area-actions">
+                        <ha-icon-button
+                          .label=${isHidden ? "Show" : "Hide"}
+                          .path=${isHidden ? mdiEye : mdiEyeOff}
+                          @click=${() => this._toggleAreaVisibility(area.area_id)}
+                        ></ha-icon-button>
+
+                      </div>
+                    </div>
+                  </div>
+                `;
+              }
+            )}
+          </div>
+        </ha-expansion-panel>
+      </div>
+    `;
+  }
+
+  private _renderAreaEditor() {
+    if (!this.hass || !this._config || !this._area) {
+      return nothing;
+    }
+
+    const area = this.hass.areas[this._area];
+    if (!area) {
+      return nothing;
+    }
+
+    // Get all entities for this area (from entity registry and via states)
+    const areaEntities: { entity_id: string }[] = [];
+    const seenEntities = new Set<string>();
+
+    // Get entities from registry first
+    if (this._config.entities) {
+      // Get all devices in this area
+      const areaDevices = new Set<string>();
+      if (this._config.devices) {
+        this._config.devices.forEach(device => {
+          if (device.area_id === this._area) {
+            areaDevices.add(device.device_id);
+          }
+        });
+      }
+
+      // Get entities via registry (direct or via device)
+      this._config.entities.forEach(entity => {
+        if (entity.area_id === this._area ||
+            (entity.device_id && areaDevices.has(entity.device_id))) {
+          areaEntities.push({ entity_id: entity.entity_id });
+          seenEntities.add(entity.entity_id);
+        }
+      });
+    }
+
+    // Also check states for entities that might not be in registry
+    if (this.hass?.states) {
+      Object.values(this.hass.states).forEach(state => {
+        if (!seenEntities.has(state.entity_id)) {
+          const entityRegistry = this.hass?.entities?.[state.entity_id];
+          if (entityRegistry?.area_id === this._area) {
+            areaEntities.push({ entity_id: state.entity_id });
+          }
+        }
+      });
+    }
+
+    // Get grouped entities WITHOUT filtering hidden ones
+    const groups = this._getAreaGroupedEntitiesWithoutFiltering(
+      areaEntities,
+      this.hass
+    );
+
+    return html`
+      <div class="editor-container">
+        <div class="toolbar">
+          <ha-icon-button
+            .path=${mdiArrowLeft}
+            .label=${this._t('strategy.back')}
+            @click=${() => { this._area = undefined; }}
+          ></ha-icon-button>
+          <h2>${area.name}</h2>
+        </div>
+
+        <div class="area-help">
+          <ha-svg-icon .path=${mdiThermometerWater} class="area-help-icon"></ha-svg-icon>
+          <div class="area-help-text">
+            <p>
+              To show temperature and humidity sensors in the overview, link a sensor to this room in Home Assistant via
+              <button class="link" @click=${this._editAreaRegistry}>edit the room</button>.
+            </p>
+            <p>
+              The wattage badge automatically sums all power sensors (unit 'W') in this room that are visible (not hidden in the UI).
+            </p>
+          </div>
+        </div>
+
+        ${AREA_STRATEGY_GROUPS.map((group) => {
+          // Get ALL entities for this group (don't filter hidden ones)
+          const allGroupEntities = groups[group] || [];
+          const groupOptions = this._config!.areas_options?.[this._area!]?.groups_options?.[group];
+          const hiddenEntities = new Set(groupOptions?.hidden || []);
+          const entityOrder = groupOptions?.order || [];
+
+          // Sort entities according to order
+          const sortedEntities = [...allGroupEntities].sort((a, b) => {
+            const aIndex = entityOrder.indexOf(a);
+            const bIndex = entityOrder.indexOf(b);
+            if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex;
+            if (aIndex !== -1) return -1;
+            if (bIndex !== -1) return 1;
+            // Sort by friendly name
+            const nameA = this.hass!.states[a]?.attributes?.friendly_name || a;
+            const nameB = this.hass!.states[b]?.attributes?.friendly_name || b;
+            return nameA.localeCompare(nameB);
+          });
+
+          if (allGroupEntities.length === 0) {
+            return nothing;
+          }
+
+          return html`
+            <ha-expansion-panel expanded outlined>
+              <div slot="header">
+                <ha-icon icon=${AREA_STRATEGY_GROUP_ICONS[group]}></ha-icon>
+                ${this._getGroupTitle(group)}
+              </div>
+              <div class="sortable-container ${this._draggedEntityGroup === group ? 'dragging' : ''}">
+                ${repeat(
+                  sortedEntities,
+                  (entityId) => entityId,
+                  (entityId, index) => {
+                    const state = this.hass!.states[entityId];
+                    const isHidden = hiddenEntities.has(entityId);
+                    const isDragging = this._draggedEntityId === entityId && this._draggedEntityGroup === group;
+                    const isDragOver = this._dragOverEntityIndex === index &&
+                                      this._draggedEntityGroup === group &&
+                                      this._draggedEntityId &&
+                                      this._draggedEntityId !== entityId;
+
+                    return html`
+                      <div
+                        class="sortable-item ${isHidden ? "hidden" : ""} ${isDragging ? "dragging" : ""} ${isDragOver ? "drag-over" : ""}"
+                        data-entity-id="${entityId}"
+                        data-index="${index}"
+                        draggable="true"
+                        @dragstart=${(e: DragEvent) => this._handleEntityDragStart(e, entityId, group)}
+                        @dragend=${this._handleEntityDragEnd}
+                        @dragover=${(e: DragEvent) => this._handleEntityDragOver(e, group, index)}
+                        @dragleave=${this._handleEntityDragLeave}
+                        @drop=${(e: DragEvent) => this._handleEntityDrop(e, group, index)}
+                      >
+                        <div class="entity-item">
+                          <div class="handle">
+                            <ha-svg-icon .path=${mdiDrag}></ha-svg-icon>
+                          </div>
+                          <ha-state-icon
+                            .stateObj=${state}
+                            class="entity-icon"
+                          ></ha-state-icon>
+                          <span class="entity-name">
+                            ${state?.attributes?.friendly_name || entityId}
+                          </span>
+                          <ha-icon-button
+                            .label=${isHidden ? "Show" : "Hide"}
+                            .path=${isHidden ? mdiEye : mdiEyeOff}
+                            @click=${() => this._toggleEntityVisibility(entityId, group)}
+                          ></ha-icon-button>
+                        </div>
+                      </div>
+                    `;
+                  }
+                )}
+              </div>
+            </ha-expansion-panel>
+          `;
+        })}
+      </div>
+    `;
+  }
+
+  private _getGroupTitle(group: string): string {
+    const titles: Record<string, string> = {
+      lights: "Lighting",
+      climate: "Climate",
+      media_players: "Media Players",
+      covers: "Covers",
+      security: "Security",
+      motion: "Motion",
+      actions: "Actions",
+      others: "Sensors"
+    };
+    return titles[group] || group;
+  }
+
+  private _getAreaGroupedEntitiesWithoutFiltering(
+    areaEntities: { entity_id: string }[],
+    hass: HomeAssistant
+  ): Record<AreaStrategyGroup, string[]> {
+    const grouped = {
+      lights: [] as string[],
+      climate: [] as string[],
+      covers: [] as string[],
+      media_players: [] as string[],
+      security: [] as string[],
+      motion: [] as string[],
+      actions: [] as string[],
+      others: [] as string[],
+    };
+
+    areaEntities.forEach((entity) => {
+      const entityId = entity.entity_id;
+      const domain = entityId.split('.')[0];
+      const state = hass.states[entityId];
+
+      if (!state) return;
+
+      // Skip hidden and diagnostic entities
+      const entityRegistry = hass.entities?.[entityId];
+      if (entityRegistry?.hidden_by || entityRegistry?.entity_category === 'diagnostic' || entityRegistry?.entity_category === 'config') {
+        return;
+      }
+
+      // Group based on domain
+      if (domain === 'light') {
+        grouped.lights.push(entityId);
+      } else if (domain === 'climate' || domain === 'humidifier' || domain === 'water_heater' || domain === 'fan') {
+        grouped.climate.push(entityId);
+      } else if (domain === 'cover') {
+        grouped.covers.push(entityId);
+      } else if (domain === 'binary_sensor' && state?.attributes?.device_class &&
+                 ['door', 'garage_door', 'window'].includes(state.attributes.device_class)) {
+        grouped.covers.push(entityId);
+      } else if (domain === 'media_player') {
+        grouped.media_players.push(entityId);
+      } else if (domain === 'alarm_control_panel' || domain === 'lock' || domain === 'camera') {
+        grouped.security.push(entityId);
+      } else if (domain === 'binary_sensor' && state?.attributes?.device_class &&
+                 ['motion', 'occupancy', 'presence'].includes(state.attributes.device_class)) {
+        grouped.motion.push(entityId);
+      } else if (domain === 'script' || domain === 'scene' || domain === 'automation') {
+        grouped.actions.push(entityId);
+      } else if (domain === 'switch' || domain === 'button' || domain === 'input_boolean' ||
+                 domain === 'vacuum' || domain === 'lawn_mower' || domain === 'valve' ||
+                  domain === 'select' || domain === 'number' || domain === 'input_select' ||
+                  domain === 'input_number' || domain === 'counter' || domain === 'timer' ||
+                  domain === 'sensor') {
+        grouped.others.push(entityId);
+      }
+    });
+
+    return grouped;
+  }
+
+  private _handleAreaDragStart(e: DragEvent, areaId: string): void {
+    this._draggedAreaId = areaId;
+    if (e.dataTransfer) {
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', areaId);
+    }
+  }
+
+  private _handleAreaDragEnd(): void {
+    this._draggedAreaId = undefined;
+    this._dragOverIndex = undefined;
+  }
+
+  private _handleAreaDragOver(e: DragEvent, index: number): void {
+    e.preventDefault();
+    if (e.dataTransfer) {
+      e.dataTransfer.dropEffect = 'move';
+    }
+    this._dragOverIndex = index;
+  }
+
+  private _handleAreaDragLeave(e: DragEvent): void {
+    const target = e.target as HTMLElement;
+    if (target.classList.contains('sortable-item')) {
+      this._dragOverIndex = undefined;
+    }
+  }
+
+  private _handleAreaDrop(e: DragEvent, dropIndex: number): void {
+    e.preventDefault();
+
+    if (!this._draggedAreaId || !this._config) return;
+
+    const areas = Object.values(this.hass!.areas || {});
+    const areaOrder = this._config.areas_display?.order || [];
+
+    // Sort areas according to current order
+    const sortedAreas = [...areas].sort((a, b) => {
+      const aIndex = areaOrder.indexOf(a.area_id);
+      const bIndex = areaOrder.indexOf(b.area_id);
+      if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex;
+      if (aIndex !== -1) return -1;
+      if (bIndex !== -1) return 1;
+      return a.name.localeCompare(b.name);
+    });
+
+    // Find the dragged item's current index
+    const draggedIndex = sortedAreas.findIndex(area => area.area_id === this._draggedAreaId);
+
+    if (draggedIndex === -1 || draggedIndex === dropIndex) {
+      this._draggedAreaId = undefined;
+      this._dragOverIndex = undefined;
+      return;
+    }
+
+    // Reorder the areas
+    const newSortedAreas = [...sortedAreas];
+    const [removed] = newSortedAreas.splice(draggedIndex, 1);
+    if (!removed) return;
+
+    newSortedAreas.splice(dropIndex, 0, removed);
+
+    // Create new order array
+    const order = newSortedAreas.map(area => area.area_id);
+
+    const newConfig: DwainsDashboardConfig = {
+      ...this._config!,
+      areas_display: {
+        ...this._config!.areas_display,
+        order
+      }
+    };
+
+    this._fireConfigChanged(newConfig);
+    this._draggedAreaId = undefined;
+    this._dragOverIndex = undefined;
+  }
+
+  private _handleEntityDragStart(e: DragEvent, entityId: string, group: string): void {
+    this._draggedEntityId = entityId;
+    this._draggedEntityGroup = group;
+    if (e.dataTransfer) {
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', entityId);
+    }
+  }
+
+  private _handleEntityDragEnd(): void {
+    this._draggedEntityId = undefined;
+    this._draggedEntityGroup = undefined;
+    this._dragOverEntityIndex = undefined;
+  }
+
+  private _handleEntityDragOver(e: DragEvent, group: string, index: number): void {
+    e.preventDefault();
+    if (e.dataTransfer) {
+      e.dataTransfer.dropEffect = 'move';
+    }
+    if (this._draggedEntityGroup === group) {
+      this._dragOverEntityIndex = index;
+    }
+  }
+
+  private _handleEntityDragLeave(e: DragEvent): void {
+    const target = e.target as HTMLElement;
+    if (target.classList.contains('sortable-item')) {
+      this._dragOverEntityIndex = undefined;
+    }
+  }
+
+  private _handleEntityDrop(e: DragEvent, group: string, dropIndex: number): void {
+    e.preventDefault();
+
+    if (!this._draggedEntityId || !this._config || !this._area || this._draggedEntityGroup !== group) return;
+
+    // Get entities for this group
+    const areaEntities: { entity_id: string }[] = [];
+    const seenEntities = new Set<string>();
+
+    // Get entities from registry first
+    if (this._config.entities) {
+      // Get all devices in this area
+      const areaDevices = new Set<string>();
+      if (this._config.devices) {
+        this._config.devices.forEach(device => {
+          if (device.area_id === this._area) {
+            areaDevices.add(device.device_id);
+          }
+        });
+      }
+
+      // Get entities via registry
+      this._config.entities.forEach(entity => {
+        if (entity.area_id === this._area ||
+            (entity.device_id && areaDevices.has(entity.device_id))) {
+          areaEntities.push({ entity_id: entity.entity_id });
+          seenEntities.add(entity.entity_id);
+        }
+      });
+    }
+
+    // Get grouped entities
+    const groups = this._getAreaGroupedEntitiesWithoutFiltering(areaEntities, this.hass!);
+    const allGroupEntities = groups[group as keyof typeof groups] || [];
+    const groupOptions = this._config.areas_options?.[this._area]?.groups_options?.[group];
+    const entityOrder = groupOptions?.order || [];
+
+    // Sort entities according to current order
+    const sortedEntities = [...allGroupEntities].sort((a, b) => {
+      const aIndex = entityOrder.indexOf(a);
+      const bIndex = entityOrder.indexOf(b);
+      if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex;
+      if (aIndex !== -1) return -1;
+      if (bIndex !== -1) return 1;
+      const nameA = this.hass!.states[a]?.attributes?.friendly_name || a;
+      const nameB = this.hass!.states[b]?.attributes?.friendly_name || b;
+      return nameA.localeCompare(nameB);
+    });
+
+    // Find the dragged item's current index
+    const draggedIndex = sortedEntities.findIndex(entityId => entityId === this._draggedEntityId);
+
+    if (draggedIndex === -1 || draggedIndex === dropIndex) {
+      this._draggedEntityId = undefined;
+      this._draggedEntityGroup = undefined;
+      this._dragOverEntityIndex = undefined;
+      return;
+    }
+
+    // Reorder the entities
+    const newSortedEntities = [...sortedEntities];
+    const [removed] = newSortedEntities.splice(draggedIndex, 1);
+    if (!removed) return;
+
+    newSortedEntities.splice(dropIndex, 0, removed);
+
+    // Create new order array
+    const order = newSortedEntities;
+
+    const newConfig: DwainsDashboardConfig = {
+      ...this._config!,
+      areas_options: {
+        ...this._config!.areas_options,
+        [this._area]: {
+          ...this._config!.areas_options?.[this._area],
+          groups_options: {
+            ...this._config!.areas_options?.[this._area]?.groups_options,
+            [group]: {
+              ...this._config!.areas_options?.[this._area]?.groups_options?.[group],
+              order
+            }
+          }
+        }
+      }
+    };
+
+    this._fireConfigChanged(newConfig);
+    this._draggedEntityId = undefined;
+    this._draggedEntityGroup = undefined;
+    this._dragOverEntityIndex = undefined;
+  }
+
+
+
+  private _toggleAreaVisibility(area: string): void {
+    const hidden = [...(this._config!.areas_display?.hidden || [])];
+    const index = hidden.indexOf(area);
+
+    if (index === -1) {
+      hidden.push(area);
+    } else {
+      hidden.splice(index, 1);
+    }
+
+    const newConfig: DwainsDashboardConfig = {
+      ...this._config!,
+      areas_display: {
+        ...this._config!.areas_display,
+        hidden
+      }
+    };
+
+    this._fireConfigChanged(newConfig);
+  }
+
+  private _toggleEntityVisibility(entityId: string, group: string): void {
+
+    const hidden = [...(this._config!.areas_options?.[this._area!]?.groups_options?.[group]?.hidden || [])];
+    const index = hidden.indexOf(entityId);
+
+    if (index === -1) {
+      hidden.push(entityId);
+    } else {
+      hidden.splice(index, 1);
+    }
+
+    const newConfig: DwainsDashboardConfig = {
+      ...this._config!,
+      areas_options: {
+        ...this._config!.areas_options,
+        [this._area!]: {
+          ...this._config!.areas_options?.[this._area!],
+          groups_options: {
+            ...this._config!.areas_options?.[this._area!]?.groups_options,
+            [group]: {
+              ...this._config!.areas_options?.[this._area!]?.groups_options?.[group],
+              hidden
+            }
+          }
+        }
+      }
+    };
+
+    this._fireConfigChanged(newConfig);
+  }
+
+  private _editArea(area: string): void {
+    this._area = area;
+  }
+
+  private _addFavoriteEntity(): void {
+    this._showEntityPicker = true;
+    this._entitySearchFilter = '';
+  }
+
+  private _addWeatherEntity(): void {
+    this._showWeatherPicker = true;
+    this._weatherSearchFilter = '';
+  }
+
+  private _renderSelectedWeatherEntity() {
+    const weatherEntityId = this._config?.settings?.weather_entity_id;
+
+    if (!weatherEntityId) {
+      return html`
+        <div class="no-weather">
+          <p>No weather entity selected. Will use first available weather entity.</p>
+        </div>
+      `;
+    }
+
+    const state = this.hass?.states[weatherEntityId];
+    const friendlyName = state?.attributes?.friendly_name || weatherEntityId;
+
+    return html`
+      <div class="selected-weather-entity" data-entity-id="${weatherEntityId}">
+        <ha-state-icon
+          .stateObj=${state}
+          class="entity-icon"
+        ></ha-state-icon>
+        <span class="entity-name">${friendlyName}</span>
+        <button
+          class="remove-button"
+          title="Remove"
+          @click=${() => this._removeWeatherEntity()}
+        >
+          <svg viewBox="0 0 24 24" width="20" height="20">
+            <path fill="currentColor" d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z" />
+          </svg>
+        </button>
+      </div>
+    `;
+  }
+
+  private _renderSelectedEntities() {
+    const favorites = this._config?.favorites || [];
+
+    if (favorites.length === 0) {
+      return html`
+        <div class="no-favorites">
+                          <p>No favorites selected yet.</p>
+        </div>
+      `;
+    }
+
+    return html`
+      <div class="selected-entities">
+        ${repeat(
+          favorites,
+          (entityId) => entityId,
+          (entityId) => {
+            const state = this.hass?.states[entityId];
+            const friendlyName = state?.attributes?.friendly_name || entityId;
+
+            return html`
+              <div class="selected-entity" data-entity-id="${entityId}">
+                <ha-state-icon
+                  .stateObj=${state}
+                  class="entity-icon"
+                ></ha-state-icon>
+                <span class="entity-name">${friendlyName}</span>
+                <button
+                  class="remove-button"
+                  title="Remove"
+                  @click=${() => this._removeFavoriteEntity(entityId)}
+                >
+                  <svg viewBox="0 0 24 24" width="20" height="20">
+                    <path fill="currentColor" d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z" />
+                  </svg>
+                </button>
+              </div>
+            `;
+          }
+        )}
+      </div>
+    `;
+  }
+
+  private _renderWeatherPicker() {
+    const allEntities = Object.keys(this.hass?.states || {});
+    const weatherEntities = allEntities.filter(entityId =>
+      entityId.startsWith('weather.') &&
+      this.hass?.states[entityId]?.state !== 'unavailable'
+    );
+
+    const filteredWeatherEntities = weatherEntities.filter(entityId => {
+      if (!this._weatherSearchFilter) return true;
+      const state = this.hass?.states[entityId];
+      const friendlyName = state?.attributes?.friendly_name || entityId;
+      return friendlyName.toLowerCase().includes(this._weatherSearchFilter.toLowerCase()) ||
+             entityId.toLowerCase().includes(this._weatherSearchFilter.toLowerCase());
+    });
+
+    return html`
+      <div class="entity-picker-modal">
+        <div class="entity-picker-content">
+          <div class="entity-picker-header">
+            <h4>Select Weather Entity</h4>
+            <button
+              class="close-button"
+              title="Close"
+              @click=${() => this._showWeatherPicker = false}
+            >
+              <svg viewBox="0 0 24 24" width="20" height="20">
+                <path fill="currentColor" d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z" />
+              </svg>
+            </button>
+          </div>
+
+          <div class="entity-search">
+            <ha-textfield
+              .label="Search weather entities..."
+              .value=${this._weatherSearchFilter}
+              @input=${(e: Event) => this._weatherSearchFilter = (e.target as HTMLInputElement).value}
+            ></ha-textfield>
+          </div>
+
+          <div class="entity-list">
+            ${repeat(
+              filteredWeatherEntities.slice(0, 20), // Limit to 20 results for weather
+              (entityId) => entityId,
+              (entityId) => {
+                const state = this.hass?.states[entityId];
+                const friendlyName = state?.attributes?.friendly_name || entityId;
+
+                return html`
+                  <div class="entity-option" @click=${() => this._selectWeatherEntity(entityId)}>
+                    <ha-state-icon
+                      .stateObj=${state}
+                      class="entity-icon"
+                    ></ha-state-icon>
+                    <span class="entity-name">${friendlyName}</span>
+                    <span class="entity-id">${entityId}</span>
+                  </div>
+                `;
+              }
+            )}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  private _renderEntityPicker() {
+    const allEntities = Object.keys(this.hass?.states || {});
+    const filteredEntities = allEntities.filter(entityId => {
+      if (!this._entitySearchFilter) return true;
+      const state = this.hass?.states[entityId];
+      const friendlyName = state?.attributes?.friendly_name || entityId;
+      return friendlyName.toLowerCase().includes(this._entitySearchFilter.toLowerCase()) ||
+             entityId.toLowerCase().includes(this._entitySearchFilter.toLowerCase());
+    });
+
+    const favorites = this._config?.favorites || [];
+    const availableEntities = filteredEntities.filter(entityId => !favorites.includes(entityId));
+
+    return html`
+      <div class="entity-picker-modal">
+        <div class="entity-picker-content">
+          <div class="entity-picker-header">
+            <h4>Select Entity</h4>
+            <button
+              class="close-button"
+              title="Close"
+              @click=${() => this._showEntityPicker = false}
+            >
+              <svg viewBox="0 0 24 24" width="20" height="20">
+                <path fill="currentColor" d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z" />
+              </svg>
+            </button>
+          </div>
+
+          <div class="entity-search">
+            <ha-textfield
+              .label="Search..."
+              .value=${this._entitySearchFilter}
+              @input=${(e: Event) => this._entitySearchFilter = (e.target as HTMLInputElement).value}
+            ></ha-textfield>
+          </div>
+
+          <div class="entity-list">
+            ${repeat(
+              availableEntities.slice(0, 50), // Limit to 50 results
+              (entityId) => entityId,
+              (entityId) => {
+                const state = this.hass?.states[entityId];
+                const friendlyName = state?.attributes?.friendly_name || entityId;
+
+                return html`
+                  <div class="entity-option" @click=${() => this._selectEntity(entityId)}>
+                    <ha-state-icon
+                      .stateObj=${state}
+                      class="entity-icon"
+                    ></ha-state-icon>
+                    <span class="entity-name">${friendlyName}</span>
+                    <span class="entity-id">${entityId}</span>
+                  </div>
+                `;
+              }
+            )}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  private _selectWeatherEntity(entityId: string): void {
+    const newConfig: DwainsDashboardConfig = {
+      ...this._config!,
+      settings: {
+        ...this._config!.settings,
+        weather_entity_id: entityId
+      }
+    };
+
+    this._fireConfigChanged(newConfig);
+    this._showWeatherPicker = false;
+  }
+
+  private _removeWeatherEntity(): void {
+    const newConfig: DwainsDashboardConfig = {
+      ...this._config!,
+      settings: {
+        ...this._config!.settings,
+        weather_entity_id: undefined
+      }
+    };
+
+    this._fireConfigChanged(newConfig);
+  }
+
+  private _toggleTimeDisplay(e: Event): void {
+    const target = e.target as any;
+    const showTime = target.checked;
+
+    const newConfig: DwainsDashboardConfig = {
+      ...this._config!,
+      settings: {
+        ...this._config!.settings,
+        show_time: showTime
+      }
+    };
+
+    this._fireConfigChanged(newConfig);
+  }
+
+  private _toggleWeatherDisplay(e: Event): void {
+    const target = e.target as any;
+    const showWeather = target.checked;
+
+    const newConfig: DwainsDashboardConfig = {
+      ...this._config!,
+      settings: {
+        ...this._config!.settings,
+        show_weather: showWeather
+      }
+    };
+
+    this._fireConfigChanged(newConfig);
+  }
+
+  private _toggleHideUnavailableEntities(e: Event): void {
+    const target = e.target as any;
+    const hideUnavailable = target.checked;
+
+    const newConfig: DwainsDashboardConfig = {
+      ...this._config!,
+      settings: {
+        ...this._config!.settings,
+        hide_unavailable_entities: hideUnavailable
+      }
+    };
+
+    this._fireConfigChanged(newConfig);
+  }
+
+  private _toggleRecentDevicesPanel(e: Event): void {
+    const target = e.target as any;
+    const showPanel = target.checked;
+
+    const newConfig: DwainsDashboardConfig = {
+      ...this._config!,
+      settings: {
+        ...this._config!.settings,
+        show_recent_devices_panel: showPanel
+      }
+    };
+
+    this._fireConfigChanged(newConfig);
+  }
+
+  private _selectEntity(entityId: string): void {
+    const favorites = [...(this._config?.favorites || [])];
+    if (!favorites.includes(entityId)) {
+      favorites.push(entityId);
+
+      const newConfig: DwainsDashboardConfig = {
+        ...this._config!,
+        favorites
+      };
+
+      this._fireConfigChanged(newConfig);
+    }
+
+    this._showEntityPicker = false;
+  }
+
+  private _removeFavoriteEntity(entityId: string): void {
+    const favorites = [...(this._config?.favorites || [])];
+    const index = favorites.indexOf(entityId);
+    if (index > -1) {
+      favorites.splice(index, 1);
+
+      const newConfig: DwainsDashboardConfig = {
+        ...this._config!,
+        favorites
+      };
+
+      this._fireConfigChanged(newConfig);
+    }
+  }
+
+  private _renderPersonsConfiguration() {
+    if (!this.hass?.states) {
+      return html`<p>No persons found</p>`;
+    }
+
+    // Get all person entities
+    const personEntities = Object.keys(this.hass.states)
+      .filter(entityId => entityId.startsWith('person.'))
+      .map(entityId => {
+        const state = this.hass!.states[entityId];
+        return {
+          entity_id: entityId,
+          state,
+          friendly_name: state?.attributes?.friendly_name || entityId
+        };
+      })
+      .sort((a, b) => a.friendly_name.localeCompare(b.friendly_name));
+
+    if (personEntities.length === 0) {
+      return html`
+        <div class="no-persons">
+          <p>No person entities found in your Home Assistant configuration.</p>
+          <p style="font-size: 12px; color: var(--secondary-text-color);">
+            Add person entities to see them here.
+          </p>
+        </div>
+      `;
+    }
+
+    const hiddenPersons = new Set(this._config?.settings?.hidden_persons || []);
+
+    return html`
+      <div class="persons-list">
+        ${repeat(
+          personEntities,
+          (person) => person.entity_id,
+          (person) => {
+            const isHidden = hiddenPersons.has(person.entity_id);
+
+            return html`
+              <div class="person-item ${isHidden ? 'hidden' : ''}">
+                <ha-state-icon
+                  .stateObj=${person.state}
+                  class="person-icon"
+                ></ha-state-icon>
+                <span class="person-name">${person.friendly_name}</span>
+                <span class="person-state ${person.state?.state === 'home' ? 'home' : 'away'}">
+                  ${person.state?.state === 'home' ? 'Home' : 'Away'}
+                </span>
+                <ha-icon-button
+                  .label=${isHidden ? "Show" : "Hide"}
+                  .path=${isHidden ? mdiEye : mdiEyeOff}
+                  @click=${() => this._togglePersonVisibility(person.entity_id)}
+                ></ha-icon-button>
+              </div>
+            `;
+          }
+        )}
+      </div>
+    `;
+  }
+
+  private _togglePersonVisibility(personId: string): void {
+    const hiddenPersons = [...(this._config?.settings?.hidden_persons || [])];
+    const index = hiddenPersons.indexOf(personId);
+
+    if (index === -1) {
+      hiddenPersons.push(personId);
+    } else {
+      hiddenPersons.splice(index, 1);
+    }
+
+    const newConfig: DwainsDashboardConfig = {
+      ...this._config!,
+      settings: {
+        ...this._config!.settings,
+        hidden_persons: hiddenPersons
+      }
+    };
+
+    this._fireConfigChanged(newConfig);
+  }
+
+  private _editAreaRegistry(ev: Event): void {
+    ev.stopPropagation();
+    // This would open the area registry dialog in Home Assistant
+    // For now, we'll just show an alert
+          alert(this._t('strategy.edit_area_alert'));
+  }
+
+  private _openReplacementManager(): void {
+    if (!this.hass || !this._config) return;
+    openReplacementManager(this.hass, this._config, (config) => {
+      this._fireConfigChanged(config);
+      this.requestUpdate();
+    });
+  }
+
+  private _replacementCount(): number {
+    return countReplacementRules(this._config?.blueprint_replacements);
+  }
+
+  private _fireConfigChanged(config: DwainsDashboardConfig): void {
+    this._config = {
+      ...this._config,
+      ...config
+    };
+
+    // Only save essential configuration, not live data
+    const cleanConfig = {
+      type: "custom:dwains",
+      areas_display: config.areas_display || {},
+      areas_options: config.areas_options || {},
+      blueprint_replacements: config.blueprint_replacements || {},
+      device_admission: config.device_admission || {},
+      favorites: config.favorites || [],
+      settings: config.settings || {}
+    };
+
+    const event = new CustomEvent("config-changed", {
+      detail: { config: cleanConfig },
+      bubbles: true,
+      composed: true
+    });
+    this.dispatchEvent(event);
+  }
+
+  static get styles() {
+    return css`
+      :host {
+        display: block;
+      }
+
+      .editor-container {
+        padding: 16px;
+      }
+
+      .dashboard-settings {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        padding: 4px 0 8px;
+      }
+      .dashboard-settings ha-icon-picker {
+        width: 100%;
+      }
+      .dd-field {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .dd-field label {
+        font-size: 0.8rem;
+        color: var(--secondary-text-color);
+      }
+      .dd-input {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 12px 14px;
+        font-size: 1rem;
+        color: var(--primary-text-color);
+        background: var(--card-background-color);
+        border: 1px solid var(--divider-color);
+        border-radius: 8px;
+        outline: none;
+        transition: border-color .2s ease;
+      }
+      .dd-input:focus {
+        border-color: var(--primary-color);
+      }
+
+      /* Sponsoring Section Styles */
+      .sponsoring-section {
+        background: linear-gradient(135deg, var(--primary-color), var(--accent-color, var(--primary-color)));
+        color: white;
+        border-radius: 12px;
+        padding: 24px;
+        margin-bottom: 24px;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+        position: relative;
+        overflow: hidden;
+      }
+
+      .sponsoring-section::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.05'%3E%3Ccircle cx='30' cy='30' r='4'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E") repeat;
+        pointer-events: none;
+      }
+
+      .sponsoring-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 16px;
+        position: relative;
+        z-index: 1;
+      }
+
+      .sponsoring-header ha-icon {
+        --mdc-icon-size: 28px;
+        color: #ffeb3b;
+        animation: heartbeat 2s infinite;
+      }
+
+      @keyframes heartbeat {
+        0%, 50%, 100% { transform: scale(1); }
+        25% { transform: scale(1.1); }
+      }
+
+      .sponsoring-header h3 {
+        margin: 0;
+        font-size: 21px;
+        font-weight: 600;
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+      }
+
+      .sponsoring-text {
+        position: relative;
+        z-index: 1;
+        margin: 0 0 16px 0;
+        line-height: 1.6;
+        font-size: 13px;
+        opacity: 0.95;
+      }
+      .sponsoring-text strong { font-weight: 700; }
+
+      .sponsor-label {
+        position: relative;
+        z-index: 1;
+        font-size: 13px;
+        font-weight: 600;
+        margin-bottom: 10px;
+        opacity: 0.95;
+      }
+
+      .sponsor-chips {
+        position: relative;
+        z-index: 1;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+
+      .sponsor-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 9px 16px;
+        border-radius: 999px;
+        text-decoration: none;
+        font-size: 13px;
+        font-weight: 600;
+        color: #fff;
+        background: rgba(255, 255, 255, 0.16);
+        border: 1px solid rgba(255, 255, 255, 0.35);
+        transition: transform 0.15s ease, background-color 0.2s ease, box-shadow 0.2s ease;
+      }
+      .sponsor-chip ha-icon { --mdc-icon-size: 18px; }
+      .sponsor-chip:hover {
+        background: rgba(255, 255, 255, 0.28);
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+      }
+      .sponsor-chip.primary {
+        background: #fff;
+        color: var(--primary-color);
+        border-color: #fff;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+      }
+      .sponsor-chip.primary:hover { filter: brightness(0.97); }
+
+      .sponsor-divider {
+        position: relative;
+        z-index: 1;
+        height: 1px;
+        background: rgba(255, 255, 255, 0.25);
+        margin: 18px 0;
+      }
+
+      @media (max-width: 600px) {
+        .sponsoring-section { padding: 20px; margin-bottom: 20px; }
+        .sponsoring-header h3 { font-size: 20px; }
+        .sponsor-chips { flex-direction: column; }
+        .sponsor-chip { justify-content: center; }
+      }
+
+      .toolbar {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        margin: -16px -16px 16px -16px;
+        padding: 8px;
+        background: var(--primary-background-color);
+        border-bottom: 1px solid var(--divider-color);
+      }
+
+      .toolbar ha-icon-button {
+        color: var(--primary-text-color);
+        --mdc-icon-button-size: 40px;
+        --mdc-icon-size: 24px;
+        flex: 0 0 auto;
+      }
+
+      .toolbar h2 {
+        margin: 0;
+        font-size: 20px;
+        font-weight: 500;
+        flex: 1;
+        padding: 0 4px;
+      }
+
+      ha-expansion-panel {
+        margin-bottom: 8px;
+        --expansion-panel-summary-padding: 0 16px;
+      }
+
+      ha-expansion-panel [slot="header"] {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+      }
+
+      .description {
+        margin: 16px;
+        color: var(--secondary-text-color);
+      }
+
+      .area-help {
+        display: flex;
+        gap: 12px;
+        align-items: flex-start;
+        margin: 0 0px 16px 0px;
+        padding: 12px;
+        background: var(--secondary-background-color);
+        border: 1px solid var(--divider-color);
+        border-radius: 8px;
+      }
+      .area-help-icon {
+        --mdc-icon-size: 24px;
+      }
+      .area-help-text p {
+        margin: 0 0 6px 0;
+        font-size: 13px;
+        color: var(--secondary-text-color);
+      }
+
+      .sortable-container {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        padding: 0 16px 16px 16px;
+      }
+
+      .sortable-item {
+        position: relative;
+        background: var(--card-background-color);
+        border-radius: 4px;
+        box-shadow: var(--card-box-shadow, none);
+        transition: all 0.2s ease;
+        user-select: none;
+        cursor: grab;
+      }
+
+      .sortable-item:active {
+        cursor: grabbing;
+      }
+
+      .sortable-item.hidden {
+        opacity: 0.5;
+      }
+
+      .sortable-item:hover {
+        background: var(--secondary-background-color);
+      }
+
+      .sortable-item.dragging {
+        opacity: 0.4;
+        transform: scale(0.95);
+        transition: none;
+      }
+
+      .sortable-container.dragging .sortable-item {
+        transition: transform 0.2s ease;
+      }
+
+      .sortable-container.dragging .sortable-item:not(.dragging):hover {
+        transform: translateY(2px);
+      }
+
+      .sortable-item.drag-over {
+        position: relative;
+      }
+
+      .sortable-item.drag-over::before {
+        content: '';
+        position: absolute;
+        top: -2px;
+        left: 0;
+        right: 0;
+        height: 4px;
+        background: var(--primary-color);
+        border-radius: 2px;
+        animation: pulse 1s infinite;
+      }
+
+      @keyframes pulse {
+        0% { opacity: 1; }
+        50% { opacity: 0.5; }
+        100% { opacity: 1; }
+      }
+
+      .area-item,
+      .entity-item {
+        display: flex;
+        align-items: center;
+        width: 100%;
+        padding: 12px 16px;
+        min-height: 48px;
+      }
+
+      .sortable-item:hover {
+        background: var(--secondary-background-color);
+      }
+
+      .handle {
+        cursor: grab;
+        margin-right: 8px;
+        display: flex;
+        align-items: center;
+        padding: 8px 4px;
+        color: var(--secondary-text-color);
+        transition: all 0.2s ease;
+      }
+
+      .handle:hover {
+        background: var(--primary-background-color);
+        border-radius: 4px;
+        color: var(--primary-color);
+      }
+
+      .handle:active {
+        cursor: grabbing;
+      }
+
+      .handle ha-svg-icon {
+        --mdc-icon-size: 20px;
+      }
+
+      .area-icon,
+      .entity-icon {
+        margin-right: 16px;
+      }
+
+      .area-name,
+      .entity-name {
+        flex: 1;
+      }
+
+      .area-name.clickable {
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+
+      .area-name.clickable:hover {
+        color: var(--primary-color);
+      }
+
+      .area-name .chevron {
+        --mdc-icon-size: 20px;
+        opacity: 0.6;
+      }
+
+      .area-actions {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+
+      button.link {
+        color: var(--primary-color);
+        text-decoration: none;
+        background: none;
+        border: none;
+        cursor: pointer;
+        font-size: inherit;
+        padding: 0;
+      }
+
+      ha-icon-button[disabled] {
+        opacity: 0.5;
+        pointer-events: none;
+      }
+
+      ha-icon-button {
+        --mdc-icon-button-size: 40px;
+        --mdc-icon-size: 20px;
+      }
+
+      .favorites-section,
+      .time-section,
+      .weather-section,
+      .entity-display-section,
+      .replacement-section {
+        padding: 0 16px 16px 16px;
+      }
+
+      .replacement-summary {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 12px;
+        border: 1px solid var(--divider-color);
+        border-radius: 8px;
+        background: var(--card-background-color);
+      }
+
+      .replacement-count {
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--primary-text-color);
+      }
+
+      .replacement-help {
+        margin-top: 4px;
+        font-size: 12px;
+        color: var(--secondary-text-color);
+        line-height: 1.4;
+      }
+
+      .replacement-summary ha-button ha-icon {
+        --mdc-icon-size: 18px;
+        margin-right: 6px;
+      }
+
+      @media (max-width: 600px) {
+        .replacement-summary {
+          align-items: stretch;
+          flex-direction: column;
+        }
+      }
+
+      .time-toggle,
+      .weather-toggle,
+      .hide-unavailable-toggle {
+        margin-bottom: 16px;
+      }
+
+      .time-toggle ha-formfield,
+      .weather-toggle ha-formfield,
+      .hide-unavailable-toggle ha-formfield {
+        --mdc-typography-body2-font-size: 14px;
+      }
+
+      .toggle-description {
+        margin: 8px 0 0 0;
+        font-size: 12px;
+        color: var(--secondary-text-color);
+        line-height: 1.4;
+        padding-left: 16px;
+        border-left: 3px solid var(--divider-color);
+      }
+
+      .entity-picker,
+      .weather-picker {
+        width: 100%;
+      }
+
+      .weather-picker-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 16px;
+      }
+
+      .weather-picker-header h4 {
+        margin: 0;
+        font-size: 16px;
+        font-weight: 500;
+      }
+
+      .no-weather {
+        text-align: center;
+        padding: 24px;
+        color: var(--secondary-text-color);
+      }
+
+      .selected-weather-entity {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 12px;
+        background: var(--card-background-color);
+        border-radius: 8px;
+        border: 1px solid var(--divider-color);
+      }
+
+      .selected-weather-entity .entity-icon {
+        --mdc-icon-size: 24px;
+      }
+
+      .selected-weather-entity .entity-name {
+        flex: 1;
+        font-size: 14px;
+      }
+
+      .entity-picker-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 16px;
+      }
+
+      .entity-picker-header h4 {
+        margin: 0;
+        font-size: 16px;
+        font-weight: 500;
+      }
+
+      .no-favorites {
+        text-align: center;
+        padding: 24px;
+        color: var(--secondary-text-color);
+      }
+
+      .selected-entities {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin-bottom: 16px;
+      }
+
+      .selected-entity {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 12px;
+        background: var(--card-background-color);
+        border-radius: 8px;
+        border: 1px solid var(--divider-color);
+      }
+
+      .selected-entity .entity-icon {
+        --mdc-icon-size: 24px;
+      }
+
+      .selected-entity .entity-name {
+        flex: 1;
+        font-size: 14px;
+      }
+
+      .remove-button {
+        background: none;
+        border: none;
+        cursor: pointer;
+        padding: 8px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--error-color, #f44336);
+        transition: all 0.2s ease;
+        width: 36px;
+        height: 36px;
+      }
+
+      .remove-button:hover {
+        background: var(--error-color, #f44336);
+        color: white;
+        transform: scale(1.1);
+      }
+
+      .close-button {
+        background: none;
+        border: none;
+        cursor: pointer;
+        padding: 8px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--secondary-text-color);
+        transition: all 0.2s ease;
+        width: 36px;
+        height: 36px;
+      }
+
+      .close-button:hover {
+        background: var(--secondary-background-color);
+        color: var(--primary-text-color);
+        transform: scale(1.1);
+      }
+
+      .entity-picker-modal {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+      }
+
+      .entity-picker-content {
+        background: var(--card-background-color);
+        border-radius: 12px;
+        padding: 24px;
+        width: 90%;
+        max-width: 600px;
+        max-height: 80vh;
+        overflow-y: auto;
+      }
+
+      .entity-picker-content .entity-picker-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 16px;
+      }
+
+      .entity-search {
+        margin-bottom: 16px;
+      }
+
+      .entity-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        max-height: 400px;
+        overflow-y: auto;
+      }
+
+      .entity-option {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 12px;
+        background: var(--primary-background-color);
+        border-radius: 8px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+      }
+
+      .entity-option:hover {
+        background: var(--secondary-background-color);
+      }
+
+      .entity-option .entity-icon {
+        --mdc-icon-size: 24px;
+      }
+
+      .entity-option .entity-name {
+        flex: 1;
+        font-size: 14px;
+      }
+
+      .entity-option .entity-id {
+        font-size: 12px;
+        color: var(--secondary-text-color);
+        font-family: var(--font-family-code);
+      }
+
+      .loading {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100px;
+      }
+
+      .persons-section {
+        padding: 0 16px 16px 16px;
+      }
+
+      .persons-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .person-item {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 12px 16px;
+        background: var(--card-background-color);
+        border-radius: 8px;
+        border: 1px solid var(--divider-color);
+        transition: all 0.2s ease;
+      }
+
+      .person-item:hover {
+        background: var(--secondary-background-color);
+      }
+
+      .person-item.hidden {
+        opacity: 0.5;
+        background: var(--disabled-background-color, var(--secondary-background-color));
+      }
+
+      .person-icon {
+        --mdc-icon-size: 32px;
+        flex-shrink: 0;
+      }
+
+      .person-name {
+        flex: 1;
+        font-size: 14px;
+        font-weight: 500;
+      }
+
+      .person-state {
+        font-size: 12px;
+        padding: 4px 8px;
+        border-radius: 12px;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+
+      .person-state.home {
+        background: var(--success-color, #4caf50);
+        color: white;
+      }
+
+      .person-state.away {
+        background: var(--warning-color, #ff9800);
+        color: white;
+      }
+
+      .no-persons {
+        text-align: center;
+        padding: 32px;
+        color: var(--secondary-text-color);
+      }
+    `;
+  }
+}
+
+declare global {
+  interface HTMLElementTagNameMap {
+    "dwains-dashboard-strategy-editor": DwainsDashboardStrategyEditor;
+  }
+}
