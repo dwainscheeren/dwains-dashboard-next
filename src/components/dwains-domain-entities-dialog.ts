@@ -31,7 +31,7 @@ interface GroupedEntities {
 
 type BulkDomainAction = 'turn_on' | 'turn_off' | 'open_cover' | 'close_cover' | 'lock' | 'unlock';
 
-@customElement('dwains-domain-entities-dialog')
+@customElement('dwains-dashboard-next-domain-entities-dialog')
 export class DwainsDomainEntitiesDialog extends LitElement {
   @property({ attribute: false }) public hass!: HomeAssistant;
 
@@ -1367,6 +1367,6 @@ export class DwainsDomainEntitiesDialog extends LitElement {
 
 declare global {
   interface HTMLElementTagNameMap {
-    'dwains-domain-entities-dialog': DwainsDomainEntitiesDialog;
+    'dwains-dashboard-next-domain-entities-dialog': DwainsDomainEntitiesDialog;
   }
 }

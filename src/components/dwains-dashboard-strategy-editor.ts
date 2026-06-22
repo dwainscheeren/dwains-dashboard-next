@@ -16,7 +16,7 @@ import { HOME_SECTION_META, normalizeHiddenHomeSections, normalizeHomeSectionsOr
 
 // We'll create our own entity picker since ha-entity-picker is external
 
-@customElement("dwains-dashboard-strategy-editor")
+@customElement("dwains-dashboard-next-strategy-editor")
 export class DwainsDashboardStrategyEditor extends LitElement {
   private _hass?: HomeAssistant;
 
@@ -146,7 +146,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
   public async setConfig(config: any): Promise<void> {
     // Only store the user configuration, not live data
     this._config = {
-      type: config?.type || "custom:dwains",
+      type: config?.type || "custom:dwains-dashboard-next",
       areas_display: config?.areas_display || {},
       areas_options: config?.areas_options || {},
       blueprint_replacements: config?.blueprint_replacements || {},
@@ -1921,7 +1921,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
 
     // Only save essential configuration, not live data
     const cleanConfig = {
-      type: "custom:dwains",
+      type: "custom:dwains-dashboard-next",
       areas_display: config.areas_display || {},
       areas_options: config.areas_options || {},
       blueprint_replacements: config.blueprint_replacements || {},
@@ -2813,6 +2813,6 @@ export class DwainsDashboardStrategyEditor extends LitElement {
 
 declare global {
   interface HTMLElementTagNameMap {
-    "dwains-dashboard-strategy-editor": DwainsDashboardStrategyEditor;
+    "dwains-dashboard-next-strategy-editor": DwainsDashboardStrategyEditor;
   }
 }

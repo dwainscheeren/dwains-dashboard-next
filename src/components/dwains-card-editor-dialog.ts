@@ -46,7 +46,7 @@ const CARD_TYPES: CardType[] = [
 // vanuit HA's chart-component — daarom renderen we daar geen preview voor.
 const NO_PREVIEW_TYPES = new Set(["history-graph", "sensor", "statistics-graph"]);
 
-@customElement("dwains-card-editor-dialog")
+@customElement("dwains-dashboard-next-card-editor-dialog")
 export class DwainsCardEditorDialog extends LitElement {
   @property({ attribute: false }) public hass!: HomeAssistant;
 
@@ -84,7 +84,7 @@ export class DwainsCardEditorDialog extends LitElement {
     this._previewEl = undefined;
     this._picked = false;
     this._editorReady = false;
-    fireEvent(this, "dialog-closed", { dialog: "dwains-card-editor-dialog" });
+    fireEvent(this, "dialog-closed", { dialog: "dwains-dashboard-next-card-editor-dialog" });
   }
 
   private _pick(type: CardType): void {

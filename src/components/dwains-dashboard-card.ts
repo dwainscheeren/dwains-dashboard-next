@@ -10,7 +10,7 @@ import './dwains-layout-card';  // Import the file to register the custom elemen
  */
 export class DwainsDashboardCard extends LitElement {
   static getConfigElement() {
-    return document.createElement("dwains-dashboard-card-editor");
+    return document.createElement("dwains-dashboard-next-card-editor");
   }
 
   @property({ attribute: false }) public hass?: HomeAssistant;
@@ -161,10 +161,10 @@ export class DwainsDashboardCard extends LitElement {
     }
 
     this.cards = [html`
-      <dwains-layout-card
+      <dwains-dashboard-next-layout-card
         .hass=${this.hass}
         .config=${this._dashboardConfig}
-      ></dwains-layout-card>
+      ></dwains-dashboard-next-layout-card>
     `];
   }
 
@@ -172,7 +172,7 @@ export class DwainsDashboardCard extends LitElement {
    * Navigate to home view programmatically
    */
   private _navigateToHome(): void {
-    const layoutCard = this.shadowRoot?.querySelector('dwains-layout-card') as any;
+    const layoutCard = this.shadowRoot?.querySelector('dwains-dashboard-next-layout-card') as any;
     if (layoutCard && layoutCard._selectedView !== 'home') {
       // Force the layout card to show home view
       layoutCard._selectedView = 'home';
@@ -205,7 +205,7 @@ export class DwainsDashboardCard extends LitElement {
    */
   static getStubConfig(): any {
     return {
-      type: "custom:dwains-dashboard-card",
+      type: "custom:dwains-dashboard-next-card",
       global_options: {
         show_welcome: true,
         show_weather: true,
@@ -231,7 +231,7 @@ export class DwainsDashboardCard extends LitElement {
         font-family: "Open Sans", sans-serif !important;
       }
 
-      dwains-layout-card {
+      dwains-dashboard-next-layout-card {
         width: 100%;
         height: 100%;
         display: block;

@@ -8,7 +8,7 @@ export const showBlueprintDialog = (
   dialogParams: BlueprintDialogParams
 ): void => {
   fireEvent(element, "show-dialog", {
-    dialogTag: "dwains-blueprint-dialog",
+    dialogTag: "dwains-dashboard-next-blueprint-dialog",
     dialogImport: loadBlueprintDialog,
     dialogParams,
   });

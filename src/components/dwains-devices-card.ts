@@ -32,18 +32,18 @@ const PERSON_DOMAIN = 'person';
 const PERSON_AREA_KEY = '__people__';
 
 /**
- * dwains-devices-card — herbouwt de "Devices"-pagina uit Dwains Dashboard 3.x.
+ * dwains-dashboard-next-devices-card — herbouwt de "Devices"-pagina uit Dwains Dashboard 3.x.
  *
  * Layout, identiek aan de Home/area-weergave:
  *  - LINKS  een verticale lijst met device-types (domeinen).
  *  - RECHTS alle entiteiten van het gekozen device-type, gegroepeerd per area
- *           (area-koptekst + grid met kaarten via dd-card-host).
+ *           (area-koptekst + grid met kaarten via dwains-dashboard-next-card-host).
  *
  * De databouw, filtering (verborgen entiteiten/areas, diagnostic/config) en
- * styling volgen exact de patronen van dwains-layout-card zodat het er identiek
+ * styling volgen exact de patronen van dwains-dashboard-next-layout-card zodat het er identiek
  * uitziet en aanvoelt.
  */
-@customElement('dwains-devices-card')
+@customElement('dwains-dashboard-next-devices-card')
 export class DwainsDevicesCard extends LitElement {
   private _hass: any;
   private config?: DwainsDashboardConfig;
@@ -58,13 +58,13 @@ export class DwainsDevicesCard extends LitElement {
   private _resizeHandler = () => this._checkMobile();
   private _locationHandler = () => this._handleLocationChanged();
 
-  // hass-setter zoals dwains-page-card: werk child dd-card-host-elementen bij
+  // hass-setter zoals dwains-dashboard-next-page-card: werk child dwains-dashboard-next-card-host-elementen bij
   // i.p.v. een volledige re-render te forceren.
   set hass(hass: any) {
     this._hass = hass;
     ensureBottomNav(hass, this.config?.settings);
     this._syncBottomNavDeviceContext();
-    const hosts = this.renderRoot?.querySelectorAll('dd-card-host');
+    const hosts = this.renderRoot?.querySelectorAll('dwains-dashboard-next-card-host');
     if (hosts) hosts.forEach((host: any) => (host.hass = hass));
   }
   get hass() {
@@ -117,8 +117,8 @@ export class DwainsDevicesCard extends LitElement {
     super.connectedCallback();
     this._checkMobile();
     window.addEventListener('resize', this._resizeHandler);
-    window.addEventListener('dwains-toggle-devices-nav', this._handleDevicesNavToggle);
-    window.addEventListener('dwains-select-device-domain', this._handleSelectDeviceDomain as EventListener);
+    window.addEventListener('dwains-dashboard-next-toggle-devices-nav', this._handleDevicesNavToggle);
+    window.addEventListener('dwains-dashboard-next-select-device-domain', this._handleSelectDeviceDomain as EventListener);
     window.addEventListener('location-changed', this._locationHandler);
     window.addEventListener('popstate', this._locationHandler);
     this._handleLocationChanged();
@@ -128,8 +128,8 @@ export class DwainsDevicesCard extends LitElement {
   disconnectedCallback() {
     super.disconnectedCallback();
     window.removeEventListener('resize', this._resizeHandler);
-    window.removeEventListener('dwains-toggle-devices-nav', this._handleDevicesNavToggle);
-    window.removeEventListener('dwains-select-device-domain', this._handleSelectDeviceDomain as EventListener);
+    window.removeEventListener('dwains-dashboard-next-toggle-devices-nav', this._handleDevicesNavToggle);
+    window.removeEventListener('dwains-dashboard-next-select-device-domain', this._handleSelectDeviceDomain as EventListener);
     window.removeEventListener('location-changed', this._locationHandler);
     window.removeEventListener('popstate', this._locationHandler);
   }
@@ -433,7 +433,7 @@ export class DwainsDevicesCard extends LitElement {
 
   private _syncBottomNavDeviceContext(): void {
     const domain = this._selectedDomain;
-    window.dispatchEvent(new CustomEvent('dwains-device-context-changed', {
+    window.dispatchEvent(new CustomEvent('dwains-dashboard-next-device-context-changed', {
       detail: {
         domain,
         icon: domain === NEW_DEVICES_KEY
@@ -792,10 +792,10 @@ export class DwainsDevicesCard extends LitElement {
 
     return html`
       <div class="${this._entityWrapperClass(entity.entity_id)} ${this._devicesEditMode ? 'editing' : ''} ${selected ? 'selected' : ''}">
-        <dd-card-host
+        <dwains-dashboard-next-card-host
           .hass=${this._hass}
           .config=${this._entityCardConfig(entity.entity_id)}
-        ></dd-card-host>
+        ></dwains-dashboard-next-card-host>
         ${this._devicesEditMode ? html`
           <button
             class="entity-select-overlay"
@@ -1733,7 +1733,7 @@ export class DwainsDevicesCard extends LitElement {
       border-radius: 12px;
     }
 
-    .entity-card-wrapper.editing dd-card-host {
+    .entity-card-wrapper.editing dwains-dashboard-next-card-host {
       display: block;
       pointer-events: none;
     }
@@ -1796,10 +1796,10 @@ export class DwainsDevicesCard extends LitElement {
       min-height: 72px;
     }
 
-    .cover-entity-card dd-card-host,
-    .light-entity-card dd-card-host,
-    .sensor-entity-card dd-card-host,
-    .motion-entity-card dd-card-host {
+    .cover-entity-card dwains-dashboard-next-card-host,
+    .light-entity-card dwains-dashboard-next-card-host,
+    .sensor-entity-card dwains-dashboard-next-card-host,
+    .motion-entity-card dwains-dashboard-next-card-host {
       display: block;
     }
 
@@ -2076,6 +2076,6 @@ export class DwainsDevicesCard extends LitElement {
 
 declare global {
   interface HTMLElementTagNameMap {
-    'dwains-devices-card': DwainsDevicesCard;
+    'dwains-dashboard-next-devices-card': DwainsDevicesCard;
   }
 }

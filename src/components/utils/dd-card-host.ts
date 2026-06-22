@@ -1,7 +1,7 @@
 // Generieke host voor een willekeurige Lovelace-kaart-config. Beheert een
 // hui-card-element imperatief in de eigen light-DOM, zodat er nooit een rauw
 // DOM-element in een Lit-template/repeat van de ouder belandt (voorkomt de
-// 'nextSibling of null'-crash). Zelfde idee als dd-tile-host.
+// 'nextSibling of null'-crash). Zelfde idee als dwains-dashboard-next-tile-host.
 export class DwainsCardHost extends HTMLElement {
   private _hass: any | undefined;
   private _config: any | undefined;
@@ -79,11 +79,11 @@ export class DwainsCardHost extends HTMLElement {
       this._child.config = this._config;
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.warn('dd-card-host: kaart configureren mislukt', e);
+      console.warn('dwains-dashboard-next-card-host: kaart configureren mislukt', e);
     }
   }
 }
 
-if (!customElements.get('dd-card-host')) {
-  customElements.define('dd-card-host', DwainsCardHost);
+if (!customElements.get('dwains-dashboard-next-card-host')) {
+  customElements.define('dwains-dashboard-next-card-host', DwainsCardHost);
 }

@@ -17,7 +17,7 @@ import { customElement, state } from 'lit/decorators.js';
  *   cards: [ ... child card configs ... ]  # (entities werkt ook als alias)
  *   # per child mag item_classes meegegeven worden om items_classes te overrulen
  */
-@customElement('dwains-flexbox-card')
+@customElement('dwains-dashboard-next-flexbox-card')
 export class DwainsFlexboxCard extends LitElement {
   @state() private _config?: any;
   private _hass?: any;
@@ -241,6 +241,6 @@ export class DwainsFlexboxCard extends LitElement {
 
 declare global {
   interface HTMLElementTagNameMap {
-    'dwains-flexbox-card': DwainsFlexboxCard;
+    'dwains-dashboard-next-flexbox-card': DwainsFlexboxCard;
   }
 }

@@ -7,14 +7,14 @@ import { restrictNonAdminDashboardSettings } from '../utils/security';
 import './dwains-dashboard-strategy-editor';
 
 /**
- * dwains-dashboard-settings-dialog — toont de Dwains-strategy-editor (naam/icoon,
+ * dwains-dashboard-next-settings-dialog — toont de Dwains-strategy-editor (naam/icoon,
  * favorieten, area-instellingen, tijd & datum, sponsoring) in een eigen dialog.
  * Zo opent "Dashboard-instellingen" onze nette editor i.p.v. HA's YAML-editor.
  *
  * Belangrijk: bij opslaan behouden we strategy.pages (de blueprint-pagina's),
  * want de editor levert die niet mee in z'n config-changed payload.
  */
-@customElement('dwains-dashboard-settings-dialog')
+@customElement('dwains-dashboard-next-settings-dialog')
 export class DwainsDashboardSettingsDialog extends LitElement {
   @property({ attribute: false }) public hass?: any;
   @property({ attribute: false }) public dashboardSettings?: DwainsDashboardSettings;
@@ -32,10 +32,10 @@ export class DwainsDashboardSettingsDialog extends LitElement {
     try {
       const base = this._wsBase();
       const cfg: any = await this.hass.callWS({ type: 'lovelace/config', ...base });
-      this._strategy = cfg?.strategy || { type: 'custom:dwains' };
+      this._strategy = cfg?.strategy || { type: 'custom:dwains-dashboard-next' };
       this.dashboardSettings = this._strategy?.settings || this.dashboardSettings;
     } catch (e) {
-      this._strategy = { type: 'custom:dwains' };
+      this._strategy = { type: 'custom:dwains-dashboard-next' };
       console.warn('Kon lovelace config niet ophalen voor instellingen', e);
     }
     if (restrictNonAdminDashboardSettings(this.hass, this.dashboardSettings)) {
@@ -86,7 +86,7 @@ export class DwainsDashboardSettingsDialog extends LitElement {
   protected updated(): void {
     // Geef de editor z'n hass + config zodra hij in de DOM staat.
     if (this._open && !this._editorInited) {
-      const ed = this.renderRoot?.querySelector('dwains-dashboard-strategy-editor') as any;
+      const ed = this.renderRoot?.querySelector('dwains-dashboard-next-strategy-editor') as any;
       if (ed) {
         this._editorInited = true;
         ed.hass = this.hass;
@@ -110,7 +110,7 @@ export class DwainsDashboardSettingsDialog extends LitElement {
         </ha-dialog-header>
 
         <div class="content" @config-changed=${this._onConfigChanged}>
-          <dwains-dashboard-strategy-editor></dwains-dashboard-strategy-editor>
+          <dwains-dashboard-next-strategy-editor></dwains-dashboard-next-strategy-editor>
         </div>
 
         <div class="actions">
@@ -151,7 +151,7 @@ export class DwainsDashboardSettingsDialog extends LitElement {
 
 declare global {
   interface HTMLElementTagNameMap {
-    'dwains-dashboard-settings-dialog': DwainsDashboardSettingsDialog;
+    'dwains-dashboard-next-settings-dialog': DwainsDashboardSettingsDialog;
   }
 }
 
@@ -163,10 +163,10 @@ export function openDashboardSettings(hass: any, settings?: DwainsDashboardSetti
     return;
   }
   let dlg = document.querySelector(
-    'dwains-dashboard-settings-dialog'
+    'dwains-dashboard-next-settings-dialog'
   ) as DwainsDashboardSettingsDialog | null;
   if (!dlg) {
-    dlg = document.createElement('dwains-dashboard-settings-dialog') as DwainsDashboardSettingsDialog;
+    dlg = document.createElement('dwains-dashboard-next-settings-dialog') as DwainsDashboardSettingsDialog;
     document.body.appendChild(dlg);
   }
   dlg.hass = hass;

@@ -132,7 +132,7 @@ export class DwainsDashboardStrategy implements LovelaceStrategy {
     // Create config for views
     const viewConfig = {
       ...dashboardConfig,
-      type: 'custom:dwains-view'
+      type: 'custom:dwains-dashboard-next-view'
     };
 
     // Bouw de views: Home (de Dwains-kaart) + één tab per blueprint-pagina + een "+"-tab.
@@ -153,7 +153,7 @@ export class DwainsDashboardStrategy implements LovelaceStrategy {
       path: 'devices',
       icon: 'mdi:format-list-bulleted-type',
       panel: true,
-      cards: [{ type: 'custom:dwains-devices-card', ...dashboardConfig }],
+      cards: [{ type: 'custom:dwains-dashboard-next-devices-card', ...dashboardConfig }],
     });
 
     for (const page of pages) {
@@ -161,7 +161,7 @@ export class DwainsDashboardStrategy implements LovelaceStrategy {
         title: page.name,
         path: page.id,
         icon: page.icon || 'mdi:puzzle',
-        cards: [{ type: 'custom:dwains-page-card', page, settings: dashboardConfig.settings || {} }]
+        cards: [{ type: 'custom:dwains-dashboard-next-page-card', page, settings: dashboardConfig.settings || {} }]
       });
     }
 
@@ -170,7 +170,7 @@ export class DwainsDashboardStrategy implements LovelaceStrategy {
       views.push({
         icon: 'mdi:plus',
         path: 'add-blueprint',
-        cards: [{ type: 'custom:dwains-page-card', add: true, settings: dashboardConfig.settings || {} }]
+        cards: [{ type: 'custom:dwains-dashboard-next-page-card', add: true, settings: dashboardConfig.settings || {} }]
       });
     }
 
@@ -182,6 +182,6 @@ export class DwainsDashboardStrategy implements LovelaceStrategy {
 
   static async getConfigElement(): Promise<any> {
     await import('../components/dwains-dashboard-strategy-editor');
-    return document.createElement('dwains-dashboard-strategy-editor');
+    return document.createElement('dwains-dashboard-next-strategy-editor');
   }
 }

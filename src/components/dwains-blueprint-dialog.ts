@@ -41,7 +41,7 @@ interface CheckUpdateOptions {
 const GALLERY_URL =
   "https://raw.githubusercontent.com/dwainscheeren/dwains-dashboard-blueprints/main/blueprints.json";
 
-@customElement("dwains-blueprint-dialog")
+@customElement("dwains-dashboard-next-blueprint-dialog")
 export class DwainsBlueprintDialog extends LitElement {
   @property({ attribute: false }) public hass!: HomeAssistant;
 
@@ -113,7 +113,7 @@ export class DwainsBlueprintDialog extends LitElement {
     this._url = "";
     this._error = "";
     this._values = {};
-    fireEvent(this, "dialog-closed", { dialog: "dwains-blueprint-dialog" });
+    fireEvent(this, "dialog-closed", { dialog: "dwains-dashboard-next-blueprint-dialog" });
   }
 
   // ---- Stap 1: bron inlezen -------------------------------------------------
@@ -1020,6 +1020,6 @@ export class DwainsBlueprintDialog extends LitElement {
 
 declare global {
   interface HTMLElementTagNameMap {
-    "dwains-blueprint-dialog": DwainsBlueprintDialog;
+    "dwains-dashboard-next-blueprint-dialog": DwainsBlueprintDialog;
   }
 }

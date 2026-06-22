@@ -22,7 +22,7 @@ export class DwainsViewStrategy implements LovelaceViewStrategy {
       panel: true,
       cards: [
         {
-          type: 'custom:dwains-layout-card',
+          type: 'custom:dwains-dashboard-next-layout-card',
           areas: config.areas || [],
           devices: config.devices || [],
           entities: config.entities || [],

@@ -20,7 +20,7 @@ export const showDomainEntitiesDialog = (
 
   // Listen for dialog close
   const dialogClosedHandler = (e: Event) => {
-    if ((e as CustomEvent).detail?.dialog === "dwains-domain-entities-dialog") {
+    if ((e as CustomEvent).detail?.dialog === "dwains-dashboard-next-domain-entities-dialog") {
       isDialogOpen = false;
       element.removeEventListener("dialog-closed", dialogClosedHandler);
     }
@@ -29,7 +29,7 @@ export const showDomainEntitiesDialog = (
   element.addEventListener("dialog-closed", dialogClosedHandler);
 
   fireEvent(element, "show-dialog", {
-    dialogTag: "dwains-domain-entities-dialog",
+    dialogTag: "dwains-dashboard-next-domain-entities-dialog",
     dialogImport: loadDomainEntitiesDialog,
     dialogParams,
   });

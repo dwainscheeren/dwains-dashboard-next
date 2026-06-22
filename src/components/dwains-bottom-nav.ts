@@ -39,7 +39,7 @@ const MENU_PATH = '__ha_menu__';
 const PAGES_PATH = '__dd_pages__';
 
 /**
- * dwains-bottom-nav — vaste navigatiebalk onderaan op mobiel (smart-home-app
+ * dwains-dashboard-next-bottom-nav — vaste navigatiebalk onderaan op mobiel (smart-home-app
  * gevoel), zoals Dwains Dashboard 3.x. Spiegelt de views die de strategy maakt
  * (Home, Devices, blueprint-pagina's, +) plus een knop voor het HA-hoofdmenu.
  *
@@ -47,7 +47,7 @@ const PAGES_PATH = '__dd_pages__';
  * regelt z'n eigen zichtbaarheid op basis van de dashboard-URL — zo flikkert hij
  * niet bij het wisselen tussen views.
  */
-@customElement('dwains-bottom-nav')
+@customElement('dwains-dashboard-next-bottom-nav')
 export class DwainsBottomNav extends LitElement {
   private _hass?: any;
   /** Het URL-segment van ons dashboard (gezet door ensureBottomNav). */
@@ -84,16 +84,16 @@ export class DwainsBottomNav extends LitElement {
     this._sync();
     window.addEventListener('location-changed', this._sync);
     window.addEventListener('popstate', this._sync);
-    window.addEventListener('dwains-area-context-changed', this._handleAreaContext as EventListener);
-    window.addEventListener('dwains-device-context-changed', this._handleDeviceContext as EventListener);
+    window.addEventListener('dwains-dashboard-next-area-context-changed', this._handleAreaContext as EventListener);
+    window.addEventListener('dwains-dashboard-next-device-context-changed', this._handleDeviceContext as EventListener);
   }
 
   disconnectedCallback(): void {
     super.disconnectedCallback();
     window.removeEventListener('location-changed', this._sync);
     window.removeEventListener('popstate', this._sync);
-    window.removeEventListener('dwains-area-context-changed', this._handleAreaContext as EventListener);
-    window.removeEventListener('dwains-device-context-changed', this._handleDeviceContext as EventListener);
+    window.removeEventListener('dwains-dashboard-next-area-context-changed', this._handleAreaContext as EventListener);
+    window.removeEventListener('dwains-dashboard-next-device-context-changed', this._handleDeviceContext as EventListener);
   }
 
   private _sync = () => {
@@ -194,7 +194,7 @@ export class DwainsBottomNav extends LitElement {
     this._pagesOpen = false;
     const fire = () => {
       this._active = 'home';
-      window.dispatchEvent(new CustomEvent('dwains-toggle-area-nav'));
+      window.dispatchEvent(new CustomEvent('dwains-dashboard-next-toggle-area-nav'));
     };
 
     if (this._currentPath() !== 'home') {
@@ -209,7 +209,7 @@ export class DwainsBottomNav extends LitElement {
     this._pagesOpen = false;
     const fire = () => {
       this._active = 'devices';
-      window.dispatchEvent(new CustomEvent('dwains-toggle-devices-nav'));
+      window.dispatchEvent(new CustomEvent('dwains-dashboard-next-toggle-devices-nav'));
     };
 
     if (this._currentPath() !== 'devices') {
@@ -891,16 +891,16 @@ export class DwainsBottomNav extends LitElement {
 
 declare global {
   interface HTMLElementTagNameMap {
-    'dwains-bottom-nav': DwainsBottomNav;
+    'dwains-dashboard-next-bottom-nav': DwainsBottomNav;
   }
 }
 
 /** Zorg dat er precies één bottom-nav in de document body hangt en geef hem hass. */
 export function ensureBottomNav(hass: any, settings?: DwainsDashboardSettings): void {
   if (!hass) return;
-  let el = document.querySelector('dwains-bottom-nav') as DwainsBottomNav | null;
+  let el = document.querySelector('dwains-dashboard-next-bottom-nav') as DwainsBottomNav | null;
   if (!el) {
-    el = document.createElement('dwains-bottom-nav') as DwainsBottomNav;
+    el = document.createElement('dwains-dashboard-next-bottom-nav') as DwainsBottomNav;
     document.body.appendChild(el);
     _injectSidebarSection(hass, settings);
   }

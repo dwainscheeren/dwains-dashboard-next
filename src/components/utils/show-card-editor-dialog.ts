@@ -8,7 +8,7 @@ export const showCardEditorDialog = (
   dialogParams: CardEditorDialogParams
 ): void => {
   fireEvent(element, "show-dialog", {
-    dialogTag: "dwains-card-editor-dialog",
+    dialogTag: "dwains-dashboard-next-card-editor-dialog",
     dialogImport: loadCardEditorDialog,
     dialogParams,
   });

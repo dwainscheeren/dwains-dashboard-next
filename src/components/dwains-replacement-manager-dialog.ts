@@ -57,7 +57,7 @@ const SYNTHETIC_INPUTS = new Set([
   'replace_with_input_area',
 ]);
 
-@customElement('dwains-replacement-manager-dialog')
+@customElement('dwains-dashboard-next-replacement-manager-dialog')
 export class DwainsReplacementManagerDialog extends LitElement {
   @property({ attribute: false }) public hass!: HomeAssistant;
 
@@ -802,10 +802,10 @@ export function openReplacementManager(
   onSave: (config: DwainsDashboardConfig) => void
 ): void {
   let dlg = document.querySelector(
-    'dwains-replacement-manager-dialog'
+    'dwains-dashboard-next-replacement-manager-dialog'
   ) as DwainsReplacementManagerDialog | null;
   if (!dlg) {
-    dlg = document.createElement('dwains-replacement-manager-dialog') as DwainsReplacementManagerDialog;
+    dlg = document.createElement('dwains-dashboard-next-replacement-manager-dialog') as DwainsReplacementManagerDialog;
     document.body.appendChild(dlg);
   }
   dlg.hass = hass;
@@ -814,6 +814,6 @@ export function openReplacementManager(
 
 declare global {
   interface HTMLElementTagNameMap {
-    'dwains-replacement-manager-dialog': DwainsReplacementManagerDialog;
+    'dwains-dashboard-next-replacement-manager-dialog': DwainsReplacementManagerDialog;
   }
 }

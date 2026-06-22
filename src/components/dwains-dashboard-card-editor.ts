@@ -24,7 +24,7 @@ export class DwainsDashboardCardEditor extends LitElement {
     // Remove the type field for strategy config
     const { type, ...strategyConfig } = cardConfig;
     return {
-      type: "custom:dwains",
+      type: "custom:dwains-dashboard-next",
       ...strategyConfig
     };
   }
@@ -35,14 +35,14 @@ export class DwainsDashboardCardEditor extends LitElement {
   private _convertToCardConfig(strategyConfig: any): any {
     const { type, ...cardConfig } = strategyConfig;
     return {
-      type: "custom:dwains-dashboard-card",
+      type: "custom:dwains-dashboard-next-card",
       ...cardConfig
     };
   }
 
   protected async firstUpdated(): Promise<void> {
     // Create the strategy editor
-    const editor = document.createElement('dwains-dashboard-strategy-editor') as any;
+    const editor = document.createElement('dwains-dashboard-next-strategy-editor') as any;
     this._strategyEditor = editor;
 
     // Set hass and config
@@ -119,4 +119,6 @@ export class DwainsDashboardCardEditor extends LitElement {
 }
 
 // Register the editor
-customElements.define("dwains-dashboard-card-editor", DwainsDashboardCardEditor);
+if (!customElements.get("dwains-dashboard-next-card-editor")) {
+  customElements.define("dwains-dashboard-next-card-editor", DwainsDashboardCardEditor);
+}

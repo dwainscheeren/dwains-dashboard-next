@@ -73,9 +73,11 @@ export class DwainsTileHost extends HTMLElement {
     } catch (e) {
       // Swallow errors to avoid breaking parent render
       // eslint-disable-next-line no-console
-      console.warn('dd-tile-host: failed to configure tile', e);
+      console.warn('dwains-dashboard-next-tile-host: failed to configure tile', e);
     }
   }
 }
 
-customElements.define('dd-tile-host', DwainsTileHost);
+if (!customElements.get('dwains-dashboard-next-tile-host')) {
+  customElements.define('dwains-dashboard-next-tile-host', DwainsTileHost);
+}

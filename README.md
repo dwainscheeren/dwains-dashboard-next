@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/logo.png" alt="Dwains Dashboard Next" width="620">
+  <img src="https://raw.githubusercontent.com/dwainscheeren/dwains-dashboard-next/main/assets/logo.png" alt="Dwains Dashboard Next" width="620">
 </p>
 
 # Dwains Dashboard Next
@@ -12,9 +12,15 @@ See this as Dwains Dashboard v4: totally rebuilt from scratch, with a completely
 
 ## Status
 
-Dwains Dashboard Next is currently in alpha.
+Current release: `1.1.2`
 
-Current release: `1.1.1`
+## What's New In 1.1.2
+
+- Uses a Next-specific dashboard strategy ID: `dwains-dashboard-next`.
+- Prefixes internal custom elements and events so older Dwains Dashboard resources can run side by side.
+- Fixes Dwains Dashboard Next not appearing in the Home Assistant Add dashboard dialog when an older Dwains Dashboard resource is still loaded.
+- Keeps safe legacy aliases for early Next test installs when those names are not already used.
+- Uses a raw GitHub logo URL in the README so HACS can render the project image correctly.
 
 ## What's New In 1.1.1
 

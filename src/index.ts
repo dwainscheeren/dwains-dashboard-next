@@ -4,7 +4,7 @@ import { DwainsViewStrategy } from './strategies/view-strategy';
 import './components/dwains-layout-card';
 import './components/dwains-domain-entities-dialog';
 import './components/dwains-dashboard-strategy-editor';
-import './components/cards/dwains-flexbox-card';
+import { DwainsFlexboxCard } from './components/cards/dwains-flexbox-card';
 import './components/dwains-page-card';
 import './components/dwains-devices-card';
 import './components/dwains-bottom-nav';
@@ -14,7 +14,13 @@ import { DwainsDashboardCard } from './components/dwains-dashboard-card';
 import { DwainsDashboardCardEditor } from './components/dwains-dashboard-card-editor';
 
 console.log('Dwains Dashboard Next - Loading...');
-console.log('%cDwains Dashboard Next 1.1.1', 'background:#3a7;color:#fff;padding:2px 8px;border-radius:6px;font-weight:bold');
+console.log('%cDwains Dashboard Next 1.1.2', 'background:#3a7;color:#fff;padding:2px 8px;border-radius:6px;font-weight:bold');
+
+const DASHBOARD_STRATEGY_TYPE = 'dwains-dashboard-next';
+const VIEW_STRATEGY_TYPE = 'dwains-dashboard-next-view';
+const DASHBOARD_STRATEGY_TAG = `ll-strategy-dashboard-${DASHBOARD_STRATEGY_TYPE}`;
+const VIEW_STRATEGY_TAG = `ll-strategy-view-${VIEW_STRATEGY_TYPE}`;
+const DASHBOARD_CARD_TYPE = 'dwains-dashboard-next-card';
 
 // Safe element registration
 const safeDefine = (name: string, constructor: CustomElementConstructor) => {
@@ -24,8 +30,7 @@ const safeDefine = (name: string, constructor: CustomElementConstructor) => {
   }
 };
 
-// Register strategies
-safeDefine('ll-strategy-dashboard-dwains', class extends HTMLElement {
+const createDashboardStrategyElement = () => class extends HTMLElement {
   static async generate(config: any, hass: any) {
     const strategy = new DwainsDashboardStrategy();
     return strategy.generate(config, hass);
@@ -34,14 +39,24 @@ safeDefine('ll-strategy-dashboard-dwains', class extends HTMLElement {
   static async getConfigElement() {
     return DwainsDashboardStrategy.getConfigElement();
   }
-});
+};
 
-safeDefine('ll-strategy-view-dwains-view', class extends HTMLElement {
+const createViewStrategyElement = () => class extends HTMLElement {
   static async generate(config: any, hass: any) {
     const strategy = new DwainsViewStrategy();
     return strategy.generate(config, hass);
   }
-});
+};
+
+// Register strategies with Next-specific names so old Dwains Dashboard resources
+// can run side by side without blocking the Add dashboard registration.
+safeDefine(DASHBOARD_STRATEGY_TAG, createDashboardStrategyElement());
+safeDefine(VIEW_STRATEGY_TAG, createViewStrategyElement());
+
+// Backward-compatible aliases for early Next test installs. These are only
+// defined when old Dwains Dashboard has not already claimed the same names.
+safeDefine('ll-strategy-dashboard-dwains', createDashboardStrategyElement());
+safeDefine('ll-strategy-view-dwains-view', createViewStrategyElement());
 
 // Global interface declaration
 declare global {
@@ -66,9 +81,9 @@ declare global {
 // Register the dashboard strategy in Home Assistant's Add dashboard dialog.
 // This appears under Community dashboards and requires HA 2026.5+.
 window.customStrategies = window.customStrategies || [];
-if (!window.customStrategies.some((s) => s?.type === 'dwains' && s?.strategyType === 'dashboard')) {
+if (!window.customStrategies.some((s) => s?.type === DASHBOARD_STRATEGY_TYPE && s?.strategyType === 'dashboard')) {
   window.customStrategies.push({
-    type: 'dwains',
+    type: DASHBOARD_STRATEGY_TYPE,
     strategyType: 'dashboard',
     name: 'Dwains Dashboard Next',
     description: 'Automatic dashboard based on your areas, devices and entities.',
@@ -78,20 +93,27 @@ if (!window.customStrategies.some((s) => s?.type === 'dwains' && s?.strategyType
 }
 
 // Register custom card elements immediately
-safeDefine('dwains-dashboard-card', DwainsDashboardCard);
-safeDefine('dwains-dashboard-card-editor', DwainsDashboardCardEditor);
+safeDefine(DASHBOARD_CARD_TYPE, DwainsDashboardCard);
+safeDefine('dwains-dashboard-next-card-editor', DwainsDashboardCardEditor);
+safeDefine('dwains-flexbox-card', class extends DwainsFlexboxCard {});
+
+// Legacy card aliases for early Next configs when old DD is not installed.
+safeDefine('dwains-dashboard-card', class extends DwainsDashboardCard {});
+safeDefine('dwains-dashboard-card-editor', class extends DwainsDashboardCardEditor {});
 
 // Register custom card in card picker
 window.customCards = window.customCards || [];
-window.customCards.push({
-  type: "dwains-dashboard-card",
-  name: "Dwains Dashboard Next",
-  preview: false,
-  description: "A complete automatic building dashboard solution based on your HA Areas, Devices, Entities and Floors",
-  documentationURL: "https://github.com/dwainscheeren/dwains-dashboard-next",
-});
+if (!window.customCards.some((card) => card?.type === DASHBOARD_CARD_TYPE)) {
+  window.customCards.push({
+    type: DASHBOARD_CARD_TYPE,
+    name: "Dwains Dashboard Next",
+    preview: false,
+    description: "A complete automatic building dashboard solution based on your HA Areas, Devices, Entities and Floors",
+    documentationURL: "https://github.com/dwainscheeren/dwains-dashboard-next",
+  });
+}
 
-console.log('✓ Registered custom card: dwains-dashboard-card');
+console.log('✓ Registered custom card: dwains-dashboard-next-card');
 
 console.log('Dwains Dashboard Next - Loaded successfully!');
 

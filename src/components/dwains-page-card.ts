@@ -8,7 +8,7 @@ import { ensureBottomNav } from './dwains-bottom-nav';
 import './utils/dd-card-host';
 
 /**
- * dwains-page-card — wrapper-kaart die in een eigen HA-view (tab) staat.
+ * dwains-dashboard-next-page-card — wrapper-kaart die in een eigen HA-view (tab) staat.
  *
  * Twee modi:
  *  - page-modus: toont een beheer-balk (naam + bewerken/verwijderen) en daaronder
@@ -18,7 +18,7 @@ import './utils/dd-card-host';
  * Beheer (toevoegen/bewerken/verwijderen) schrijft naar strategy.pages via de
  * websocket en navigeert daarna naar de juiste tab.
  */
-@customElement('dwains-page-card')
+@customElement('dwains-dashboard-next-page-card')
 export class DwainsPageCard extends LitElement {
   private _hass?: any;
   @state() private _page?: BlueprintPage;
@@ -28,7 +28,7 @@ export class DwainsPageCard extends LitElement {
   set hass(hass: any) {
     this._hass = hass;
     ensureBottomNav(hass, this._settings);
-    const host = this.renderRoot?.querySelector('dd-card-host') as any;
+    const host = this.renderRoot?.querySelector('dwains-dashboard-next-card-host') as any;
     if (host) host.hass = hass;
   }
   get hass() {
@@ -178,7 +178,7 @@ export class DwainsPageCard extends LitElement {
             ` : nothing}
           </div>
         </div>
-        <dd-card-host .hass=${this._hass} .config=${page.card}></dd-card-host>
+        <dwains-dashboard-next-card-host .hass=${this._hass} .config=${page.card}></dwains-dashboard-next-card-host>
       </div>
     `;
   }
@@ -237,7 +237,7 @@ export class DwainsPageCard extends LitElement {
     .page-actions ha-icon {
       --mdc-icon-size: 20px;
     }
-    dd-card-host {
+    dwains-dashboard-next-card-host {
       display: block;
     }
     .add-wrap {
@@ -277,6 +277,6 @@ export class DwainsPageCard extends LitElement {
 
 declare global {
   interface HTMLElementTagNameMap {
-    'dwains-page-card': DwainsPageCard;
+    'dwains-dashboard-next-page-card': DwainsPageCard;
   }
 }

@@ -22,6 +22,7 @@ import { ensureBottomNav } from './dwains-bottom-nav';
 import { openDashboardSettings } from './dwains-dashboard-settings-dialog';
 import { makeDialogManager } from './utils/make-dialog-manager';
 import './utils/dd-card-host';
+import './utils/dd-tile-host';
 import { fireEvent } from './utils/fire-event';
 import { ddLocalize } from '../utils/localize';
 
@@ -76,7 +77,7 @@ interface HomeAreaCamera {
   count: number;
 }
 
-@customElement('dwains-layout-card')
+@customElement('dwains-dashboard-next-layout-card')
 export class DwainsLayoutCard extends LitElement {
   @property({ attribute: false }) public hass!: HomeAssistant;
   @property({ attribute: false }) public config!: DwainsDashboardConfig;
@@ -167,7 +168,7 @@ export class DwainsLayoutCard extends LitElement {
 
   private _syncBottomNavAreaContext(): void {
     const area = this.config?.areas?.find(a => a.area_id === this._selectedArea);
-    window.dispatchEvent(new CustomEvent('dwains-area-context-changed', {
+    window.dispatchEvent(new CustomEvent('dwains-dashboard-next-area-context-changed', {
       detail: {
         areaId: this._selectedView === 'area' ? this._selectedArea : null,
         icon: area ? getAreaIcon(area) : 'mdi:home',
@@ -183,7 +184,7 @@ export class DwainsLayoutCard extends LitElement {
 
   static getStubConfig() {
     return {
-      type: 'custom:dwains-layout-card',
+      type: 'custom:dwains-dashboard-next-layout-card',
       areas: [],
       devices: [],
       entities: [],
@@ -2060,10 +2061,10 @@ export class DwainsLayoutCard extends LitElement {
       min-height: 150px;
     }
 
-    .cover-entity-card dd-card-host,
-    .light-entity-card dd-card-host,
-    .sensor-entity-card dd-card-host,
-    .motion-entity-card dd-card-host {
+    .cover-entity-card dwains-dashboard-next-card-host,
+    .light-entity-card dwains-dashboard-next-card-host,
+    .sensor-entity-card dwains-dashboard-next-card-host,
+    .motion-entity-card dwains-dashboard-next-card-host {
       display: block;
     }
 
@@ -2653,7 +2654,7 @@ export class DwainsLayoutCard extends LitElement {
 
     /* Blueprint-paginakaart */
     .dd-page-card { margin-top: 8px; }
-    .dd-page-card dd-card-host { display: block; }
+    .dd-page-card dwains-dashboard-next-card-host { display: block; }
 
     /* Eigen kaarten sectie */
     .dd-custom-section { margin-top: 16px; }
@@ -7122,7 +7123,7 @@ export class DwainsLayoutCard extends LitElement {
     this._loadMobileEntityLayoutPreference();
     this._checkMobile();
     this._setupEventListeners();
-    window.addEventListener('dwains-toggle-area-nav', this._handleAreaNavToggle);
+    window.addEventListener('dwains-dashboard-next-toggle-area-nav', this._handleAreaNavToggle);
     this._startTimeUpdate();
     this._initializeObservers();
     makeDialogManager(this);
@@ -7156,7 +7157,7 @@ export class DwainsLayoutCard extends LitElement {
 
   disconnectedCallback() {
     super.disconnectedCallback();
-    window.removeEventListener('dwains-toggle-area-nav', this._handleAreaNavToggle);
+    window.removeEventListener('dwains-dashboard-next-toggle-area-nav', this._handleAreaNavToggle);
     this._persistentNotificationsUnsub?.();
     this._persistentNotificationsUnsub = undefined;
     this._removeMobileDomainMenuPortal();
@@ -9042,7 +9043,7 @@ export class DwainsLayoutCard extends LitElement {
   }
 
   private _renderCustomCard(areaId: string, card: any, index: number) {
-    // dd-card-host is een normaal custom element dat de hui-card imperatief in
+    // dwains-dashboard-next-card-host is een normaal custom element dat de hui-card imperatief in
     // z'n eigen light-DOM beheert → géén rauw element in Lit's repeat → geen crash.
     return html`
       <div class="dd-custom-card-wrap ${this._editMode ? 'editing' : ''}">
@@ -9054,7 +9055,7 @@ export class DwainsLayoutCard extends LitElement {
             <ha-icon icon="mdi:delete"></ha-icon>
           </button>
         </div>
-        <dd-card-host .hass=${this.hass} .config=${card}></dd-card-host>
+        <dwains-dashboard-next-card-host .hass=${this.hass} .config=${card}></dwains-dashboard-next-card-host>
       </div>
     `;
   }
@@ -10162,14 +10163,14 @@ export class DwainsLayoutCard extends LitElement {
     const state = this.hass.states[entity.entity_id];
     if (!state) return nothing;
 
-    // Via dd-card-host (eigen light-DOM) i.p.v. een rauw element + observer die
+    // Via dwains-dashboard-next-card-host (eigen light-DOM) i.p.v. een rauw element + observer die
     // de Lit-beheerde wrapper direct manipuleert → geen 'nextSibling'-crash.
     return html`
       <div class=${this._entityWrapperClass(entity.entity_id)}>
-        <dd-card-host
+        <dwains-dashboard-next-card-host
           .hass=${this.hass}
           .config=${this._entityCardConfig(entity.entity_id)}
-        ></dd-card-host>
+        ></dwains-dashboard-next-card-host>
       </div>
     `;
   }
@@ -10681,7 +10682,7 @@ export class DwainsLayoutCard extends LitElement {
 
     [160, 360, 700].forEach((delay) => {
       window.setTimeout(() => {
-        window.dispatchEvent(new CustomEvent('dwains-toggle-devices-nav', {
+        window.dispatchEvent(new CustomEvent('dwains-dashboard-next-toggle-devices-nav', {
           detail: { open: true },
         }));
       }, delay);
@@ -10704,8 +10705,8 @@ export class DwainsLayoutCard extends LitElement {
     const dispatchDomainSelection = () => {
       const url = new URL(window.location.href);
       if (url.searchParams.get('dd_device') !== domain) return;
-      window.dispatchEvent(new CustomEvent('dwains-select-device-domain', { detail }));
-      window.dispatchEvent(new CustomEvent('dwains-device-context-changed', { detail }));
+      window.dispatchEvent(new CustomEvent('dwains-dashboard-next-select-device-domain', { detail }));
+      window.dispatchEvent(new CustomEvent('dwains-dashboard-next-device-context-changed', { detail }));
     };
 
     dispatchDomainSelection();
@@ -10764,7 +10765,7 @@ export class DwainsLayoutCard extends LitElement {
     if (!state) return nothing;
 
     return html`
-      <dd-tile-host class="favorite-tile-wrapper" .hass=${this.hass} entity="${entityId}"></dd-tile-host>
+      <dwains-dashboard-next-tile-host class="favorite-tile-wrapper" .hass=${this.hass} entity="${entityId}"></dwains-dashboard-next-tile-host>
     `;
   }
 
@@ -10773,7 +10774,7 @@ export class DwainsLayoutCard extends LitElement {
     if (!this._headerExpanded) return;
     const version = ++this._favoritesRenderVersion;
 
-    const wrappers = this.shadowRoot?.querySelectorAll('dd-tile-host.favorite-tile-wrapper');
+    const wrappers = this.shadowRoot?.querySelectorAll('dwains-dashboard-next-tile-host.favorite-tile-wrapper');
     if (!wrappers) return;
 
     wrappers.forEach((wrapper: Element) => {
@@ -10791,7 +10792,7 @@ export class DwainsLayoutCard extends LitElement {
         return;
       }
 
-      // Hand off to dd-tile-host which safely manages lifecycle
+      // Hand off to dwains-dashboard-next-tile-host which safely manages lifecycle
       (wrapper as any).hass = this.hass;
     });
   }
@@ -11053,7 +11054,7 @@ export class DwainsLayoutCard extends LitElement {
 
     this.shadowRoot
       .querySelectorAll(
-        'dd-card-host, dd-tile-host, hui-card, hui-tile-card, hui-entity-card, hui-thermostat-card, hui-picture-entity-card, hui-media-control-card'
+        'dwains-dashboard-next-card-host, dwains-dashboard-next-tile-host, hui-card, hui-tile-card, hui-entity-card, hui-thermostat-card, hui-picture-entity-card, hui-media-control-card'
       )
       .forEach((card: any) => {
         if (card.hass !== newHass) {
@@ -11201,6 +11202,6 @@ export class DwainsLayoutCard extends LitElement {
 
 declare global {
   interface HTMLElementTagNameMap {
-    'dwains-layout-card': DwainsLayoutCard;
+    'dwains-dashboard-next-layout-card': DwainsLayoutCard;
   }
 }
