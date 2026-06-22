@@ -14,7 +14,13 @@ See this as Dwains Dashboard v4: totally rebuilt from scratch, with a completely
 
 Dwains Dashboard Next is currently in alpha.
 
-Current release: `1.1.0`
+Current release: `1.1.1`
+
+## What's New In 1.1.1
+
+- Added Dwains Dashboard logo assets.
+- Added the logo to the README for HACS plugin image validation.
+- Removed the HACS image validation ignore now that the README includes a project image.
 
 ## What's New In 1.1.0
 
