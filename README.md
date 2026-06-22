@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/logo.png" alt="Dwains Dashboard Next" width="620">
+</p>
+
 # Dwains Dashboard Next
 
 Dwains Dashboard Next is the next generation of Dwains Dashboard for Home Assistant.
