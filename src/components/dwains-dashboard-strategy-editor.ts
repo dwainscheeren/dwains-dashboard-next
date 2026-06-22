@@ -1,9 +1,9 @@
-import { mdiArrowLeft, mdiDrag, mdiEye, mdiEyeOff, mdiThermometerWater } from "@mdi/js";
+import { mdiArrowDown, mdiArrowLeft, mdiArrowUp, mdiDrag, mdiEye, mdiEyeOff, mdiThermometerWater } from "@mdi/js";
 import { css, html, LitElement, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { repeat } from "lit/directives/repeat.js";
 import type { HomeAssistant } from "../types/home-assistant";
-import type { DwainsDashboardConfig } from "../types/strategy";
+import type { DwainsDashboardConfig, HomeSectionKey } from "../types/strategy";
 import { openReplacementManager } from "./dwains-replacement-manager-dialog";
 import {
   AREA_STRATEGY_GROUPS,
@@ -12,6 +12,7 @@ import {
 } from "../utils/area-entities";
 import { countReplacementRules } from "../utils/blueprint-replacements";
 import { ddLocalize } from "../utils/localize";
+import { HOME_SECTION_META, normalizeHiddenHomeSections, normalizeHomeSectionsOrder } from "../utils/home-sections";
 
 // We'll create our own entity picker since ha-entity-picker is external
 
@@ -53,6 +54,12 @@ export class DwainsDashboardStrategyEditor extends LitElement {
   private _dragOverIndex?: number;
 
   @state()
+  private _draggedHomeSection?: HomeSectionKey;
+
+  @state()
+  private _dragOverHomeSectionIndex?: number;
+
+  @state()
   private _draggedEntityId?: string;
 
   @state()
@@ -72,6 +79,12 @@ export class DwainsDashboardStrategyEditor extends LitElement {
 
   @state()
   private _weatherSearchFilter = '';
+
+  @state()
+  private _showAlarmPicker = false;
+
+  @state()
+  private _alarmSearchFilter = '';
 
   // Dashboard-eigenschappen (naam + sidebar-icoon)
   @state() private _dashboardId?: string;
@@ -326,6 +339,17 @@ export class DwainsDashboardStrategyEditor extends LitElement {
 
         <ha-expansion-panel expanded outlined>
           <div slot="header">
+            <ha-icon icon="mdi:home-edit-outline"></ha-icon>
+            Home layout
+          </div>
+          <p class="description">
+            Choose the order of the home page sections. Camera cards only appear when an area contains one or more camera entities.
+          </p>
+          ${this._renderHomeSectionOrder()}
+        </ha-expansion-panel>
+
+        <ha-expansion-panel expanded outlined>
+          <div slot="header">
             <ha-icon icon="mdi:puzzle-edit-outline"></ha-icon>
             Blueprint replacements
           </div>
@@ -433,6 +457,33 @@ export class DwainsDashboardStrategyEditor extends LitElement {
 
         <ha-expansion-panel expanded outlined>
           <div slot="header">
+            <ha-icon icon="mdi:shield-home-outline"></ha-icon>
+            Alarm Settings
+          </div>
+          <p class="description">
+            Choose which alarm entity to show on the home page. If no alarm is selected, the alarm chip will be hidden.
+          </p>
+          <div class="alarm-section">
+            <div class="alarm-picker">
+              <div class="alarm-picker-header">
+                <h4>Selected Alarm Entity</h4>
+                <mwc-button @click=${this._addAlarmEntity} outlined>
+                  <svg viewBox="0 0 24 24" width="20" height="20" style="margin-right: 8px;">
+                    <path fill="currentColor" d="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z" />
+                  </svg>
+                  Select Alarm
+                </mwc-button>
+              </div>
+
+              ${this._renderSelectedAlarmEntity()}
+
+              ${this._showAlarmPicker ? this._renderAlarmPicker() : ''}
+            </div>
+          </div>
+        </ha-expansion-panel>
+
+        <ha-expansion-panel expanded outlined>
+          <div slot="header">
             <ha-icon icon="mdi:eye-off"></ha-icon>
             Entity Display Settings
           </div>
@@ -461,6 +512,40 @@ export class DwainsDashboardStrategyEditor extends LitElement {
               </ha-formfield>
               <p class="toggle-description">
                 Shows devices added to Home Assistant in the last 48 hours, with a quick option to hide complete devices from Dwains Dashboard.
+              </p>
+            </div>
+          </div>
+        </ha-expansion-panel>
+
+        <ha-expansion-panel expanded outlined>
+          <div slot="header">
+            <ha-icon icon="mdi:shield-account"></ha-icon>
+            User permissions
+          </div>
+          <p class="description">
+            Optional restrictions for Home Assistant users without administrator rights. By default non-admin users can still use the Home Assistant menu and Dwains Dashboard settings.
+          </p>
+          <div class="entity-display-section">
+            <div class="hide-unavailable-toggle">
+              <ha-formfield label="Restrict Home Assistant menu for non-admin users">
+                <ha-switch
+                  .checked=${this._config?.settings?.restrict_non_admin_ha_sidebar === true}
+                  @change=${this._toggleRestrictNonAdminHaSidebar}
+                ></ha-switch>
+              </ha-formfield>
+              <p class="toggle-description">
+                When enabled, non-admin users will not see the Home Assistant sidebar/menu from this dashboard. The mobile menu only shows their own profile settings.
+              </p>
+            </div>
+            <div class="hide-unavailable-toggle">
+              <ha-formfield label="Restrict Dwains Dashboard editing for non-admin users">
+                <ha-switch
+                  .checked=${this._config?.settings?.restrict_non_admin_dashboard_settings === true}
+                  @change=${this._toggleRestrictNonAdminDashboardSettings}
+                ></ha-switch>
+              </ha-formfield>
+              <p class="toggle-description">
+                When enabled, non-admin users cannot open Dwains Dashboard settings or change dashboard content such as custom area cards and blueprint pages.
               </p>
             </div>
           </div>
@@ -703,6 +788,152 @@ export class DwainsDashboardStrategyEditor extends LitElement {
     `;
   }
 
+  private _getHomeSectionsOrder(): HomeSectionKey[] {
+    return normalizeHomeSectionsOrder(this._config?.settings?.home_sections_order);
+  }
+
+  private _getHiddenHomeSections(): Set<HomeSectionKey> {
+    return new Set(normalizeHiddenHomeSections(this._config?.settings?.home_sections_hidden));
+  }
+
+  private _setHomeSectionsOrder(order: HomeSectionKey[]): void {
+    if (!this._config) return;
+
+    const newConfig: DwainsDashboardConfig = {
+      ...this._config,
+      settings: {
+        ...this._config.settings,
+        home_sections_order: normalizeHomeSectionsOrder(order),
+      },
+    };
+
+    this._fireConfigChanged(newConfig);
+  }
+
+  private _toggleHomeSectionEnabled(section: HomeSectionKey): void {
+    if (!this._config) return;
+
+    const hidden = new Set(this._getHiddenHomeSections());
+    if (hidden.has(section)) {
+      hidden.delete(section);
+    } else {
+      hidden.add(section);
+    }
+
+    const newConfig: DwainsDashboardConfig = {
+      ...this._config,
+      settings: {
+        ...this._config.settings,
+        home_sections_hidden: normalizeHiddenHomeSections([...hidden]),
+      },
+    };
+
+    this._fireConfigChanged(newConfig);
+  }
+
+  private _moveHomeSection(section: HomeSectionKey, direction: -1 | 1): void {
+    const order = this._getHomeSectionsOrder();
+    const index = order.indexOf(section);
+    const targetIndex = index + direction;
+
+    if (index < 0 || targetIndex < 0 || targetIndex >= order.length) return;
+
+    const next = [...order];
+    [next[index], next[targetIndex]] = [next[targetIndex]!, next[index]!];
+    this._setHomeSectionsOrder(next);
+  }
+
+  private _resetHomeSectionsOrder = (): void => {
+    if (!this._config) return;
+
+    const newConfig: DwainsDashboardConfig = {
+      ...this._config,
+      settings: {
+        ...this._config.settings,
+        home_sections_order: normalizeHomeSectionsOrder(),
+        home_sections_hidden: [],
+      },
+    };
+
+    this._fireConfigChanged(newConfig);
+  };
+
+  private _renderHomeSectionOrder() {
+    const order = this._getHomeSectionsOrder();
+    const hiddenSections = this._getHiddenHomeSections();
+
+    return html`
+      <div class="home-layout-section">
+        <div class="home-section-list ${this._draggedHomeSection ? 'dragging' : ''}">
+          ${repeat(
+            order,
+            section => section,
+            (section, index) => {
+              const meta = HOME_SECTION_META[section];
+              const enabled = !hiddenSections.has(section);
+              const isDragging = this._draggedHomeSection === section;
+              const isDragOver = this._dragOverHomeSectionIndex === index &&
+                this._draggedHomeSection &&
+                this._draggedHomeSection !== section;
+
+              return html`
+                <div
+                  class="home-section-item ${enabled ? '' : 'disabled'} ${isDragging ? 'dragging' : ''} ${isDragOver ? 'drag-over' : ''}"
+                  draggable="true"
+                  data-section=${section}
+                  data-index=${index}
+                  @dragstart=${(e: DragEvent) => this._handleHomeSectionDragStart(e, section)}
+                  @dragend=${this._handleHomeSectionDragEnd}
+                  @dragover=${(e: DragEvent) => this._handleHomeSectionDragOver(e, index)}
+                  @dragleave=${this._handleHomeSectionDragLeave}
+                  @drop=${(e: DragEvent) => this._handleHomeSectionDrop(e, index)}
+                >
+                  <div class="home-section-handle">
+                    <ha-svg-icon .path=${mdiDrag}></ha-svg-icon>
+                  </div>
+                  <div class="home-section-icon">
+                    <ha-icon icon=${meta.icon}></ha-icon>
+                  </div>
+                  <div class="home-section-copy">
+                    <div class="home-section-title">${meta.label}</div>
+                    <div class="home-section-description">${meta.description}</div>
+                  </div>
+                  <div class="home-section-actions">
+                    <button
+                      class="home-section-toggle ${enabled ? 'enabled' : ''}"
+                      type="button"
+                      title=${enabled ? 'Hide section' : 'Show section'}
+                      aria-label=${enabled ? `Hide ${meta.label}` : `Show ${meta.label}`}
+                      aria-pressed=${enabled ? 'true' : 'false'}
+                      @click=${() => this._toggleHomeSectionEnabled(section)}
+                    >
+                      <ha-icon icon=${enabled ? 'mdi:eye-outline' : 'mdi:eye-off-outline'}></ha-icon>
+                    </button>
+                    <ha-icon-button
+                      .label="Move up"
+                      .path=${mdiArrowUp}
+                      .disabled=${index === 0}
+                      @click=${() => this._moveHomeSection(section, -1)}
+                    ></ha-icon-button>
+                    <ha-icon-button
+                      .label="Move down"
+                      .path=${mdiArrowDown}
+                      .disabled=${index === order.length - 1}
+                      @click=${() => this._moveHomeSection(section, 1)}
+                    ></ha-icon-button>
+                  </div>
+                </div>
+              `;
+            }
+          )}
+        </div>
+        <button class="home-layout-reset" type="button" @click=${this._resetHomeSectionsOrder}>
+          Reset default layout
+        </button>
+      </div>
+    `;
+  }
+
   private _getGroupTitle(group: string): string {
     const titles: Record<string, string> = {
       lights: "Lighting",
@@ -774,6 +1005,59 @@ export class DwainsDashboardStrategyEditor extends LitElement {
     });
 
     return grouped;
+  }
+
+  private _handleHomeSectionDragStart(e: DragEvent, section: HomeSectionKey): void {
+    this._draggedHomeSection = section;
+
+    if (e.dataTransfer) {
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", section);
+    }
+  }
+
+  private _handleHomeSectionDragEnd = (): void => {
+    this._draggedHomeSection = undefined;
+    this._dragOverHomeSectionIndex = undefined;
+  };
+
+  private _handleHomeSectionDragOver(e: DragEvent, index: number): void {
+    e.preventDefault();
+    this._dragOverHomeSectionIndex = index;
+
+    if (e.dataTransfer) {
+      e.dataTransfer.dropEffect = "move";
+    }
+  }
+
+  private _handleHomeSectionDragLeave = (e: DragEvent): void => {
+    const currentTarget = e.currentTarget as HTMLElement | null;
+    const relatedTarget = e.relatedTarget as Node | null;
+
+    if (!currentTarget?.contains(relatedTarget)) {
+      this._dragOverHomeSectionIndex = undefined;
+    }
+  };
+
+  private _handleHomeSectionDrop(e: DragEvent, dropIndex: number): void {
+    e.preventDefault();
+
+    const dragged = this._draggedHomeSection;
+    if (!dragged) return;
+
+    const order = this._getHomeSectionsOrder();
+    const draggedIndex = order.indexOf(dragged);
+
+    if (draggedIndex === -1 || draggedIndex === dropIndex) {
+      this._handleHomeSectionDragEnd();
+      return;
+    }
+
+    const next = [...order];
+    const [item] = next.splice(draggedIndex, 1);
+    next.splice(dropIndex, 0, item!);
+    this._setHomeSectionsOrder(next);
+    this._handleHomeSectionDragEnd();
   }
 
   private _handleAreaDragStart(e: DragEvent, areaId: string): void {
@@ -1046,6 +1330,11 @@ export class DwainsDashboardStrategyEditor extends LitElement {
     this._weatherSearchFilter = '';
   }
 
+  private _addAlarmEntity(): void {
+    this._showAlarmPicker = true;
+    this._alarmSearchFilter = '';
+  }
+
   private _renderSelectedWeatherEntity() {
     const weatherEntityId = this._config?.settings?.weather_entity_id;
 
@@ -1071,6 +1360,40 @@ export class DwainsDashboardStrategyEditor extends LitElement {
           class="remove-button"
           title="Remove"
           @click=${() => this._removeWeatherEntity()}
+        >
+          <svg viewBox="0 0 24 24" width="20" height="20">
+            <path fill="currentColor" d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z" />
+          </svg>
+        </button>
+      </div>
+    `;
+  }
+
+  private _renderSelectedAlarmEntity() {
+    const alarmEntityId = this._config?.settings?.alarm_entity_id;
+
+    if (!alarmEntityId) {
+      return html`
+        <div class="no-alarm">
+          <p>No alarm entity selected. The alarm chip is hidden on the home page.</p>
+        </div>
+      `;
+    }
+
+    const state = this.hass?.states[alarmEntityId];
+    const friendlyName = state?.attributes?.friendly_name || alarmEntityId;
+
+    return html`
+      <div class="selected-alarm-entity" data-entity-id="${alarmEntityId}">
+        <ha-state-icon
+          .stateObj=${state}
+          class="entity-icon"
+        ></ha-state-icon>
+        <span class="entity-name">${friendlyName}</span>
+        <button
+          class="remove-button"
+          title="Remove"
+          @click=${() => this._removeAlarmEntity()}
         >
           <svg viewBox="0 0 24 24" width="20" height="20">
             <path fill="currentColor" d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z" />
@@ -1189,6 +1512,71 @@ export class DwainsDashboardStrategyEditor extends LitElement {
     `;
   }
 
+  private _renderAlarmPicker() {
+    const allEntities = Object.keys(this.hass?.states || {});
+    const alarmEntities = allEntities.filter(entityId =>
+      entityId.startsWith('alarm_control_panel.') &&
+      !this.hass?.entities?.[entityId]?.hidden_by
+    );
+
+    const filteredAlarmEntities = alarmEntities.filter(entityId => {
+      if (!this._alarmSearchFilter) return true;
+      const state = this.hass?.states[entityId];
+      const friendlyName = state?.attributes?.friendly_name || entityId;
+      return friendlyName.toLowerCase().includes(this._alarmSearchFilter.toLowerCase()) ||
+             entityId.toLowerCase().includes(this._alarmSearchFilter.toLowerCase());
+    });
+
+    return html`
+      <div class="entity-picker-modal">
+        <div class="entity-picker-content">
+          <div class="entity-picker-header">
+            <h4>Select Alarm Entity</h4>
+            <button
+              class="close-button"
+              title="Close"
+              @click=${() => this._showAlarmPicker = false}
+            >
+              <svg viewBox="0 0 24 24" width="20" height="20">
+                <path fill="currentColor" d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z" />
+              </svg>
+            </button>
+          </div>
+
+          <div class="entity-search">
+            <ha-textfield
+              .label="Search alarm entities..."
+              .value=${this._alarmSearchFilter}
+              @input=${(e: Event) => this._alarmSearchFilter = (e.target as HTMLInputElement).value}
+            ></ha-textfield>
+          </div>
+
+          <div class="entity-list">
+            ${repeat(
+              filteredAlarmEntities.slice(0, 20),
+              (entityId) => entityId,
+              (entityId) => {
+                const state = this.hass?.states[entityId];
+                const friendlyName = state?.attributes?.friendly_name || entityId;
+
+                return html`
+                  <div class="entity-option" @click=${() => this._selectAlarmEntity(entityId)}>
+                    <ha-state-icon
+                      .stateObj=${state}
+                      class="entity-icon"
+                    ></ha-state-icon>
+                    <span class="entity-name">${friendlyName}</span>
+                    <span class="entity-id">${entityId}</span>
+                  </div>
+                `;
+              }
+            )}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
   private _renderEntityPicker() {
     const allEntities = Object.keys(this.hass?.states || {});
     const filteredEntities = allEntities.filter(entityId => {
@@ -1265,12 +1653,37 @@ export class DwainsDashboardStrategyEditor extends LitElement {
     this._showWeatherPicker = false;
   }
 
+  private _selectAlarmEntity(entityId: string): void {
+    const newConfig: DwainsDashboardConfig = {
+      ...this._config!,
+      settings: {
+        ...this._config!.settings,
+        alarm_entity_id: entityId
+      }
+    };
+
+    this._fireConfigChanged(newConfig);
+    this._showAlarmPicker = false;
+  }
+
   private _removeWeatherEntity(): void {
     const newConfig: DwainsDashboardConfig = {
       ...this._config!,
       settings: {
         ...this._config!.settings,
         weather_entity_id: undefined
+      }
+    };
+
+    this._fireConfigChanged(newConfig);
+  }
+
+  private _removeAlarmEntity(): void {
+    const newConfig: DwainsDashboardConfig = {
+      ...this._config!,
+      settings: {
+        ...this._config!.settings,
+        alarm_entity_id: undefined
       }
     };
 
@@ -1331,6 +1744,36 @@ export class DwainsDashboardStrategyEditor extends LitElement {
       settings: {
         ...this._config!.settings,
         show_recent_devices_panel: showPanel
+      }
+    };
+
+    this._fireConfigChanged(newConfig);
+  }
+
+  private _toggleRestrictNonAdminHaSidebar(e: Event): void {
+    const target = e.target as any;
+    const restrict = target.checked;
+
+    const newConfig: DwainsDashboardConfig = {
+      ...this._config!,
+      settings: {
+        ...this._config!.settings,
+        restrict_non_admin_ha_sidebar: restrict
+      }
+    };
+
+    this._fireConfigChanged(newConfig);
+  }
+
+  private _toggleRestrictNonAdminDashboardSettings(e: Event): void {
+    const target = e.target as any;
+    const restrict = target.checked;
+
+    const newConfig: DwainsDashboardConfig = {
+      ...this._config!,
+      settings: {
+        ...this._config!.settings,
+        restrict_non_admin_dashboard_settings: restrict
       }
     };
 
@@ -1514,6 +1957,149 @@ export class DwainsDashboardStrategyEditor extends LitElement {
       .dashboard-settings ha-icon-picker {
         width: 100%;
       }
+
+      .home-layout-section {
+        display: grid;
+        gap: 12px;
+        padding: 0 16px 16px;
+      }
+
+      .home-section-list {
+        display: grid;
+        gap: 8px;
+      }
+
+      .home-section-item {
+        display: grid;
+        grid-template-columns: 32px 42px minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 12px;
+        border: 1px solid var(--divider-color);
+        border-radius: 10px;
+        background: var(--card-background-color);
+        box-shadow: 0 4px 12px rgba(15, 23, 42, 0.04);
+        transition: border-color 0.16s ease, box-shadow 0.16s ease, opacity 0.16s ease, transform 0.16s ease;
+      }
+
+      .home-section-item.dragging {
+        opacity: 0.5;
+        transform: scale(0.99);
+      }
+
+      .home-section-item.drag-over {
+        border-color: var(--primary-color);
+        box-shadow:
+          inset 0 0 0 1px var(--primary-color),
+          0 8px 18px rgba(15, 23, 42, 0.08);
+      }
+
+      .home-section-item.disabled {
+        opacity: 0.58;
+        background: color-mix(in srgb, var(--card-background-color) 78%, var(--secondary-background-color));
+      }
+
+      .home-section-handle {
+        display: flex;
+        color: var(--secondary-text-color);
+        cursor: grab;
+      }
+
+      .home-section-handle:active {
+        cursor: grabbing;
+      }
+
+      .home-section-icon {
+        width: 42px;
+        height: 42px;
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--primary-color);
+        background: color-mix(in srgb, var(--primary-color) 12%, transparent);
+      }
+
+      .home-section-icon ha-icon {
+        --mdc-icon-size: 22px;
+      }
+
+      .home-section-item.disabled .home-section-icon {
+        color: var(--secondary-text-color);
+        background: var(--secondary-background-color);
+      }
+
+      .home-section-copy {
+        min-width: 0;
+      }
+
+      .home-section-title {
+        font-weight: 700;
+        color: var(--primary-text-color);
+      }
+
+      .home-section-description {
+        margin-top: 2px;
+        font-size: 12px;
+        line-height: 1.35;
+        color: var(--secondary-text-color);
+      }
+
+      .home-section-actions {
+        display: inline-flex;
+        gap: 2px;
+      }
+
+      .home-section-toggle {
+        width: 40px;
+        height: 40px;
+        border: 0;
+        border-radius: 999px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--secondary-text-color);
+        background: transparent;
+        cursor: pointer;
+      }
+
+      .home-section-toggle.enabled {
+        color: var(--primary-color);
+        background: color-mix(in srgb, var(--primary-color) 10%, transparent);
+      }
+
+      .home-section-toggle ha-icon {
+        --mdc-icon-size: 20px;
+      }
+
+      .home-layout-reset {
+        justify-self: start;
+        border: 0;
+        border-radius: 999px;
+        padding: 8px 12px;
+        color: var(--primary-color);
+        background: color-mix(in srgb, var(--primary-color) 10%, transparent);
+        font: inherit;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      @media (max-width: 600px) {
+        .home-section-item {
+          grid-template-columns: 28px 36px minmax(0, 1fr);
+        }
+
+        .home-section-icon {
+          width: 36px;
+          height: 36px;
+        }
+
+        .home-section-actions {
+          grid-column: 2 / -1;
+          justify-self: start;
+        }
+      }
+
       .dd-field {
         display: flex;
         flex-direction: column;
@@ -1877,6 +2463,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
       .favorites-section,
       .time-section,
       .weather-section,
+      .alarm-section,
       .entity-display-section,
       .replacement-section {
         padding: 0 16px 16px 16px;
@@ -1940,30 +2527,35 @@ export class DwainsDashboardStrategyEditor extends LitElement {
       }
 
       .entity-picker,
-      .weather-picker {
+      .weather-picker,
+      .alarm-picker {
         width: 100%;
       }
 
-      .weather-picker-header {
+      .weather-picker-header,
+      .alarm-picker-header {
         display: flex;
         justify-content: space-between;
         align-items: center;
         margin-bottom: 16px;
       }
 
-      .weather-picker-header h4 {
+      .weather-picker-header h4,
+      .alarm-picker-header h4 {
         margin: 0;
         font-size: 16px;
         font-weight: 500;
       }
 
-      .no-weather {
+      .no-weather,
+      .no-alarm {
         text-align: center;
         padding: 24px;
         color: var(--secondary-text-color);
       }
 
-      .selected-weather-entity {
+      .selected-weather-entity,
+      .selected-alarm-entity {
         display: flex;
         align-items: center;
         gap: 12px;
@@ -1973,11 +2565,13 @@ export class DwainsDashboardStrategyEditor extends LitElement {
         border: 1px solid var(--divider-color);
       }
 
-      .selected-weather-entity .entity-icon {
+      .selected-weather-entity .entity-icon,
+      .selected-alarm-entity .entity-icon {
         --mdc-icon-size: 24px;
       }
 
-      .selected-weather-entity .entity-name {
+      .selected-weather-entity .entity-name,
+      .selected-alarm-entity .entity-name {
         flex: 1;
         font-size: 14px;
       }

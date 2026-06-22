@@ -14,7 +14,7 @@ import { DwainsDashboardCard } from './components/dwains-dashboard-card';
 import { DwainsDashboardCardEditor } from './components/dwains-dashboard-card-editor';
 
 console.log('Dwains Dashboard Next - Loading...');
-console.log('%cDwains Dashboard Next 1.0.0', 'background:#3a7;color:#fff;padding:2px 8px;border-radius:6px;font-weight:bold');
+console.log('%cDwains Dashboard Next 1.1.0', 'background:#3a7;color:#fff;padding:2px 8px;border-radius:6px;font-weight:bold');
 
 // Safe element registration
 const safeDefine = (name: string, constructor: CustomElementConstructor) => {

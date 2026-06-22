@@ -15,10 +15,65 @@ export const getDomainIcon = (domain: string): string => {
     automation: 'mdi:robot',
     script: 'mdi:script-text',
     scene: 'mdi:palette',
+    alarm_control_panel: 'mdi:security',
+    button: 'mdi:gesture-tap-button',
+    number: 'mdi:numeric',
+    select: 'mdi:form-dropdown',
+    input_boolean: 'mdi:toggle-switch',
+    input_button: 'mdi:gesture-tap-button',
+    input_number: 'mdi:numeric',
+    input_select: 'mdi:form-dropdown',
+    input_text: 'mdi:form-textbox',
+    water_heater: 'mdi:water-boiler',
+    humidifier: 'mdi:air-humidifier',
+    siren: 'mdi:bullhorn',
+    valve: 'mdi:valve',
+    update: 'mdi:update',
     sun: 'mdi:white-balance-sunny',
-    weather: 'mdi:weather-cloudy'
+    weather: 'mdi:weather-cloudy',
+    device_tracker: 'mdi:map-marker-radius',
+    remote: 'mdi:remote',
+    image: 'mdi:image',
+    todo: 'mdi:clipboard-list',
+    calendar: 'mdi:calendar',
+    lawn_mower: 'mdi:robot-mower',
+    text: 'mdi:form-textbox',
+    date: 'mdi:calendar',
+    time: 'mdi:clock-outline',
+    timer: 'mdi:timer-outline',
+    counter: 'mdi:counter',
   };
-  return icons[domain] || 'mdi:home';
+  return icons[domain] || 'mdi:shape-outline';
+};
+
+export const getDomainColor = (domain: string, deviceClass?: string): string => {
+  if (domain === 'binary_sensor' && ['motion', 'occupancy', 'presence'].includes(deviceClass || '')) {
+    return '#df5b63';
+  }
+
+  const colors: Record<string, string> = {
+    light: '#e1a129',
+    switch: '#2f6fd6',
+    cover: '#1494aa',
+    camera: '#0ea5c6',
+    climate: '#34a6d8',
+    fan: '#2b8fcb',
+    lock: '#2f6fd6',
+    media_player: '#7c67c7',
+    person: '#6d7891',
+    binary_sensor: '#6d7891',
+    sensor: '#4f79a7',
+    wattage: '#d88e20',
+    energy: '#d88e20',
+    temperature: '#7c67c7',
+    humidity: '#34a6d8',
+    vacuum: '#7c67c7',
+    alarm_control_panel: '#df5b63',
+    button: '#7c67c7',
+    select: '#6d7891',
+  };
+
+  return colors[domain] || '#7c67c7';
 };
 
 export const getAlertIcon = (deviceClass?: string): string => {

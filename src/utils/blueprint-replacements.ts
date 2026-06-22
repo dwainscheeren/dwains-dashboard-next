@@ -24,18 +24,99 @@ interface ResolveReplacementParams {
 
 const parsedCache = new WeakMap<BlueprintReplacementAssignment, ParsedBlueprint>();
 
-export function defaultEntityCardConfig(entityId: string): LovelaceCardConfig {
+export function defaultEntityCardConfig(entityId: string, hass?: HomeAssistant): LovelaceCardConfig {
   const domain = entityId.split('.')[0] || '';
   if (domain === 'climate') return { type: 'thermostat', entity: entityId };
   if (domain === 'camera') return { type: 'picture-entity', entity: entityId, camera_view: 'live' };
   if (domain === 'media_player') return { type: 'media-control', entity: entityId };
+  if (domain === 'light') return defaultLightCardConfig(entityId, hass);
+  if (domain === 'cover') return defaultCoverCardConfig(entityId, hass);
+  if (domain === 'sensor') return defaultSensorCardConfig(entityId, hass);
+  if (domain === 'binary_sensor') return defaultBinarySensorCardConfig(entityId, hass);
   return { type: 'tile', entity: entityId };
+}
+
+function defaultLightCardConfig(entityId: string, hass?: HomeAssistant): LovelaceCardConfig {
+  const state = hass?.states?.[entityId];
+  const attrs = state?.attributes || {};
+  const supportedModes = new Set((attrs.supported_color_modes || []).map(String));
+  const colorMode = String(attrs.color_mode || '');
+  const brightnessModes = ['brightness', 'color_temp', 'hs', 'xy', 'rgb', 'rgbw', 'rgbww', 'white'];
+  const supportsBrightness =
+    typeof attrs.brightness === 'number' ||
+    brightnessModes.some((mode) => supportedModes.has(mode) || colorMode === mode);
+  const supportsColorTemp =
+    supportedModes.has('color_temp') ||
+    colorMode === 'color_temp' ||
+    attrs.color_temp_kelvin !== undefined ||
+    attrs.min_color_temp_kelvin !== undefined;
+  const features: LovelaceCardConfig[] = [];
+  if (supportsBrightness) features.push({ type: 'light-brightness' });
+  if (supportsColorTemp) features.push({ type: 'light-color-temp' });
+
+  return {
+    type: 'tile',
+    entity: entityId,
+    state_content: supportsBrightness ? ['state', 'brightness'] : 'state',
+    tap_action: { action: 'toggle' },
+    hold_action: { action: 'more-info' },
+    ...(features.length ? {
+      features_position: 'bottom',
+      features,
+    } : {}),
+  };
+}
+
+function defaultCoverCardConfig(entityId: string, hass?: HomeAssistant): LovelaceCardConfig {
+  const state = hass?.states?.[entityId];
+  const supported = Number(state?.attributes?.supported_features);
+  const supportsPosition =
+    typeof state?.attributes?.current_position === 'number' ||
+    (Number.isFinite(supported) && (supported & 4) !== 0);
+  const features: LovelaceCardConfig[] = [{ type: 'cover-open-close' }];
+  if (supportsPosition) features.push({ type: 'cover-position' });
+
+  return {
+    type: 'tile',
+    entity: entityId,
+    state_content: supportsPosition ? ['state', 'current_position'] : 'state',
+    features_position: 'bottom',
+    features,
+  };
+}
+
+function defaultSensorCardConfig(entityId: string, hass?: HomeAssistant): LovelaceCardConfig {
+  const state = hass?.states?.[entityId];
+  const hasMeasurement = state?.attributes?.unit_of_measurement !== undefined;
+  if (!hasMeasurement) return { type: 'tile', entity: entityId };
+
+  return {
+    type: 'sensor',
+    entity: entityId,
+    graph: 'line',
+    hours_to_show: 24,
+    detail: 1,
+  };
+}
+
+function defaultBinarySensorCardConfig(entityId: string, hass?: HomeAssistant): LovelaceCardConfig {
+  const state = hass?.states?.[entityId];
+  const deviceClass = String(state?.attributes?.device_class || '');
+  if (deviceClass !== 'motion' && deviceClass !== 'occupancy' && deviceClass !== 'presence') {
+    return { type: 'tile', entity: entityId };
+  }
+
+  return {
+    type: 'tile',
+    entity: entityId,
+    state_content: ['state', 'last_changed'],
+  };
 }
 
 export function resolveEntityCardConfig(params: ResolveReplacementParams): LovelaceCardConfig {
   const entityId = typeof params.entity === 'string' ? params.entity : params.entity.entity_id;
   const assignment = findReplacementAssignment(params);
-  if (!assignment || assignment.enabled === false) return defaultEntityCardConfig(entityId);
+  if (!assignment || assignment.enabled === false) return defaultEntityCardConfig(entityId, params.hass);
 
   try {
     const parsed = parsedAssignment(assignment);
@@ -47,7 +128,7 @@ export function resolveEntityCardConfig(params: ResolveReplacementParams): Lovel
     return resolveBlueprintCard(parsed.card, parsed.meta, values);
   } catch (e) {
     console.warn('Dwains replacement blueprint failed; using default card.', assignment.name, e);
-    return defaultEntityCardConfig(entityId);
+    return defaultEntityCardConfig(entityId, params.hass);
   }
 }
 

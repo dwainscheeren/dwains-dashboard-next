@@ -1,12 +1,14 @@
 import type { HomeAssistant } from '../types/home-assistant';
 import { prettifyDomain } from './domain-names';
 import { isEntityFromHiddenDevice } from './device-admission';
+import { getDeviceClassIcon, getDomainIcon } from './icons';
 
 export interface DomainCount {
   domain: string;
   count: number;
   name: string;
   icon: string;
+  value?: string;
   deviceClass?: string;
   entities?: string[]; // de 'aan'-entiteiten van dit domein
 }
@@ -17,33 +19,33 @@ const UNAVAILABLE_STATES = ['unavailable', 'unknown'];
 
 // Domain configuration with icons and names
 const DOMAIN_CONFIG: Record<string, { icon: string; name: string }> = {
-  light: { icon: 'mdi:lightbulb', name: 'Lights' },
-  switch: { icon: 'mdi:light-switch', name: 'Switches' },
-  fan: { icon: 'mdi:fan', name: 'Fans' },
-  cover: { icon: 'mdi:window-shutter', name: 'Covers' },
-  lock: { icon: 'mdi:lock', name: 'Locks' },
-  climate: { icon: 'mdi:thermostat', name: 'Climate' },
-  media_player: { icon: 'mdi:play-circle', name: 'Media Players' },
-  camera: { icon: 'mdi:camera', name: 'Cameras' },
-  person: { icon: 'mdi:account', name: 'People' },
-  vacuum: { icon: 'mdi:robot-vacuum', name: 'Vacuums' },
-  alarm_control_panel: { icon: 'mdi:security', name: 'Alarm Systems' }
+  light: { icon: getDomainIcon('light'), name: 'Lights' },
+  switch: { icon: getDomainIcon('switch'), name: 'Switches' },
+  fan: { icon: getDomainIcon('fan'), name: 'Fans' },
+  cover: { icon: getDomainIcon('cover'), name: 'Covers' },
+  lock: { icon: getDomainIcon('lock'), name: 'Locks' },
+  climate: { icon: getDomainIcon('climate'), name: 'Climate' },
+  media_player: { icon: getDomainIcon('media_player'), name: 'Media Players' },
+  camera: { icon: getDomainIcon('camera'), name: 'Cameras' },
+  person: { icon: getDomainIcon('person'), name: 'People' },
+  vacuum: { icon: getDomainIcon('vacuum'), name: 'Vacuums' },
+  alarm_control_panel: { icon: getDomainIcon('alarm_control_panel'), name: 'Alarm Systems' }
 };
 
 // Binary sensor device classes configuration
 const BINARY_SENSOR_CONFIG: Record<string, { icon: string; name: string }> = {
-  window: { icon: 'mdi:window-open', name: 'Windows' },
-  door: { icon: 'mdi:door-open', name: 'Doors' },
-  motion: { icon: 'mdi:motion-sensor', name: 'Motion' },
-  smoke: { icon: 'mdi:smoke-detector-alert', name: 'Smoke Detectors' },
-  gas: { icon: 'mdi:gas-cylinder', name: 'Gas Detectors' },
-  moisture: { icon: 'mdi:water-alert', name: 'Moisture' },
-  occupancy: { icon: 'mdi:home-account', name: 'Occupancy' },
-  opening: { icon: 'mdi:door', name: 'Openings' },
-  presence: { icon: 'mdi:motion-sensor', name: 'Presence' },
-  safety: { icon: 'mdi:shield-check', name: 'Safety' },
+  window: { icon: getDeviceClassIcon('binary_sensor', 'window'), name: 'Windows' },
+  door: { icon: getDeviceClassIcon('binary_sensor', 'door'), name: 'Doors' },
+  motion: { icon: getDeviceClassIcon('binary_sensor', 'motion'), name: 'Motion' },
+  smoke: { icon: getDeviceClassIcon('binary_sensor', 'smoke'), name: 'Smoke Detectors' },
+  gas: { icon: getDeviceClassIcon('binary_sensor', 'gas'), name: 'Gas Detectors' },
+  moisture: { icon: getDeviceClassIcon('binary_sensor', 'moisture'), name: 'Moisture' },
+  occupancy: { icon: getDeviceClassIcon('binary_sensor', 'occupancy'), name: 'Occupancy' },
+  opening: { icon: getDeviceClassIcon('binary_sensor', 'opening'), name: 'Openings' },
+  presence: { icon: getDeviceClassIcon('binary_sensor', 'presence'), name: 'Presence' },
+  safety: { icon: getDeviceClassIcon('binary_sensor', 'safety'), name: 'Safety' },
   tamper: { icon: 'mdi:lock-alert', name: 'Tamper' },
-  vibration: { icon: 'mdi:vibrate', name: 'Vibration' }
+  vibration: { icon: getDeviceClassIcon('binary_sensor', 'vibration'), name: 'Vibration' }
 };
 
 export function getStatusDomains(hass: HomeAssistant, config: any): DomainCount[] {
@@ -289,24 +291,48 @@ export function getTotalWattage(hass: HomeAssistant, config?: any): string | und
   let hasWattageEntities = false;
 
   Object.values(hass.states).forEach(entity => {
-    if (isEntityFromHiddenDevice(hass, config, (entity as any).entity_id)) {
+    const entityId = (entity as any).entity_id;
+    if (!entityId?.startsWith('sensor.')) return;
+
+    const registry = hass.entities?.[entityId];
+    if (registry?.hidden_by || registry?.entity_category === 'diagnostic' || registry?.entity_category === 'config') {
       return;
     }
 
-    // Look for power/wattage sensors
-    if ((entity as any).entity_id?.includes('power') ||
-        (entity as any).entity_id?.includes('wattage') ||
-        (entity as any).entity_id?.includes('consumption')) {
+    if ((entity as any).state === 'unavailable' || (entity as any).state === 'unknown') return;
+    if ((entity as any).attributes?.unit_of_measurement !== 'W') return;
 
-      const state = parseFloat((entity as any).state);
-      if (!isNaN(state) && (entity as any).attributes?.unit_of_measurement === 'W') {
-        totalWattage += state;
-        hasWattageEntities = true;
+    const entityReg = config?.entities?.find((entry: any) => entry.entity_id === entityId);
+    if (isEntityFromHiddenDevice(hass, config, entityReg || entityId)) return;
+
+    const deviceReg = entityReg?.device_id
+      ? config?.devices?.find((device: any) => device.device_id === entityReg.device_id)
+      : null;
+    const areaId = entityReg?.area_id || deviceReg?.area_id || registry?.area_id;
+
+    if (areaId) {
+      const hiddenAreas = config?.areas_display?.hidden || [];
+      if (hiddenAreas.includes(areaId)) return;
+
+      const areaOptions = config?.areas_options?.[areaId];
+      if (areaOptions?.groups_options) {
+        for (const groupOptions of Object.values(areaOptions.groups_options)) {
+          if ((groupOptions as any).hidden?.includes(entityId)) return;
+        }
       }
     }
+
+    const state = parseFloat((entity as any).state);
+    if (!Number.isFinite(state)) return;
+
+    totalWattage += state;
+    hasWattageEntities = true;
   });
 
-  return hasWattageEntities ? `${Math.round(totalWattage)} W` : undefined;
+  if (!hasWattageEntities) return undefined;
+  return totalWattage >= 1000
+    ? `${(totalWattage / 1000).toFixed(1)} kW`
+    : `${Math.round(totalWattage)} W`;
 }
 
 export function getDomainTitle(domain: string): string {

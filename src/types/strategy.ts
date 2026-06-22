@@ -38,6 +38,8 @@ export interface LovelaceCardConfig {
   [key: string]: any;
 }
 
+export type HomeSectionKey = 'cameras' | 'areas' | 'devices' | 'favorites';
+
 export interface DwainsDashboardSettings {
   theme?: string;
   showClock?: boolean;
@@ -45,11 +47,16 @@ export interface DwainsDashboardSettings {
   showTemperature?: boolean;
   defaultView?: 'home' | 'area';
   weather_entity_id?: string;
+  alarm_entity_id?: string;
   show_weather?: boolean;
   show_time?: boolean;
   hidden_persons?: string[];
   hide_unavailable_entities?: boolean;
   show_recent_devices_panel?: boolean;
+  restrict_non_admin_ha_sidebar?: boolean;
+  restrict_non_admin_dashboard_settings?: boolean;
+  home_sections_order?: HomeSectionKey[];
+  home_sections_hidden?: HomeSectionKey[];
 }
 
 // New interfaces for areas configuration like Home Assistant

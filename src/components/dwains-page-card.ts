@@ -1,7 +1,8 @@
 import { LitElement, html, css, nothing } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
-import type { BlueprintPage } from '../types/strategy';
+import type { BlueprintPage, DwainsDashboardSettings } from '../types/strategy';
 import { ddLocalize } from '../utils/localize';
+import { restrictNonAdminDashboardSettings } from '../utils/security';
 import { showBlueprintDialog } from './utils/show-blueprint-dialog';
 import { ensureBottomNav } from './dwains-bottom-nav';
 import './utils/dd-card-host';
@@ -22,10 +23,11 @@ export class DwainsPageCard extends LitElement {
   private _hass?: any;
   @state() private _page?: BlueprintPage;
   @state() private _add = false;
+  private _settings?: DwainsDashboardSettings;
 
   set hass(hass: any) {
     this._hass = hass;
-    ensureBottomNav(hass);
+    ensureBottomNav(hass, this._settings);
     const host = this.renderRoot?.querySelector('dd-card-host') as any;
     if (host) host.hass = hass;
   }
@@ -36,6 +38,8 @@ export class DwainsPageCard extends LitElement {
   setConfig(config: any) {
     this._add = !!config?.add;
     this._page = config?.page;
+    this._settings = config?.settings || {};
+    if (this._hass) ensureBottomNav(this._hass, this._settings);
   }
 
   getCardSize() {
@@ -44,6 +48,10 @@ export class DwainsPageCard extends LitElement {
 
   private _t = (key: string, vars?: Record<string, string | number>) =>
     ddLocalize(this._hass, key, vars);
+
+  private _canManageDashboard(): boolean {
+    return !restrictNonAdminDashboardSettings(this._hass, this._settings);
+  }
 
   // ---- Navigatie ------------------------------------------------------------
 
@@ -62,6 +70,7 @@ export class DwainsPageCard extends LitElement {
   private async _mutatePages(
     fn: (pages: BlueprintPage[]) => BlueprintPage[]
   ): Promise<boolean> {
+    if (!this._canManageDashboard()) return false;
     try {
       const seg = this._dashSegment();
       const base = seg ? { url_path: seg } : {};
@@ -84,6 +93,7 @@ export class DwainsPageCard extends LitElement {
   // ---- Acties ---------------------------------------------------------------
 
   private _addBlueprint = () => {
+    if (!this._canManageDashboard()) return;
     showBlueprintDialog(this, {
       onSave: async (page: BlueprintPage) => {
         const ok = await this._mutatePages((pages) => [
@@ -96,6 +106,7 @@ export class DwainsPageCard extends LitElement {
   };
 
   private _editPage = () => {
+    if (!this._canManageDashboard()) return;
     if (!this._page) return;
     const current = this._page;
     showBlueprintDialog(this, {
@@ -113,6 +124,7 @@ export class DwainsPageCard extends LitElement {
   };
 
   private _deletePage = async () => {
+    if (!this._canManageDashboard()) return;
     if (!this._page) return;
     const page = this._page;
     if (!confirm(this._t('layout.delete_page_confirm', { name: page.name }))) return;
@@ -129,6 +141,7 @@ export class DwainsPageCard extends LitElement {
   }
 
   private _renderAdd() {
+    if (!this._canManageDashboard()) return nothing;
     return html`
       <div class="add-wrap">
         <ha-card>
@@ -155,12 +168,14 @@ export class DwainsPageCard extends LitElement {
             <span>${page.name}</span>
           </div>
           <div class="page-actions">
-            <button title=${this._t('common.edit')} @click=${this._editPage}>
-              <ha-icon icon="mdi:pencil"></ha-icon>
-            </button>
-            <button class="danger" title=${this._t('common.delete')} @click=${this._deletePage}>
-              <ha-icon icon="mdi:delete"></ha-icon>
-            </button>
+            ${this._canManageDashboard() ? html`
+              <button title=${this._t('common.edit')} @click=${this._editPage}>
+                <ha-icon icon="mdi:pencil"></ha-icon>
+              </button>
+              <button class="danger" title=${this._t('common.delete')} @click=${this._deletePage}>
+                <ha-icon icon="mdi:delete"></ha-icon>
+              </button>
+            ` : nothing}
           </div>
         </div>
         <dd-card-host .hass=${this._hass} .config=${page.card}></dd-card-host>

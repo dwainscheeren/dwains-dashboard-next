@@ -8,7 +8,30 @@ See this as Dwains Dashboard v4: totally rebuilt from scratch, with a completely
 
 ## Status
 
-This is the first public release of the new dashboard codebase.
+Dwains Dashboard Next is currently in alpha.
+
+Current release: `1.1.0`
+
+## What's New In 1.1.0
+
+- App-style mobile bottom navigation.
+- Mobile Home and Devices switchers that open as bottom sheets.
+- Reworked mobile room headers with compact controls.
+- Quick room controls for lights, switches and covers.
+- New devices view for recently added Home Assistant devices.
+- Device visibility controls to quickly hide or show devices in DD.
+- DD3-style blueprint replacement management for standard area and device cards.
+- Blueprint gallery support through a GitHub `blueprints.json` registry.
+- Blueprint source tracking and update-check support.
+- Cleaner mobile dialog layouts and dashboard settings.
+- Improved status cards, room headers, home sections and mobile spacing.
+- Discord, Buy Me a Coffee and PayPal links for support and feedback.
+
+## Community And Support
+
+- Chat and feedback: [Dwains Dashboard Discord](https://discord.gg/7yt64uX)
+- Support development: [Buy Me a Coffee](https://www.buymeacoffee.com/FAkYvrx)
+- Support development: [PayPal](https://www.paypal.me/dwainscheeren)
 
 ## Requirements
 

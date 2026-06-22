@@ -1,7 +1,9 @@
 import { css, html, LitElement, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { mdiClose } from '@mdi/js';
+import type { DwainsDashboardSettings } from '../types/strategy';
 import { ddLocalize } from '../utils/localize';
+import { restrictNonAdminDashboardSettings } from '../utils/security';
 import './dwains-dashboard-strategy-editor';
 
 /**
@@ -15,6 +17,7 @@ import './dwains-dashboard-strategy-editor';
 @customElement('dwains-dashboard-settings-dialog')
 export class DwainsDashboardSettingsDialog extends LitElement {
   @property({ attribute: false }) public hass?: any;
+  @property({ attribute: false }) public dashboardSettings?: DwainsDashboardSettings;
 
   @state() private _open = false;
   @state() private _strategy?: any;
@@ -30,9 +33,15 @@ export class DwainsDashboardSettingsDialog extends LitElement {
       const base = this._wsBase();
       const cfg: any = await this.hass.callWS({ type: 'lovelace/config', ...base });
       this._strategy = cfg?.strategy || { type: 'custom:dwains' };
+      this.dashboardSettings = this._strategy?.settings || this.dashboardSettings;
     } catch (e) {
       this._strategy = { type: 'custom:dwains' };
       console.warn('Kon lovelace config niet ophalen voor instellingen', e);
+    }
+    if (restrictNonAdminDashboardSettings(this.hass, this.dashboardSettings)) {
+      alert('You do not have permission to change Dwains Dashboard settings.');
+      this.closeDialog();
+      return;
     }
     this._open = true;
   }
@@ -90,7 +99,7 @@ export class DwainsDashboardSettingsDialog extends LitElement {
     if (!this._open) return nothing;
     return html`
       <ha-dialog open @closed=${this.closeDialog} .heading=${this._t('sidebar.dashboard_settings')} hideActions>
-        <ha-dialog-header slot="heading">
+        <ha-dialog-header slot="header">
           <ha-icon-button
             slot="navigationIcon"
             .path=${mdiClose}
@@ -147,8 +156,12 @@ declare global {
 }
 
 /** Open (of hergebruik) de instellingen-dialog. */
-export function openDashboardSettings(hass: any): void {
+export function openDashboardSettings(hass: any, settings?: DwainsDashboardSettings): void {
   if (!hass) return;
+  if (restrictNonAdminDashboardSettings(hass, settings)) {
+    alert('You do not have permission to change Dwains Dashboard settings.');
+    return;
+  }
   let dlg = document.querySelector(
     'dwains-dashboard-settings-dialog'
   ) as DwainsDashboardSettingsDialog | null;
@@ -157,5 +170,6 @@ export function openDashboardSettings(hass: any): void {
     document.body.appendChild(dlg);
   }
   dlg.hass = hass;
+  dlg.dashboardSettings = settings;
   dlg.showDialog();
 }

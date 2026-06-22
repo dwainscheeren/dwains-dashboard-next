@@ -469,7 +469,7 @@ export class DwainsBlueprintDialog extends LitElement {
 
     return html`
       <ha-dialog open @closed=${this.closeDialog} .heading=${title} hideActions>
-        <ha-dialog-header slot="heading">
+        <ha-dialog-header slot="header">
           <ha-icon-button
             slot="navigationIcon"
             .path=${showBack ? mdiArrowLeft : mdiClose}

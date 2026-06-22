@@ -10,6 +10,7 @@ import type {
   DwainsDashboardConfig
 } from '../types/strategy';
 import { ddLocalize } from '../utils/localize';
+import { restrictNonAdminDashboardSettings } from '../utils/security';
 
 export class DwainsDashboardStrategy implements LovelaceStrategy {
   async generate(config: LovelaceStrategyConfig, hass: HomeAssistant): Promise<LovelaceConfig> {
@@ -136,6 +137,7 @@ export class DwainsDashboardStrategy implements LovelaceStrategy {
 
     // Bouw de views: Home (de Dwains-kaart) + één tab per blueprint-pagina + een "+"-tab.
     const pages = config.pages || [];
+    const canManageDashboard = !restrictNonAdminDashboardSettings(hass, dashboardConfig.settings);
     const views: any[] = [
       {
         strategy: viewConfig,
@@ -159,16 +161,18 @@ export class DwainsDashboardStrategy implements LovelaceStrategy {
         title: page.name,
         path: page.id,
         icon: page.icon || 'mdi:puzzle',
-        cards: [{ type: 'custom:dwains-page-card', page }]
+        cards: [{ type: 'custom:dwains-page-card', page, settings: dashboardConfig.settings || {} }]
       });
     }
 
-    // "+"-tab om nieuwe blueprints toe te voegen (alleen icoon).
-    views.push({
-      icon: 'mdi:plus',
-      path: 'add-blueprint',
-      cards: [{ type: 'custom:dwains-page-card', add: true }]
-    });
+    if (canManageDashboard) {
+      // "+"-tab om nieuwe blueprints toe te voegen (alleen icoon).
+      views.push({
+        icon: 'mdi:plus',
+        path: 'add-blueprint',
+        cards: [{ type: 'custom:dwains-page-card', add: true, settings: dashboardConfig.settings || {} }]
+      });
+    }
 
     return {
       title: config.title || 'Dwains Dashboard',

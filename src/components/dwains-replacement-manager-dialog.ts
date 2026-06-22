@@ -101,7 +101,7 @@ export class DwainsReplacementManagerDialog extends LitElement {
     if (!this._open || !this._config) return nothing;
     return html`
       <ha-dialog open @closed=${this.closeDialog} .heading=${'Blueprint replacements'} hideActions>
-        <ha-dialog-header slot="heading">
+        <ha-dialog-header slot="header">
           <ha-icon-button
             slot="navigationIcon"
             .path=${mdiClose}

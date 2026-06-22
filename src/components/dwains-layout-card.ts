@@ -5,17 +5,21 @@ import { repeat } from 'lit/directives/repeat.js';
 import { ifDefined } from 'lit/directives/if-defined.js';
 
 import type { HomeAssistant } from '../types/home-assistant';
-import type { DwainsDashboardConfig, AreaConfig, EntityConfig, AreaData } from '../types/strategy';
+import type { DwainsDashboardConfig, AreaConfig, EntityConfig, AreaData, HomeSectionKey } from '../types/strategy';
 import { getAreaData, clearAreaDataCache } from '../utils/area';
-import { getAreaIcon, getDomainIcon } from '../utils/icons';
+import { getAreaIcon, getDeviceClassIcon, getDomainColor, getDomainIcon } from '../utils/icons';
 import { getStatusDomains, getTotalWattage, type DomainCount as StatusDomainCount } from '../utils/header-status-domains';
-import { getDomainName } from '../utils/domain-names';
+import { getDeviceClassName, getDomainName } from '../utils/domain-names';
 import { resolveEntityCardConfig } from '../utils/blueprint-replacements';
-import { filterHiddenDeviceEntities } from '../utils/device-admission';
+import { filterHiddenDeviceEntities, isEntityFromHiddenDevice } from '../utils/device-admission';
+import { restrictNonAdminDashboardSettings } from '../utils/security';
 import { sortAreas } from '../utils/area-entities';
+import { navigateHomeAssistant } from '../utils/navigation';
+import { normalizeHiddenHomeSections, normalizeHomeSectionsOrder } from '../utils/home-sections';
 import { showDomainEntitiesDialog } from './utils/show-domain-entities-dialog';
 import { showCardEditorDialog } from './utils/show-card-editor-dialog';
 import { ensureBottomNav } from './dwains-bottom-nav';
+import { openDashboardSettings } from './dwains-dashboard-settings-dialog';
 import { makeDialogManager } from './utils/make-dialog-manager';
 import './utils/dd-card-host';
 import { fireEvent } from './utils/fire-event';
@@ -23,10 +27,53 @@ import { ddLocalize } from '../utils/localize';
 
 // Use DomainCount from header-status-domains utility
 type DomainCount = StatusDomainCount;
+type PictureTextTone = 'light' | 'dark';
+type PictureContrastCacheValue = PictureTextTone | 'pending';
 
 interface CachedAreaData {
   data: AreaData;
   timestamp: number;
+}
+
+interface PersistentNotification {
+  notification_id: string;
+  title?: string | null;
+  message: string;
+  created_at?: string;
+}
+
+interface MobileEntityGroup {
+  key: string;
+  name: string;
+  icon: string;
+  entities: EntityConfig[];
+}
+
+interface HousePowerRoom {
+  areaId: string;
+  name: string;
+  icon: string;
+  watts: number;
+  formatted: string;
+  percentage: number;
+}
+
+interface HousePowerUsage {
+  totalWatts: number;
+  formattedTotal: string;
+  sensorCount: number;
+  rooms: HousePowerRoom[];
+}
+
+interface HomeAreaCamera {
+  areaId: string;
+  areaName: string;
+  areaIcon: string;
+  entityId: string;
+  name: string;
+  state: string;
+  imageUrl?: string;
+  count: number;
 }
 
 @customElement('dwains-layout-card')
@@ -48,6 +95,16 @@ export class DwainsLayoutCard extends LitElement {
   @state() private _mobileNavOpen = false;
   @state() private _hasRelevantStateChanges = false;
   @state() private _editMode = false;
+  @state() private _notificationsOpen = false;
+  @state() private _persistentNotifications: PersistentNotification[] = [];
+  @state() private _notificationsLoading = false;
+  @state() private _notificationsError = '';
+  @state() private _mobileDomainMenu: { areaId: string; groupKey: string } | null = null;
+  @state() private _areaHeaderStuck = false;
+  @state() private _areaHeaderRevealed = false;
+  @state() private _mobileEntityLayout: 'rail' | 'grid' = 'rail';
+  @state() private _mobileHomeAreasLayout: 'rail' | 'grid' = 'rail';
+  @state() private _mobileHomeDevicesLayout: 'rail' | 'grid' = 'rail';
 
   // Performance optimizations
   private _areaEntitiesCache = new Map<string, { entities: EntityConfig[], timestamp: number }>();
@@ -59,6 +116,13 @@ export class DwainsLayoutCard extends LitElement {
   private _timeInterval?: number;
   private _cardObserver?: IntersectionObserver;
   private _resizeObserver?: ResizeObserver;
+  private _persistentNotificationsUnsub?: () => void;
+  private _persistentNotificationsLoaded = false;
+  private _mobileDomainMenuPortal?: HTMLElement;
+  private _areaHeaderScrollRaf?: number;
+  private _lastAreaScrollTop = 0;
+  private _areaScrollUpDistance = 0;
+  private _pictureContrastCache = new Map<string, PictureContrastCacheValue>();
 
   // Debounce timers
   private _updateDebounceTimer?: number;
@@ -101,6 +165,22 @@ export class DwainsLayoutCard extends LitElement {
     }
   }
 
+  private _syncBottomNavAreaContext(): void {
+    const area = this.config?.areas?.find(a => a.area_id === this._selectedArea);
+    window.dispatchEvent(new CustomEvent('dwains-area-context-changed', {
+      detail: {
+        areaId: this._selectedView === 'area' ? this._selectedArea : null,
+        icon: area ? getAreaIcon(area) : 'mdi:home',
+        name: area?.name || 'Home',
+        view: this._selectedView || 'home',
+      },
+    }));
+  }
+
+  private _canManageDashboard(): boolean {
+    return !restrictNonAdminDashboardSettings(this.hass, this.config?.settings);
+  }
+
   static getStubConfig() {
     return {
       type: 'custom:dwains-layout-card',
@@ -120,6 +200,34 @@ export class DwainsLayoutCard extends LitElement {
       /*background: var(--primary-background-color);*/
       color: var(--primary-text-color);
       overflow: hidden;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    button,
+    .area-button,
+    .home-status-card,
+    .status-card-compact,
+    .mobile-area-card,
+    .house-person-mini,
+    .person-card,
+    .favorite-card-wrapper,
+    .favorite-quick-action,
+    .mobile-domain-more,
+    .mobile-layout-toggle,
+    .mobile-entity-card,
+    .mobile-entity-action,
+    .mobile-cover-action,
+    .mobile-entity-toggle,
+    .area-badge,
+    .area-quick-control,
+    .dd-edit-toggle,
+    .unavailable-entities-icon,
+    .dd-add-card,
+    .dd-custom-card-wrap.editing {
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
     }
 
     /* Layout Container */
@@ -305,43 +413,43 @@ export class DwainsLayoutCard extends LitElement {
 
     /* Domain-specific status card colors */
     .status-card-compact.light .status-card-icon-compact {
-      background: color-mix(in srgb, var(--warning-color) 15%, transparent);
+      background: color-mix(in srgb, var(--status-color, #e1a129) 15%, transparent);
     }
 
     .status-card-compact.light ha-icon {
-      color: var(--warning-color);
+      color: var(--status-color, #e1a129);
     }
 
     .status-card-compact.switch .status-card-icon-compact {
-      background: color-mix(in srgb, var(--info-color) 15%, transparent);
+      background: color-mix(in srgb, var(--status-color, #2f6fd6) 15%, transparent);
     }
 
     .status-card-compact.switch ha-icon {
-      color: var(--info-color);
+      color: var(--status-color, #2f6fd6);
     }
 
     .status-card-compact.binary_sensor .status-card-icon-compact {
-      background: color-mix(in srgb, var(--error-color) 15%, transparent);
+      background: color-mix(in srgb, var(--status-color, #df5b63) 15%, transparent);
     }
 
     .status-card-compact.binary_sensor ha-icon {
-      color: var(--error-color);
+      color: var(--status-color, #df5b63);
     }
 
     .status-card-compact.person .status-card-icon-compact {
-      background: color-mix(in srgb, var(--success-color) 15%, transparent);
+      background: color-mix(in srgb, var(--status-color, #6d7891) 15%, transparent);
     }
 
     .status-card-compact.person ha-icon {
-      color: var(--success-color);
+      color: var(--status-color, #6d7891);
     }
 
     .status-card-compact.wattage .status-card-icon-compact {
-      background: color-mix(in srgb, var(--warning-color) 15%, transparent);
+      background: color-mix(in srgb, var(--status-color, #d88e20) 15%, transparent);
     }
 
     .status-card-compact.wattage ha-icon {
-      color: var(--warning-color);
+      color: var(--status-color, #d88e20);
     }
 
     /* Header Expand Button */
@@ -415,6 +523,7 @@ export class DwainsLayoutCard extends LitElement {
     }
 
     .area-button {
+      box-sizing: border-box;
       display: flex;
       align-items: center;
       gap: 12px;
@@ -430,6 +539,7 @@ export class DwainsLayoutCard extends LitElement {
       text-align: left;
       color: var(--primary-text-color);
       position: relative;
+      min-width: 0;
       overflow: hidden;
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
     }
@@ -453,6 +563,21 @@ export class DwainsLayoutCard extends LitElement {
     .area-button.has-picture {
       position: relative;
       background: var(--secondary-background-color);
+      --area-picture-text-color: #ffffff;
+      --area-picture-muted-text-color: rgba(255, 255, 255, 0.76);
+      --area-picture-text-shadow: 0 2px 10px rgba(0, 0, 0, 0.62);
+      --area-picture-overlay:
+        linear-gradient(90deg, rgba(11, 17, 28, 0.76) 0%, rgba(11, 17, 28, 0.38) 54%, rgba(11, 17, 28, 0.08) 100%),
+        linear-gradient(180deg, rgba(11, 17, 28, 0.04), rgba(11, 17, 28, 0.34));
+    }
+
+    .area-button.has-picture.text-dark {
+      --area-picture-text-color: #ffffff;
+      --area-picture-muted-text-color: rgba(255, 255, 255, 0.76);
+      --area-picture-text-shadow: 0 2px 10px rgba(0, 0, 0, 0.62);
+      --area-picture-overlay:
+        linear-gradient(90deg, rgba(11, 17, 28, 0.76) 0%, rgba(11, 17, 28, 0.38) 54%, rgba(11, 17, 28, 0.08) 100%),
+        linear-gradient(180deg, rgba(11, 17, 28, 0.04), rgba(11, 17, 28, 0.34));
     }
 
     .area-background {
@@ -502,8 +627,8 @@ export class DwainsLayoutCard extends LitElement {
     /* Enhanced text styling for picture backgrounds */
     .area-button.has-picture .area-name,
     .area-button.has-picture .area-sensors {
-      text-shadow: 0 1px 3px rgba(0,0,0,0.7);
-      color: var(--text-primary-color);
+      text-shadow: var(--area-picture-text-shadow);
+      color: var(--area-picture-text-color);
     }
 
     /* Area main icon in sidebar - override home view styling */
@@ -559,6 +684,52 @@ export class DwainsLayoutCard extends LitElement {
       flex: 1;
     }
 
+    .area-menu-chevron {
+      display: none;
+    }
+
+    .home-notification-shortcut {
+      box-sizing: border-box;
+      position: relative;
+      z-index: 2;
+      min-width: 42px;
+      height: 28px;
+      margin-left: auto;
+      padding: 0 7px;
+      border: 0;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      flex-shrink: 0;
+      cursor: pointer;
+      color: #dc2626;
+      background: color-mix(in srgb, #ef4444 12%, var(--card-background-color));
+      box-shadow:
+        inset 0 0 0 1px rgba(220, 38, 38, 0.08),
+        0 6px 14px rgba(220, 38, 38, 0.1);
+    }
+
+    .home-notification-shortcut ha-icon {
+      --mdc-icon-size: 15px;
+    }
+
+    .home-notification-count {
+      min-width: 17px;
+      height: 17px;
+      padding: 0 5px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: #e13f3f;
+      color: #ffffff;
+      font-size: 11px;
+      font-weight: 850;
+      line-height: 1;
+    }
+
     .area-name {
       font-weight: 600;
       font-size: 16px;
@@ -590,12 +761,13 @@ export class DwainsLayoutCard extends LitElement {
     .content-area {
       flex: 1;
       overflow-y: auto;
+      overflow-x: hidden;
       padding: 16px;
     }
     /* Ruimte voor de mobiele onderbalk */
     @media (max-width: 768px) {
       .content-area {
-        padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+        padding-bottom: calc(104px + env(safe-area-inset-bottom, 0px));
       }
     }
 
@@ -608,24 +780,80 @@ export class DwainsLayoutCard extends LitElement {
 
     /* Home Welcome */
     .home-welcome {
-      text-align: center;
+      text-align: left;
       margin-bottom: 28px;
-      padding: 20px 0;
-      background: linear-gradient(135deg, var(--card-background-color) 0%, var(--primary-background-color) 100%);
-      border-radius: 24px;
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
+      padding: 0;
+      background: color-mix(in srgb, var(--card-background-color) 97%, var(--primary-background-color));
+      border: 1px solid rgba(15, 23, 42, 0.06);
+      border-radius: 8px;
+      box-shadow: 0 14px 34px rgba(15, 23, 42, 0.08);
     }
 
     .welcome-content {
       margin: 0 auto;
-      padding: 0 24px;
+      padding: 18px 22px;
     }
 
     .welcome-header {
-      display: flex;
-      justify-content: space-between;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto auto;
       align-items: center;
-      margin-bottom: 16px;
+      gap: 18px;
+      margin-bottom: 0;
+    }
+
+    .welcome-user {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      min-width: 0;
+    }
+
+    .welcome-avatar {
+      border: 0;
+      padding: 0;
+      display: inline-flex;
+      width: 52px;
+      height: 52px;
+      overflow: hidden;
+      align-items: center;
+      justify-content: center;
+      flex: 0 0 auto;
+      appearance: none;
+      -webkit-appearance: none;
+      background: var(--secondary-background-color);
+      color: var(--secondary-text-color);
+      border-radius: 999px;
+      cursor: pointer;
+      box-shadow:
+        0 10px 22px rgba(15, 23, 42, 0.1),
+        0 0 0 3px rgba(255, 255, 255, 0.72);
+      transition:
+        transform 0.18s ease,
+        box-shadow 0.18s ease;
+    }
+
+    .welcome-avatar:hover {
+      transform: translateY(-1px);
+    }
+
+    .welcome-avatar:focus-visible {
+      outline: 2px solid var(--primary-color);
+      outline-offset: 3px;
+    }
+
+    .welcome-avatar ha-icon {
+      --mdc-icon-size: 26px;
+    }
+
+    .welcome-avatar img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .welcome-copy {
+      min-width: 0;
     }
 
     .welcome-text {
@@ -635,15 +863,83 @@ export class DwainsLayoutCard extends LitElement {
     }
 
     .welcome-greeting {
-      font-size: 24px;
+      font-size: 22px;
       font-weight: 400;
       color: var(--secondary-text-color);
     }
 
     .welcome-name {
-      font-size: 32px;
-      font-weight: 600;
+      font-size: 28px;
+      font-weight: 750;
       color: var(--primary-text-color);
+    }
+
+    .welcome-title {
+      display: none;
+    }
+
+    .welcome-return {
+      display: block;
+      margin-top: 5px;
+      color: var(--secondary-text-color);
+      font-size: 13px;
+      font-weight: 650;
+      line-height: 1.15;
+    }
+
+    .welcome-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .welcome-action {
+      position: relative;
+      border: 0;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 44px;
+      height: 44px;
+      border-radius: 999px;
+      color: var(--primary-text-color);
+      background: color-mix(in srgb, var(--secondary-background-color) 74%, var(--card-background-color));
+      box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.05);
+      transition: transform 0.18s ease, box-shadow 0.18s ease, background-color 0.18s ease;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .welcome-action:hover {
+      background: color-mix(in srgb, var(--primary-color) 10%, var(--card-background-color));
+      box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary-color) 18%, transparent);
+    }
+
+    .welcome-action ha-icon {
+      --mdc-icon-size: 22px;
+    }
+
+    .welcome-action:active {
+      transform: scale(0.96);
+    }
+
+    .welcome-action-badge {
+      position: absolute;
+      top: -2px;
+      right: -2px;
+      min-width: 17px;
+      height: 17px;
+      padding: 0 5px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--error-color);
+      color: #fff;
+      font-size: 10px;
+      font-weight: 850;
+      line-height: 1;
+      box-shadow: 0 0 0 2px var(--card-background-color);
     }
 
     .welcome-time-section {
@@ -651,27 +947,31 @@ export class DwainsLayoutCard extends LitElement {
       flex-direction: column;
       align-items: flex-end;
       gap: 0px;
+      min-width: 112px;
       line-height: 1.1;
     }
 
     .welcome-time {
-      font-size: 36px;
-      font-weight: 700;
+      font-size: 34px;
+      font-weight: 800;
       color: var(--primary-text-color);
       font-family: 'Roboto Mono', monospace;
     }
 
     .welcome-date {
-      font-size: 16px;
+      margin-top: 4px;
+      font-size: 14px;
       opacity: 0.8;
       color: var(--secondary-text-color);
-      font-weight: 500;
+      font-weight: 650;
     }
 
     .welcome-subheader {
       display: flex;
-      justify-content: space-between;
+      justify-content: flex-start;
       align-items: center;
+      gap: 10px;
+      margin-top: 14px;
     }
 
     .welcome-alarm {
@@ -751,49 +1051,125 @@ export class DwainsLayoutCard extends LitElement {
     /* Mobile Responsive Design */
     @media (max-width: 768px) {
       .home-welcome {
-        margin-bottom: 32px;
-        padding: 24px 0;
-        border-radius: 16px;
+        text-align: left;
+        margin: -10px -10px 16px;
+        padding: calc(18px + env(safe-area-inset-top, 0px)) 20px 16px;
+        border-radius: 0 0 8px 8px;
+        background:
+          linear-gradient(180deg,
+            color-mix(in srgb, var(--card-background-color) 96%, var(--primary-color)) 0%,
+            color-mix(in srgb, var(--card-background-color) 92%, var(--primary-background-color)) 100%);
+        box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
       }
 
       .welcome-content {
-        padding: 0 16px;
+        padding: 0;
       }
 
       .welcome-header {
-        flex-direction: column;
-        gap: 16px;
-        margin-bottom: 20px;
+        display: flex;
+        flex-direction: row;
+        justify-content: space-between;
+        gap: 14px;
+        margin-bottom: 0;
+      }
+
+      .welcome-user {
+        gap: 10px;
+        flex: 1 1 auto;
+      }
+
+      .welcome-avatar {
+        display: inline-flex;
+        width: 38px;
+        height: 38px;
+        border-radius: 999px;
+        box-shadow:
+          0 8px 18px rgba(15, 23, 42, 0.1),
+          0 0 0 3px rgba(255, 255, 255, 0.72);
+      }
+
+      .welcome-avatar ha-icon {
+        --mdc-icon-size: 21px;
       }
 
       .welcome-text {
-        align-items: center;
-        gap: 4px;
+        display: block;
       }
 
-      .welcome-greeting {
-        font-size: 20px;
-      }
-
+      .welcome-greeting,
       .welcome-name {
-        font-size: 28px;
+        display: none;
+      }
+
+      .welcome-title {
+        display: block;
+        color: var(--primary-text-color);
+        font-size: 15px;
+        font-weight: 750;
+        line-height: 1.1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .welcome-return {
+        display: block;
+        margin-top: 3px;
+        color: var(--secondary-text-color);
+        font-size: 12px;
+        font-weight: 600;
+        line-height: 1.1;
       }
 
       .welcome-time-section {
         display: none;
       }
 
-      .welcome-subheader {
-        flex-direction: column;
-        gap: 12px;
+      .welcome-actions {
+        display: flex;
         align-items: center;
+        gap: 8px;
+        flex: 0 0 auto;
+      }
+
+      .welcome-action {
+        width: 42px;
+        height: 42px;
+        border-radius: 999px;
+        color: var(--primary-text-color);
+        background: color-mix(in srgb, var(--card-background-color) 86%, var(--primary-background-color));
+        box-shadow:
+          0 8px 20px color-mix(in srgb, var(--primary-text-color) 10%, transparent),
+          inset 0 0 0 1px color-mix(in srgb, var(--primary-text-color) 8%, transparent);
+      }
+
+      .welcome-action ha-icon {
+        --mdc-icon-size: 21px;
+      }
+
+      .welcome-subheader {
+        justify-content: flex-start;
+        gap: 8px;
+        margin-top: 16px;
+        overflow-x: auto;
+        padding-bottom: 2px;
+        scrollbar-width: none;
+      }
+
+      .welcome-subheader::-webkit-scrollbar {
+        display: none;
       }
 
       .welcome-alarm,
       .welcome-weather {
-        padding: 10px 20px;
-        min-width: 140px;
+        min-width: auto;
+        height: 42px;
+        padding: 0 14px;
         justify-content: center;
+        border-radius: 999px;
+        flex: 0 0 auto;
+        box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
       }
 
       .alarm-text,
@@ -804,34 +1180,36 @@ export class DwainsLayoutCard extends LitElement {
 
     @media (max-width: 480px) {
       .home-welcome {
-        padding: 20px 0;
-        margin-bottom: 24px;
+        padding: calc(16px + env(safe-area-inset-top, 0px)) 18px 14px;
+        margin-bottom: 14px;
       }
 
-      .welcome-content {
-        padding: 0 12px;
+      .welcome-header {
+        gap: 10px;
       }
 
-      .welcome-greeting {
-      font-size: 18px;
+      .welcome-avatar {
+        width: 36px;
+        height: 36px;
       }
 
-      .welcome-name {
-        font-size: 24px;
+      .welcome-title {
+        font-size: 14px;
       }
 
-      .welcome-time {
-        font-size: 28px;
+      .welcome-return {
+        font-size: 11px;
       }
 
-      .welcome-date {
-        font-size: 13px;
+      .welcome-action {
+        width: 40px;
+        height: 40px;
       }
 
       .welcome-alarm,
       .welcome-weather {
-        padding: 8px 16px;
-        min-width: 120px;
+        height: 40px;
+        padding: 0 13px;
         font-size: 14px;
       }
 
@@ -844,6 +1222,203 @@ export class DwainsLayoutCard extends LitElement {
     /* Home Status Cards */
     .home-status-section {
       margin-bottom: 48px;
+    }
+
+    .home-status-heading {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      margin: 0 0 14px;
+      color: var(--primary-text-color);
+      font-size: 20px;
+      font-weight: 850;
+      line-height: 1.1;
+    }
+
+    .home-status-heading ha-icon {
+      --mdc-icon-size: 20px;
+      width: 30px;
+      height: 30px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      color: var(--primary-color);
+      background: color-mix(in srgb, var(--primary-color) 12%, transparent);
+    }
+
+    .home-camera-section {
+      margin-bottom: 36px;
+    }
+
+    .home-camera-section .home-status-heading ha-icon {
+      color: #ef4444;
+      background: color-mix(in srgb, #ef4444 12%, transparent);
+      box-shadow: inset 0 0 0 1px color-mix(in srgb, #ef4444 8%, transparent);
+    }
+
+    .home-camera-section .mobile-layout-toggle.active {
+      color: #ef4444;
+      background: color-mix(in srgb, #ef4444 12%, var(--card-background-color));
+      box-shadow:
+        0 8px 18px rgba(15, 23, 42, 0.08),
+        inset 0 0 0 1px color-mix(in srgb, #ef4444 8%, transparent);
+    }
+
+    .home-camera-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 14px;
+    }
+
+    .home-camera-card {
+      position: relative;
+      min-height: 168px;
+      overflow: hidden;
+      border: 0;
+      border-radius: 12px;
+      display: flex;
+      align-items: stretch;
+      padding: 0;
+      background: color-mix(in srgb, var(--primary-text-color) 12%, var(--card-background-color));
+      color: #ffffff;
+      cursor: pointer;
+      text-align: left;
+      box-shadow:
+        0 16px 32px rgba(15, 23, 42, 0.12),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+      transition: transform 0.18s ease, box-shadow 0.18s ease;
+    }
+
+    .home-camera-card:hover {
+      transform: translateY(-2px);
+      box-shadow:
+        0 20px 42px rgba(15, 23, 42, 0.16),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.16);
+    }
+
+    .home-camera-card:focus-visible {
+      outline: 2px solid var(--primary-color);
+      outline-offset: 3px;
+    }
+
+    .home-camera-image,
+    .home-camera-placeholder {
+      position: absolute;
+      inset: 0;
+      background-size: cover;
+      background-position: center;
+      transform: scale(1.02);
+    }
+
+    .home-camera-placeholder {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background:
+        radial-gradient(circle at 20% 20%, rgba(var(--rgb-primary-color, 3, 169, 244), 0.28), transparent 34%),
+        linear-gradient(135deg, #192133, #0f172a);
+    }
+
+    .home-camera-placeholder ha-icon {
+      --mdc-icon-size: 44px;
+      color: rgba(255, 255, 255, 0.58);
+    }
+
+    .home-camera-card::after {
+      content: "";
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: 52%;
+      background:
+        linear-gradient(180deg,
+          rgba(7, 11, 18, 0) 0%,
+          rgba(7, 11, 18, 0.34) 42%,
+          rgba(7, 11, 18, 0.84) 100%);
+      pointer-events: none;
+    }
+
+    .home-camera-content {
+      position: relative;
+      z-index: 1;
+      width: 100%;
+      min-height: 168px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .home-camera-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .home-camera-area-icon,
+    .home-camera-count {
+      min-width: 36px;
+      height: 36px;
+      border-radius: 11px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(255, 255, 255, 0.2);
+      color: #ffffff;
+      backdrop-filter: blur(12px);
+      box-shadow:
+        0 10px 24px rgba(15, 23, 42, 0.16),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+    }
+
+    .home-camera-area-icon ha-icon {
+      --mdc-icon-size: 20px;
+    }
+
+    .home-camera-count {
+      min-width: 44px;
+      padding: 0 10px;
+      gap: 5px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 850;
+    }
+
+    .home-camera-count ha-icon {
+      --mdc-icon-size: 14px;
+    }
+
+    .home-camera-copy {
+      min-width: 0;
+      text-shadow: 0 2px 12px rgba(0, 0, 0, 0.62);
+    }
+
+    .home-camera-name {
+      font-size: 18px;
+      font-weight: 850;
+      line-height: 1.08;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .home-camera-meta {
+      margin-top: 5px;
+      color: rgba(255, 255, 255, 0.76);
+      font-size: 12px;
+      font-weight: 720;
+      line-height: 1.2;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .mobile-home-section,
+    .mobile-section-heading {
+      display: none;
     }
 
     /* Person Cards Section */
@@ -859,56 +1434,92 @@ export class DwainsLayoutCard extends LitElement {
     }
 
     .person-card {
-      background: var(--card-background-color);
-      border-radius: 16px;
-      padding: 16px;
-      cursor: pointer;
-      transition: all 0.3s ease;
-      border: 1px solid var(--divider-color);
+      --person-color: #8a94a6;
+      --person-bg: color-mix(in srgb, var(--person-color) 8%, var(--card-background-color));
       position: relative;
-      overflow: hidden;
-      display: flex;
-      flex-direction: row;
+      min-height: 98px;
+      padding: 16px 18px;
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
       align-items: center;
       gap: 16px;
+      overflow: hidden;
+      border: 1px solid rgba(15, 23, 42, 0.07);
+      border-radius: 18px;
+      background:
+        radial-gradient(circle at 90% 10%, color-mix(in srgb, var(--person-color) 15%, transparent), transparent 42%),
+        var(--person-bg);
+      cursor: pointer;
+      box-shadow:
+        0 16px 34px rgba(15, 23, 42, 0.08),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.34);
+      transition:
+        transform 0.18s ease,
+        box-shadow 0.18s ease,
+        border-color 0.18s ease;
+    }
+
+    .person-card::after {
+      content: "";
+      position: absolute;
+      left: 18px;
+      right: 18px;
+      bottom: 0;
+      height: 3px;
+      border-radius: 999px 999px 0 0;
+      background: var(--person-color);
+      opacity: 0.34;
     }
 
     .person-card.home {
-      border-color: var(--success-color);
-      background: linear-gradient(135deg,
-        var(--card-background-color) 0%,
-        color-mix(in srgb, var(--success-color) 10%, transparent) 100%);
+      --person-color: #2f9b62;
+      --person-bg: color-mix(in srgb, #2f9b62 10%, var(--card-background-color));
     }
 
     .person-card.away {
-      border-color: var(--secondary-text-color);
-      opacity: 0.8;
+      --person-color: #d88e20;
+      --person-bg: color-mix(in srgb, #d88e20 9%, var(--card-background-color));
+    }
+
+    .person-card.unknown {
+      --person-color: #7c67c7;
+      --person-bg: color-mix(in srgb, #7c67c7 8%, var(--card-background-color));
     }
 
     .person-card:hover {
-      transform: translateY(-4px);
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+      transform: translateY(-2px);
+      border-color: color-mix(in srgb, var(--person-color) 24%, transparent);
+      box-shadow:
+        0 20px 42px rgba(15, 23, 42, 0.12),
+        inset 0 0 0 1px color-mix(in srgb, var(--person-color) 16%, transparent);
+    }
+
+    .person-card:active {
+      transform: scale(0.988);
+    }
+
+    .person-card:focus-visible {
+      outline: 2px solid color-mix(in srgb, var(--person-color) 72%, #ffffff);
+      outline-offset: 3px;
     }
 
     .person-avatar-wrapper {
       position: relative;
+      z-index: 1;
       flex-shrink: 0;
     }
 
     .person-avatar {
-      width: 60px;
-      height: 60px;
-      border-radius: 50%;
+      width: 64px;
+      height: 64px;
+      border-radius: 22px;
       overflow: hidden;
-      background: var(--secondary-background-color);
+      background: color-mix(in srgb, var(--person-color) 14%, var(--secondary-background-color));
       display: flex;
       align-items: center;
       justify-content: center;
-      border: 2px solid var(--divider-color);
-    }
-
-    .person-card.home .person-avatar {
-      border-color: var(--success-color);
+      border: 3px solid color-mix(in srgb, var(--person-color) 26%, rgba(255, 255, 255, 0.84));
+      box-shadow: 0 12px 24px color-mix(in srgb, var(--person-color) 16%, transparent);
     }
 
     .person-avatar img {
@@ -918,73 +1529,101 @@ export class DwainsLayoutCard extends LitElement {
     }
 
     .person-avatar ha-icon {
-      --mdc-icon-size: 36px;
-      color: var(--secondary-text-color);
+      --mdc-icon-size: 34px;
+      color: var(--person-color);
     }
 
     .person-home-indicator {
       position: absolute;
-      bottom: -3px;
-      right: -3px;
-      width: 20px;
-      height: 20px;
-      background: var(--success-color);
-      border-radius: 50%;
+      bottom: -5px;
+      right: -5px;
+      width: 26px;
+      height: 26px;
+      background: var(--person-color);
+      border-radius: 999px;
       display: flex;
       align-items: center;
       justify-content: center;
-      border: 2px solid var(--card-background-color);
+      border: 3px solid var(--card-background-color);
+      box-shadow: 0 8px 18px color-mix(in srgb, var(--person-color) 26%, transparent);
     }
 
     .person-home-indicator ha-icon {
-      --mdc-icon-size: 12px;
+      --mdc-icon-size: 14px;
       color: var(--text-primary-color);
     }
 
     .person-info {
+      position: relative;
+      z-index: 1;
       text-align: left;
       display: flex;
       flex-direction: column;
-      gap: 2px;
+      gap: 6px;
       flex: 1;
       min-width: 0;
     }
 
     .person-name {
       font-size: 18px;
-      font-weight: 600;
+      font-weight: 850;
       color: var(--primary-text-color);
+      line-height: 1.15;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
     .person-status {
+      display: inline-flex;
+      width: max-content;
+      max-width: 100%;
+      align-items: center;
+      gap: 6px;
+      min-height: 27px;
+      padding: 0 10px;
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--person-color) 12%, transparent);
+      color: var(--person-color);
       font-size: 14px;
-      color: var(--secondary-text-color);
-      font-weight: 500;
+      font-weight: 800;
+      line-height: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
-    .person-card.home .person-status {
-      color: var(--success-color);
+    .person-status ha-icon {
+      --mdc-icon-size: 15px;
     }
 
     .person-details {
+      position: relative;
+      z-index: 1;
       display: flex;
-      flex-direction: column;
-      gap: 4px;
+      flex-direction: row;
+      flex-wrap: wrap;
+      gap: 7px;
       align-items: flex-end;
+      justify-content: flex-end;
       flex-shrink: 0;
       margin-left: auto;
+      max-width: 170px;
     }
 
     .person-battery,
     .person-distance {
       display: flex;
       align-items: center;
-      gap: 4px;
+      gap: 5px;
+      min-height: 28px;
       font-size: 12px;
-      color: var(--secondary-text-color);
-      background: var(--secondary-background-color);
-      padding: 2px 6px;
-      border-radius: 8px;
+      font-weight: 800;
+      color: color-mix(in srgb, var(--primary-text-color) 72%, transparent);
+      background: rgba(255, 255, 255, 0.62);
+      padding: 0 9px;
+      border-radius: 999px;
+      box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.04);
     }
 
     .person-battery ha-icon,
@@ -1156,38 +1795,38 @@ export class DwainsLayoutCard extends LitElement {
     }
 
     .info-badge.light {
-      background: color-mix(in srgb, var(--warning-color) 10%, var(--card-background-color));
-      color: var(--warning-color);
+      background: color-mix(in srgb, var(--badge-color, #e1a129) 10%, var(--card-background-color));
+      color: var(--badge-color, #e1a129);
     }
 
     .info-badge.switch {
-      background: color-mix(in srgb, var(--info-color) 10%, var(--card-background-color));
-      color: var(--info-color);
+      background: color-mix(in srgb, var(--badge-color, #2f6fd6) 10%, var(--card-background-color));
+      color: var(--badge-color, #2f6fd6);
     }
 
     .info-badge.climate {
-      background: color-mix(in srgb, var(--success-color) 10%, var(--card-background-color));
-      color: var(--success-color);
+      background: color-mix(in srgb, var(--badge-color, #34a6d8) 10%, var(--card-background-color));
+      color: var(--badge-color, #34a6d8);
     }
 
     .info-badge.media_player {
-      background: color-mix(in srgb, var(--accent-color) 10%, var(--card-background-color));
-      color: var(--accent-color);
+      background: color-mix(in srgb, var(--badge-color, #7c67c7) 10%, var(--card-background-color));
+      color: var(--badge-color, #7c67c7);
     }
 
     .info-badge.cover {
-      background: color-mix(in srgb, var(--purple-color) 10%, var(--card-background-color));
-      color: var(--purple-color);
+      background: color-mix(in srgb, var(--badge-color, #1494aa) 10%, var(--card-background-color));
+      color: var(--badge-color, #1494aa);
     }
 
     .info-badge.fan {
-      background: color-mix(in srgb, var(--blue-color) 10%, var(--card-background-color));
-      color: var(--blue-color);
+      background: color-mix(in srgb, var(--badge-color, #2b8fcb) 10%, var(--card-background-color));
+      color: var(--badge-color, #2b8fcb);
     }
 
     .info-badge.motion {
-      background: color-mix(in srgb, var(--orange-color) 10%, var(--card-background-color));
-      color: var(--orange-color);
+      background: color-mix(in srgb, var(--badge-color, #df5b63) 10%, var(--card-background-color));
+      color: var(--badge-color, #df5b63);
     }
 
     .info-badge.alerts {
@@ -1386,10 +2025,586 @@ export class DwainsLayoutCard extends LitElement {
       gap: 8px;
     }
 
+    .entities-grid.cover-entities-grid {
+      grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+      gap: 12px;
+    }
+
+    .entities-grid.light-entities-grid {
+      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      gap: 12px;
+    }
+
+    .entities-grid.sensor-entities-grid {
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 12px;
+    }
+
+    .entities-grid.motion-entities-grid {
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 10px;
+    }
+
     .entity-card-wrapper {
       min-height: 60px;
       position: relative;
     }
+
+    .cover-entity-card,
+    .light-entity-card,
+    .motion-entity-card {
+      min-height: 72px;
+    }
+
+    .sensor-entity-card {
+      min-height: 150px;
+    }
+
+    .cover-entity-card dd-card-host,
+    .light-entity-card dd-card-host,
+    .sensor-entity-card dd-card-host,
+    .motion-entity-card dd-card-host {
+      display: block;
+    }
+
+    .mobile-area-overview,
+    .mobile-entities-section {
+      display: none;
+    }
+
+    .area-header-metrics {
+      display: none;
+    }
+
+    .mobile-area-metrics {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+
+    .mobile-area-metric,
+    .area-header-metric {
+      min-height: 64px;
+      padding: 10px 12px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      overflow: hidden;
+      border-radius: 10px;
+      background: color-mix(in srgb, var(--metric-color) 10%, var(--card-background-color));
+      box-shadow:
+        0 10px 24px rgba(15, 23, 42, 0.06),
+        inset 0 0 0 1px color-mix(in srgb, var(--metric-color) 12%, transparent);
+    }
+
+    .mobile-area-metric.temperature,
+    .area-header-metric.temperature {
+      --metric-color: #7c67c7;
+    }
+
+    .mobile-area-metric.humidity,
+    .area-header-metric.humidity {
+      --metric-color: #34a6d8;
+    }
+
+    .mobile-area-metric.power,
+    .area-header-metric.power {
+      --metric-color: #d88e20;
+    }
+
+    .mobile-area-metric.energy,
+    .area-header-metric.energy {
+      --metric-color: #7c67c7;
+    }
+
+    .metric-ring {
+      width: 44px;
+      height: 44px;
+      position: relative;
+      flex: 0 0 auto;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      background:
+        conic-gradient(var(--metric-color) 0deg var(--metric-angle), rgba(15, 23, 42, 0.08) var(--metric-angle) 270deg, transparent 270deg 360deg);
+    }
+
+    .metric-ring::after {
+      content: "";
+      position: absolute;
+      inset: 5px;
+      border-radius: inherit;
+      background: color-mix(in srgb, var(--card-background-color) 92%, #ffffff);
+    }
+
+    .metric-ring.metric-icon {
+      background: color-mix(in srgb, var(--metric-color) 15%, transparent);
+      box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--metric-color) 16%, transparent);
+    }
+
+    .metric-ring.metric-icon::after {
+      display: none;
+    }
+
+    .metric-ring.metric-icon ha-icon {
+      --mdc-icon-size: 22px;
+      color: var(--metric-color);
+    }
+
+    .metric-value {
+      position: relative;
+      z-index: 1;
+      color: color-mix(in srgb, var(--primary-text-color) 74%, transparent);
+      font-size: 12px;
+      font-weight: 850;
+      line-height: 1;
+    }
+
+    .metric-copy {
+      min-width: 0;
+    }
+
+    .metric-label {
+      color: color-mix(in srgb, var(--primary-text-color) 62%, transparent);
+      font-size: 13px;
+      font-weight: 850;
+      line-height: 1.1;
+    }
+
+    .metric-range {
+      margin-top: 4px;
+      color: color-mix(in srgb, var(--primary-text-color) 38%, transparent);
+      font-size: 10px;
+      font-weight: 800;
+      line-height: 1;
+    }
+
+    .metric-reading {
+      margin-top: 3px;
+      color: var(--primary-text-color);
+      font-size: 13px;
+      font-weight: 900;
+      line-height: 1;
+      white-space: nowrap;
+    }
+
+    .mobile-entities-section {
+      gap: 22px;
+    }
+
+    .mobile-domain-group {
+      min-width: 0;
+      position: relative;
+    }
+
+    .mobile-domain-group.menu-open {
+      z-index: 1200;
+    }
+
+    .mobile-domain-header {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 0 2px;
+      margin-bottom: 10px;
+    }
+
+    .mobile-domain-title {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .mobile-layout-toggle {
+      width: 30px;
+      height: 30px;
+      padding: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex: 0 0 auto;
+      border: 0;
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--secondary-background-color) 72%, #ffffff);
+      color: color-mix(in srgb, var(--primary-text-color) 58%, transparent);
+      box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.05);
+      cursor: pointer;
+      transition:
+        background-color 0.18s ease,
+        color 0.18s ease,
+        transform 0.18s ease;
+    }
+
+    .mobile-layout-toggle.active {
+      background: #182044;
+      color: #ffffff;
+      box-shadow: 0 8px 18px rgba(15, 23, 42, 0.14);
+    }
+
+    .mobile-layout-toggle:active {
+      transform: scale(0.94);
+    }
+
+    .mobile-layout-toggle ha-icon {
+      --mdc-icon-size: 17px;
+    }
+
+    .mobile-domain-title-copy {
+      min-width: 0;
+      display: inline-flex;
+      align-items: baseline;
+      gap: 7px;
+    }
+
+    .mobile-domain-title-label {
+      color: var(--primary-text-color);
+      font-size: 18px;
+      font-weight: 900;
+      line-height: 1.1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .mobile-domain-count {
+      color: color-mix(in srgb, var(--primary-text-color) 42%, transparent);
+      font-size: 12px;
+      font-weight: 850;
+      line-height: 1.1;
+      white-space: nowrap;
+    }
+
+    .mobile-domain-more {
+      width: 32px;
+      height: 32px;
+      padding: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border: 0;
+      border-radius: 999px;
+      background: transparent;
+      color: color-mix(in srgb, var(--primary-text-color) 54%, transparent);
+      cursor: pointer;
+      transition:
+        background-color 0.18s ease,
+        color 0.18s ease,
+        transform 0.18s ease;
+      z-index: 1202;
+    }
+
+    .mobile-domain-more.active {
+      background: rgba(255, 255, 255, 0.78);
+      color: var(--primary-text-color);
+      box-shadow: 0 6px 16px rgba(15, 23, 42, 0.16);
+    }
+
+    .mobile-domain-more:active {
+      transform: scale(0.94);
+    }
+
+    .mobile-domain-more ha-icon {
+      --mdc-icon-size: 20px;
+    }
+
+    .mobile-entity-rail {
+      display: flex;
+      gap: 10px;
+      margin: 0 -10px;
+      padding: 0 10px 2px;
+      overflow-x: auto;
+      scroll-padding: 10px;
+      scroll-snap-type: x proximity;
+      scrollbar-width: none;
+    }
+
+    .mobile-entity-rail::-webkit-scrollbar {
+      display: none;
+    }
+
+    .mobile-entities-section.layout-grid {
+      gap: 26px;
+    }
+
+    .mobile-entities-section.layout-grid .mobile-entity-rail {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      margin: 0;
+      padding: 0;
+      overflow: visible;
+      scroll-snap-type: none;
+      align-items: stretch;
+    }
+
+    .mobile-entities-section.layout-grid .mobile-entity-card {
+      width: 100%;
+      min-width: 0;
+      box-sizing: border-box;
+      flex: none;
+      scroll-snap-align: none;
+    }
+
+    @media (max-width: 380px) {
+      .mobile-entities-section.layout-grid .mobile-entity-rail {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .mobile-entity-card {
+      --entity-color: var(--primary-color);
+      position: relative;
+      box-sizing: border-box;
+      flex: 0 0 164px;
+      min-width: 0;
+      min-height: 128px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      overflow: hidden;
+      border: 0;
+      border-radius: 10px;
+      background: color-mix(in srgb, var(--card-background-color) 98%, #ffffff);
+      color: var(--primary-text-color);
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+      scroll-snap-align: start;
+      box-shadow:
+        0 12px 26px rgba(15, 23, 42, 0.06),
+        inset 0 0 0 1px rgba(15, 23, 42, 0.035);
+      transition:
+        transform 0.18s ease,
+        box-shadow 0.18s ease;
+    }
+
+    .mobile-entity-card:active {
+      transform: scale(0.985);
+      }
+
+      .mobile-entity-card.is-active {
+        box-shadow:
+          0 14px 30px rgba(15, 23, 42, 0.08),
+          inset 0 0 0 1px color-mix(in srgb, var(--entity-color) 18%, transparent);
+      }
+
+      .mobile-entity-card.is-unavailable {
+        opacity: 0.62;
+      }
+
+    .mobile-entity-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .mobile-entity-icon {
+      width: 36px;
+      height: 36px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex: 0 0 auto;
+      border-radius: 11px;
+      color: var(--entity-color);
+      background: color-mix(in srgb, var(--entity-color) 13%, transparent);
+    }
+
+      .mobile-entity-icon ha-icon {
+        --mdc-icon-size: 20px;
+      }
+
+      .mobile-entity-action {
+        padding: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex: 0 0 auto;
+        border: 0;
+        cursor: pointer;
+        transition:
+          background-color 0.18s ease,
+          color 0.18s ease,
+          transform 0.18s ease,
+          opacity 0.18s ease;
+      }
+
+      .mobile-entity-action:active {
+        transform: scale(0.94);
+      }
+
+      .mobile-entity-action:disabled {
+        opacity: 0.36;
+        cursor: not-allowed;
+      }
+
+      .mobile-entity-toggle {
+        width: 38px;
+        height: 22px;
+        justify-content: flex-start;
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--secondary-background-color) 80%, #ffffff);
+        box-shadow:
+          inset 0 0 0 1px rgba(15, 23, 42, 0.07),
+          0 4px 10px rgba(15, 23, 42, 0.08);
+      }
+
+    .mobile-entity-toggle::before {
+      content: "";
+      width: 18px;
+      height: 18px;
+      margin-left: 2px;
+      border-radius: 999px;
+      background: #ffffff;
+      box-shadow: 0 2px 7px rgba(15, 23, 42, 0.2);
+      transition: transform 0.18s ease;
+      }
+
+      .mobile-entity-card.is-active .mobile-entity-toggle {
+        background: var(--entity-color);
+      }
+
+    .mobile-entity-card.is-active .mobile-entity-toggle::before {
+      transform: translateX(16px);
+    }
+
+      .mobile-entity-more,
+      .mobile-lock-action {
+        width: 30px;
+        height: 30px;
+        border-radius: 999px;
+        color: color-mix(in srgb, var(--primary-text-color) 52%, transparent);
+        background: color-mix(in srgb, var(--secondary-background-color) 70%, #ffffff);
+        box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.05);
+      }
+
+      .mobile-lock-action.is-unlocked {
+        color: #ffffff;
+        background: var(--entity-color);
+        box-shadow: 0 8px 16px color-mix(in srgb, var(--entity-color) 24%, transparent);
+      }
+
+      .mobile-entity-more ha-icon,
+      .mobile-lock-action ha-icon {
+        --mdc-icon-size: 17px;
+      }
+
+      .mobile-cover-actions {
+        min-height: 32px;
+        padding: 3px;
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+        flex: 0 0 auto;
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--secondary-background-color) 74%, #ffffff);
+        box-shadow:
+          inset 0 0 0 1px rgba(15, 23, 42, 0.055),
+          0 6px 14px rgba(15, 23, 42, 0.08);
+      }
+
+      .mobile-cover-action {
+        width: 26px;
+        height: 26px;
+        border-radius: 999px;
+        color: color-mix(in srgb, var(--primary-text-color) 58%, transparent);
+        background: transparent;
+      }
+
+      .mobile-cover-action.active {
+        color: #ffffff;
+        background: var(--entity-color);
+        box-shadow: 0 6px 12px color-mix(in srgb, var(--entity-color) 22%, transparent);
+      }
+
+      .mobile-cover-action ha-icon {
+        --mdc-icon-size: 16px;
+      }
+
+      .mobile-entities-section.layout-grid .mobile-cover-actions {
+        min-height: 30px;
+        padding: 3px;
+        gap: 2px;
+      }
+
+      .mobile-entities-section.layout-grid .mobile-cover-action {
+        width: 24px;
+        height: 24px;
+      }
+
+      .mobile-entities-section.layout-grid .mobile-cover-action ha-icon {
+        --mdc-icon-size: 15px;
+      }
+
+      @media (max-width: 430px) {
+        .mobile-entities-section.layout-grid .mobile-entity-card {
+          min-height: 138px;
+          padding: 12px;
+        }
+
+        .mobile-entities-section.layout-grid .mobile-entity-top {
+          gap: 6px;
+        }
+
+        .mobile-entities-section.layout-grid .mobile-entity-icon {
+          width: 34px;
+          height: 34px;
+        }
+
+        .mobile-entities-section.layout-grid .mobile-cover-actions {
+          min-height: 28px;
+          padding: 2px;
+          gap: 1px;
+        }
+
+        .mobile-entities-section.layout-grid .mobile-cover-action {
+          width: 23px;
+          height: 23px;
+        }
+
+        .mobile-entities-section.layout-grid .mobile-cover-action ha-icon {
+          --mdc-icon-size: 14px;
+        }
+      }
+
+    .mobile-entity-meta {
+      color: color-mix(in srgb, var(--primary-text-color) 42%, transparent);
+      font-size: 10px;
+      font-weight: 750;
+      line-height: 1.1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+      .mobile-entity-name {
+        margin-top: 3px;
+        color: var(--primary-text-color);
+        font-size: 15px;
+        font-weight: 900;
+      line-height: 1.08;
+      overflow: hidden;
+      display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+      }
+
+      .mobile-entity-status {
+        margin-top: 5px;
+        color: color-mix(in srgb, var(--primary-text-color) 46%, transparent);
+        font-size: 11px;
+        font-weight: 750;
+        line-height: 1.1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
 
     /* Bewerk-toggle in de area-header */
     .area-header { display: flex; align-items: center; gap: 8px; }
@@ -1510,7 +2725,7 @@ export class DwainsLayoutCard extends LitElement {
         width: 280px;
         height: 100%;
         transform: translateX(100%);
-        z-index: 100;
+        z-index: 121;
         box-shadow: -4px 0 12px rgba(0, 0, 0, 0.15);
       }
 
@@ -1522,7 +2737,7 @@ export class DwainsLayoutCard extends LitElement {
         position: fixed;
         inset: 0;
         background: rgba(0,0,0,0.5);
-        z-index: 99;
+        z-index: 120;
         opacity: 0;
         pointer-events: none;
         transition: opacity 0.3s ease;
@@ -1531,51 +2746,6 @@ export class DwainsLayoutCard extends LitElement {
       .mobile-nav-overlay.open {
         opacity: 1;
         pointer-events: auto;
-      }
-
-      /* Mobile FAB */
-      .mobile-fab {
-        position: fixed;
-        bottom: calc(84px + env(safe-area-inset-bottom, 0px));
-        right: 24px;
-        height: 56px;
-        padding: 0 20px 0 16px;
-        border-radius: 28px;
-        background: var(--primary-color);
-        color: var(--text-primary-color);
-        border: none;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        z-index: 98;
-        transition: opacity 0.3s ease, transform 0.3s ease, box-shadow 0.3s ease;
-      }
-
-      .mobile-fab:hover {
-        background: var(--primary-color);
-        box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
-      }
-
-      .mobile-fab:active {
-        transform: scale(0.96);
-      }
-
-      .mobile-fab.hidden {
-        opacity: 0;
-        pointer-events: none;
-        transform: scale(0.8);
-      }
-
-      .mobile-fab ha-icon {
-        --mdc-icon-size: 24px;
-      }
-
-      .mobile-fab .fab-label {
-        font-size: 14px;
-        font-weight: 600;
-        white-space: nowrap;
       }
 
       .global-header {
@@ -1616,6 +2786,255 @@ export class DwainsLayoutCard extends LitElement {
       grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
       gap: 8px;
     }
+
+    .favorite-card-wrapper {
+      --favorite-color: var(--primary-color);
+      appearance: none;
+      position: relative;
+      box-sizing: border-box;
+      min-width: 0;
+      min-height: 116px;
+      padding: 14px 14px 13px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      overflow: hidden;
+      border: 0;
+      border-radius: 9px;
+      background: color-mix(in srgb, var(--card-background-color) 98%, #ffffff);
+      color: var(--primary-text-color);
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+      box-shadow:
+        0 12px 26px rgba(15, 23, 42, 0.06),
+        inset 0 0 0 1px rgba(15, 23, 42, 0.035);
+      transition:
+        transform 0.18s ease,
+        box-shadow 0.18s ease,
+        background-color 0.18s ease;
+    }
+
+    .favorite-card-wrapper:hover {
+      transform: translateY(-2px);
+      box-shadow:
+        0 16px 30px rgba(15, 23, 42, 0.1),
+        inset 0 0 0 1px color-mix(in srgb, var(--favorite-color) 20%, transparent);
+    }
+
+    .favorite-card-wrapper:active {
+      transform: scale(0.985);
+    }
+
+    .favorite-card-wrapper:focus-visible,
+    .favorite-quick-action:focus-visible {
+      outline: 2px solid color-mix(in srgb, var(--favorite-color) 72%, #ffffff);
+      outline-offset: 3px;
+    }
+
+    .favorite-card-wrapper.is-off,
+    .favorite-card-wrapper.is-idle {
+      --favorite-color: color-mix(in srgb, var(--secondary-text-color) 56%, var(--primary-color));
+    }
+
+    .favorite-card-wrapper.favorite-light {
+      --favorite-color: #e1a129;
+    }
+
+    .favorite-card-wrapper.favorite-switch {
+      --favorite-color: #2f6fd6;
+    }
+
+    .favorite-card-wrapper.favorite-cover {
+      --favorite-color: #1494aa;
+    }
+
+    .favorite-card-wrapper.favorite-binary_sensor,
+    .favorite-card-wrapper.favorite-motion {
+      --favorite-color: #df5b63;
+    }
+
+    .favorite-card-wrapper.favorite-climate,
+    .favorite-card-wrapper.favorite-weather {
+      --favorite-color: #34a6d8;
+    }
+
+    .favorite-card-wrapper.favorite-media_player {
+      --favorite-color: #7c67c7;
+    }
+
+    .favorite-card-wrapper.favorite-person {
+      --favorite-color: #6d7891;
+    }
+
+    .favorite-card-wrapper.favorite-sun {
+      --favorite-color: #2d7eea;
+    }
+
+    .favorite-top,
+    .favorite-body {
+      position: relative;
+      z-index: 1;
+    }
+
+    .favorite-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .favorite-icon {
+      width: 34px;
+      height: 34px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex: 0 0 auto;
+      border-radius: 10px;
+      color: var(--favorite-color);
+      background: color-mix(in srgb, var(--favorite-color) 13%, transparent);
+    }
+
+    .favorite-icon ha-icon {
+      --mdc-icon-size: 19px;
+    }
+
+    .favorite-quick-action {
+      --toggle-track: color-mix(in srgb, var(--secondary-background-color) 80%, #ffffff);
+      width: 38px;
+      height: 22px;
+      padding: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: flex-start;
+      flex: 0 0 auto;
+      border: 0;
+      border-radius: 999px;
+      color: transparent;
+      background: var(--toggle-track);
+      box-shadow:
+        inset 0 0 0 1px rgba(15, 23, 42, 0.07),
+        0 4px 10px rgba(15, 23, 42, 0.08);
+      font: inherit;
+      cursor: pointer;
+      transition:
+        transform 0.18s ease,
+        background-color 0.18s ease;
+    }
+
+    .favorite-quick-action::before {
+      content: "";
+      width: 18px;
+      height: 18px;
+      margin-left: 2px;
+      border-radius: 999px;
+      background: #ffffff;
+      box-shadow: 0 2px 7px rgba(15, 23, 42, 0.2);
+      transition:
+        transform 0.18s ease,
+        background-color 0.18s ease;
+    }
+
+    .favorite-card-wrapper.is-active .favorite-quick-action {
+      background: var(--favorite-color);
+    }
+
+    .favorite-card-wrapper.is-active .favorite-quick-action::before {
+      transform: translateX(16px);
+    }
+
+    .favorite-card-wrapper.info-only .favorite-quick-action {
+      width: 30px;
+      height: 30px;
+      justify-content: center;
+      color: color-mix(in srgb, var(--primary-text-color) 52%, transparent);
+      background: color-mix(in srgb, var(--secondary-background-color) 70%, #ffffff);
+      box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.05);
+    }
+
+    .favorite-card-wrapper.info-only .favorite-quick-action::before {
+      display: none;
+    }
+
+    .favorite-card-wrapper.info-only .favorite-quick-action ha-icon {
+      display: block;
+      --mdc-icon-size: 17px;
+    }
+
+    .favorite-quick-action ha-icon {
+      display: none;
+    }
+
+    .favorite-quick-action:active {
+      transform: scale(0.94);
+    }
+
+    .favorite-name {
+      color: inherit;
+      margin-top: 2px;
+      font-size: 14px;
+      font-weight: 850;
+      line-height: 1.08;
+      overflow: hidden;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+    }
+
+    .favorite-state {
+      margin-top: 0;
+      color: color-mix(in srgb, var(--primary-text-color) 58%, transparent);
+      font-size: 10px;
+      font-weight: 750;
+      line-height: 1.15;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .favorite-area {
+      margin-top: 0;
+      color: color-mix(in srgb, var(--primary-text-color) 46%, transparent);
+      font-size: 10px;
+      font-weight: 750;
+      line-height: 1.1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      .favorite-card-wrapper {
+        background:
+          linear-gradient(180deg,
+            color-mix(in srgb, var(--card-background-color) 90%, #ffffff 4%),
+            color-mix(in srgb, var(--card-background-color) 98%, #000000 3%));
+        box-shadow:
+          0 14px 30px rgba(0, 0, 0, 0.28),
+          inset 0 1px 0 rgba(255, 255, 255, 0.045),
+          inset 0 0 0 1px rgba(255, 255, 255, 0.045);
+      }
+
+      .favorite-card-wrapper:hover {
+        box-shadow:
+          0 18px 34px rgba(0, 0, 0, 0.36),
+          inset 0 0 0 1px color-mix(in srgb, var(--favorite-color) 30%, transparent);
+      }
+
+      .favorite-quick-action {
+        --toggle-track: rgba(255, 255, 255, 0.14);
+        box-shadow:
+          inset 0 0 0 1px rgba(255, 255, 255, 0.08),
+          0 5px 12px rgba(0, 0, 0, 0.28);
+      }
+
+      .favorite-card-wrapper.info-only .favorite-quick-action {
+        background: rgba(255, 255, 255, 0.1);
+        color: rgba(248, 250, 252, 0.82);
+      }
+    }
+
 
     /* Toast Notification */
     .toast {
@@ -1687,6 +3106,235 @@ export class DwainsLayoutCard extends LitElement {
       justify-content: flex-end;
     }
 
+    .notifications-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 1040;
+      opacity: 0;
+      pointer-events: none;
+      background: rgba(0, 0, 0, 0.42);
+      backdrop-filter: blur(2px);
+      transition: opacity 0.22s ease;
+    }
+
+    .notifications-overlay.open {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .notifications-panel {
+      position: fixed;
+      left: 50%;
+      top: 50%;
+      z-index: 1041;
+      width: min(520px, calc(100vw - 48px));
+      max-height: min(78vh, 620px);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      border-radius: 8px;
+      border: 1px solid rgba(15, 23, 42, 0.08);
+      background: color-mix(in srgb, var(--card-background-color) 96%, transparent);
+      box-shadow: 0 24px 60px rgba(15, 23, 42, 0.28);
+      backdrop-filter: blur(22px);
+      transform: translate3d(-50%, -46%, 0) scale(0.96);
+      opacity: 0;
+      pointer-events: none;
+      transition:
+        transform 0.28s cubic-bezier(0.2, 0.8, 0.2, 1),
+        opacity 0.2s ease;
+    }
+
+    .notifications-panel.open {
+      transform: translate3d(-50%, -50%, 0) scale(1);
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .notifications-panel::before {
+      content: "";
+      width: 42px;
+      height: 4px;
+      margin: 10px auto 2px;
+      flex: 0 0 auto;
+      border-radius: 999px;
+      background: rgba(0, 0, 0, 0.14);
+    }
+
+    .notifications-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      padding: 12px 14px 10px;
+      border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+    }
+
+    .notifications-title {
+      min-width: 0;
+    }
+
+    .notifications-title-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--primary-text-color);
+      font-size: 16px;
+      font-weight: 850;
+      line-height: 1.15;
+    }
+
+    .notifications-title-row ha-icon {
+      color: var(--primary-color);
+      --mdc-icon-size: 20px;
+    }
+
+    .notifications-subtitle {
+      margin-top: 3px;
+      color: var(--secondary-text-color);
+      font-size: 12px;
+      font-weight: 600;
+      line-height: 1.2;
+    }
+
+    .notifications-actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex: 0 0 auto;
+    }
+
+    .notifications-icon-button,
+    .notification-dismiss {
+      border: 0;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      color: var(--primary-text-color);
+      background: var(--secondary-background-color);
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .notifications-icon-button {
+      width: 34px;
+      height: 34px;
+    }
+
+    .notifications-icon-button ha-icon {
+      --mdc-icon-size: 18px;
+    }
+
+    .notifications-list {
+      overflow-y: auto;
+      padding: 10px;
+    }
+
+    .notification-row {
+      display: grid;
+      grid-template-columns: 38px minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: start;
+      padding: 11px 10px;
+      margin-bottom: 8px;
+      border: 1px solid rgba(15, 23, 42, 0.06);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.78);
+      box-shadow: 0 8px 20px rgba(15, 23, 42, 0.06);
+    }
+
+    .notification-row:last-child {
+      margin-bottom: 0;
+    }
+
+    .notification-icon {
+      width: 38px;
+      height: 38px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 8px;
+      background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.11);
+      color: var(--primary-color);
+    }
+
+    .notification-icon ha-icon {
+      --mdc-icon-size: 21px;
+    }
+
+    .notification-title {
+      color: var(--primary-text-color);
+      font-size: 14px;
+      font-weight: 800;
+      line-height: 1.2;
+      overflow-wrap: anywhere;
+    }
+
+    .notification-message {
+      margin-top: 4px;
+      color: var(--secondary-text-color);
+      font-size: 13px;
+      line-height: 1.35;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
+    .notification-date {
+      margin-top: 7px;
+      color: color-mix(in srgb, var(--secondary-text-color) 74%, transparent);
+      font-size: 11px;
+      font-weight: 650;
+    }
+
+    .notification-dismiss {
+      width: 32px;
+      height: 32px;
+      color: var(--secondary-text-color);
+      background: rgba(0, 0, 0, 0.05);
+    }
+
+    .notification-dismiss ha-icon {
+      --mdc-icon-size: 17px;
+    }
+
+    .notifications-empty,
+    .notifications-error,
+    .notifications-loading {
+      min-height: 130px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 24px 18px;
+      color: var(--secondary-text-color);
+      text-align: center;
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .notifications-empty ha-icon,
+    .notifications-error ha-icon,
+    .notifications-loading ha-icon {
+      --mdc-icon-size: 28px;
+      color: var(--primary-color);
+    }
+
+    @media (max-width: 1024px) {
+      .notifications-panel {
+        top: auto;
+        bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+        width: min(460px, calc(100vw - 28px));
+        max-height: min(70vh, 620px);
+        transform: translate3d(-50%, calc(100% + 48px), 0);
+      }
+
+      .notifications-panel.open {
+        transform: translate3d(-50%, 0, 0);
+      }
+    }
+
     .confirmation-button {
       padding: 8px 16px;
       border-radius: 8px;
@@ -1742,39 +3390,39 @@ export class DwainsLayoutCard extends LitElement {
 
     /* Domain-specific badge colors */
     .area-badge.light {
-      background: color-mix(in srgb, var(--amber-color) 10%, var(--card-background-color));
-      color: var(--amber-color);
-      border-color: color-mix(in srgb, var(--amber-color) 20%, transparent);
+      background: color-mix(in srgb, var(--area-badge-color, #e1a129) 10%, var(--card-background-color));
+      color: var(--area-badge-color, #e1a129);
+      border-color: color-mix(in srgb, var(--area-badge-color, #e1a129) 20%, transparent);
     }
 
     .area-badge.switch {
-      background: color-mix(in srgb, var(--blue-color) 10%, var(--card-background-color));
-      color: var(--blue-color);
-      border-color: color-mix(in srgb, var(--blue-color) 20%, transparent);
+      background: color-mix(in srgb, var(--area-badge-color, #2f6fd6) 10%, var(--card-background-color));
+      color: var(--area-badge-color, #2f6fd6);
+      border-color: color-mix(in srgb, var(--area-badge-color, #2f6fd6) 20%, transparent);
     }
 
     .area-badge.climate {
-      background: color-mix(in srgb, var(--orange-color) 10%, var(--card-background-color));
-      color: var(--orange-color);
-      border-color: color-mix(in srgb, var(--orange-color) 20%, transparent);
+      background: color-mix(in srgb, var(--area-badge-color, #34a6d8) 10%, var(--card-background-color));
+      color: var(--area-badge-color, #34a6d8);
+      border-color: color-mix(in srgb, var(--area-badge-color, #34a6d8) 20%, transparent);
     }
 
     .area-badge.motion.active {
-      background: color-mix(in srgb, var(--red-color) 10%, var(--card-background-color));
-      color: var(--red-color);
-      border-color: color-mix(in srgb, var(--red-color) 20%, transparent);
+      background: color-mix(in srgb, var(--area-badge-color, #df5b63) 10%, var(--card-background-color));
+      color: var(--area-badge-color, #df5b63);
+      border-color: color-mix(in srgb, var(--area-badge-color, #df5b63) 20%, transparent);
     }
 
     .area-badge.cover {
-      background: color-mix(in srgb, var(--purple-color) 10%, var(--card-background-color));
-      color: var(--purple-color);
-      border-color: color-mix(in srgb, var(--purple-color) 20%, transparent);
+      background: color-mix(in srgb, var(--area-badge-color, #1494aa) 10%, var(--card-background-color));
+      color: var(--area-badge-color, #1494aa);
+      border-color: color-mix(in srgb, var(--area-badge-color, #1494aa) 20%, transparent);
     }
 
     .area-badge.media_player {
-      background: color-mix(in srgb, var(--green-color) 10%, var(--card-background-color));
-      color: var(--green-color);
-      border-color: color-mix(in srgb, var(--green-color) 20%, transparent);
+      background: color-mix(in srgb, var(--area-badge-color, #7c67c7) 10%, var(--card-background-color));
+      color: var(--area-badge-color, #7c67c7);
+      border-color: color-mix(in srgb, var(--area-badge-color, #7c67c7) 20%, transparent);
     }
 
     .area-badge.temperature {
@@ -1987,12 +3635,3494 @@ export class DwainsLayoutCard extends LitElement {
         --mdc-icon-size: 18px;
       }
     }
+
+    /* Home and header status cards */
+    .home-status-card,
+    .status-card-compact {
+      --status-color: var(--primary-color);
+      --status-bg: color-mix(in srgb, var(--status-color) 16%, transparent);
+    }
+
+    .home-status-card.cover,
+    .status-card-compact.cover {
+      --status-color: #1494aa;
+    }
+
+    .home-status-card.binary_sensor,
+    .home-status-card.motion,
+    .status-card-compact.binary_sensor,
+    .status-card-compact.motion {
+      --status-color: #df5b63;
+    }
+
+    .home-status-card.light,
+    .status-card-compact.light {
+      --status-color: #e1a129;
+    }
+
+    .home-status-card.switch,
+    .status-card-compact.switch {
+      --status-color: #2f6fd6;
+    }
+
+    .home-status-card.climate,
+    .status-card-compact.climate {
+      --status-color: #34a6d8;
+    }
+
+    .home-status-card.person,
+    .status-card-compact.person {
+      --status-color: #6d7891;
+    }
+
+    .home-status-card.media_player,
+    .status-card-compact.media_player {
+      --status-color: #7c67c7;
+    }
+
+    .home-status-card.fan,
+    .status-card-compact.fan {
+      --status-color: #2b8fcb;
+    }
+
+    .home-status-card.wattage,
+    .home-status-card.house-power-card,
+    .home-status-card.energy,
+    .status-card-compact.wattage,
+    .status-card-compact.energy {
+      --status-color: #d88e20;
+    }
+
+    .home-status-grid {
+      grid-template-columns: repeat(auto-fill, minmax(150px, 170px));
+      justify-content: start;
+      gap: 12px;
+    }
+
+    .home-status-card {
+      min-height: 134px;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      justify-content: space-between;
+      padding: 16px;
+      border-radius: 8px;
+      border: 1px solid rgba(0, 0, 0, 0.08);
+      background: var(--card-background-color);
+      text-align: left;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+    }
+
+    .home-status-card::before {
+      top: auto;
+      left: 16px;
+      right: 16px;
+      bottom: 0;
+      height: 3px;
+      border-radius: 3px 3px 0 0;
+      background: var(--status-color);
+      opacity: 0.55;
+    }
+
+    .home-status-card:hover {
+      transform: translateY(-2px);
+      border-color: color-mix(in srgb, var(--status-color) 40%, transparent);
+      box-shadow: 0 14px 30px rgba(0, 0, 0, 0.12);
+    }
+
+    .home-status-card:hover::before {
+      opacity: 0.85;
+    }
+
+    .home-status-card .status-card-icon {
+      width: 48px;
+      height: 48px;
+      margin: 0 0 16px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 8px;
+      background: var(--status-bg);
+    }
+
+    .home-status-card .status-card-icon ha-icon {
+      --mdc-icon-size: 25px;
+      color: var(--status-color);
+      transform: none;
+    }
+
+    .home-status-card:hover .status-card-icon ha-icon {
+      transform: none;
+    }
+
+    .home-status-card .status-card-badge {
+      top: -8px;
+      right: -8px;
+      width: auto;
+      min-width: 24px;
+      height: 24px;
+      padding: 0 7px;
+      border-radius: 999px;
+      background: var(--status-color);
+      color: #fff;
+      font-size: 12px;
+      font-weight: 800;
+      box-shadow: 0 5px 12px color-mix(in srgb, var(--status-color) 28%, transparent);
+    }
+
+    .home-status-card .status-card-title {
+      margin: auto 0 0;
+      color: var(--primary-text-color);
+      font-size: 16px;
+      font-weight: 800;
+      line-height: 1.15;
+      text-align: left;
+    }
+
+    .home-status-card.has-value .status-card-title {
+      margin-top: 2px;
+      color: var(--secondary-text-color);
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .home-status-card .status-card-value {
+      margin: auto 0 0;
+      color: var(--primary-text-color);
+      font-size: 22px;
+      font-weight: 900;
+      line-height: 1;
+      letter-spacing: 0;
+      white-space: nowrap;
+    }
+
+    .home-status-card.house-persons-card {
+      --status-color: #182044;
+      grid-column: span 2;
+      min-width: 240px;
+      gap: 12px;
+    }
+
+    .home-status-card.house-power-card {
+      --status-color: #d88e20;
+      grid-column: span 2;
+      min-width: 270px;
+      gap: 12px;
+    }
+
+    .house-persons-head {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .home-status-card.house-persons-card .house-persons-icon,
+    .home-status-card.house-power-card .house-power-icon {
+      width: 42px;
+      height: 42px;
+      margin: 0;
+      flex: 0 0 auto;
+      border-radius: 13px;
+    }
+
+    .house-persons-copy,
+    .house-power-copy {
+      min-width: 0;
+      text-align: left;
+    }
+
+    .house-persons-title,
+    .house-power-title {
+      color: var(--primary-text-color);
+      font-size: 15px;
+      font-weight: 850;
+      line-height: 1.1;
+    }
+
+    .house-persons-subtitle,
+    .house-persons-empty,
+    .house-power-subtitle,
+    .house-power-empty {
+      color: var(--secondary-text-color);
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1.25;
+    }
+
+    .house-power-head {
+      width: 100%;
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .house-power-total {
+      color: var(--primary-text-color);
+      font-size: 22px;
+      font-weight: 950;
+      line-height: 1;
+      white-space: nowrap;
+    }
+
+    .house-power-list {
+      width: 100%;
+      display: grid;
+      gap: 7px;
+    }
+
+    .house-power-room {
+      display: grid;
+      grid-template-columns: 26px minmax(0, 1fr) auto;
+      align-items: center;
+      column-gap: 8px;
+      row-gap: 4px;
+    }
+
+    .house-power-room-icon {
+      width: 26px;
+      height: 26px;
+      grid-row: span 2;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 9px;
+      background: color-mix(in srgb, var(--status-color) 12%, transparent);
+      color: var(--status-color);
+    }
+
+    .house-power-room-icon ha-icon {
+      --mdc-icon-size: 16px;
+    }
+
+    .house-power-room-name,
+    .house-power-room-value {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      line-height: 1.1;
+    }
+
+    .house-power-room-name {
+      color: var(--primary-text-color);
+      font-size: 11px;
+      font-weight: 850;
+    }
+
+    .house-power-room-value {
+      color: var(--secondary-text-color);
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    .house-power-bar {
+      position: relative;
+      height: 5px;
+      grid-column: 2 / -1;
+      overflow: hidden;
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--status-color) 10%, var(--secondary-background-color));
+    }
+
+    .house-power-bar-fill {
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: var(--power-width, 0%);
+      min-width: 4px;
+      border-radius: inherit;
+      background: linear-gradient(90deg, #d88e20, #f4c34d);
+    }
+
+    .house-persons-grid {
+      width: 100%;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 7px;
+    }
+
+    .house-person-mini {
+      appearance: none;
+      min-width: 0;
+      min-height: 42px;
+      padding: 6px;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      border: 0;
+      border-radius: 12px;
+      background: color-mix(in srgb, var(--primary-background-color) 78%, var(--card-background-color));
+      color: var(--primary-text-color);
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+      transition:
+        background-color 0.18s ease,
+        transform 0.18s ease;
+    }
+
+    .house-person-mini:active {
+      transform: scale(0.97);
+    }
+
+    .house-person-mini.is-home {
+      background: color-mix(in srgb, #2f9b62 13%, var(--card-background-color));
+    }
+
+    .house-person-mini.is-away {
+      background: color-mix(in srgb, #df5b63 10%, var(--card-background-color));
+    }
+
+    .house-person-avatar {
+      width: 26px;
+      height: 26px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex: 0 0 auto;
+      overflow: hidden;
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--status-color) 12%, transparent);
+      color: var(--status-color);
+    }
+
+    .house-person-avatar img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .house-person-avatar ha-icon {
+      --mdc-icon-size: 16px;
+    }
+
+    .house-person-mini-copy {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+    }
+
+    .house-person-mini-name,
+    .house-person-mini-state {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .house-person-mini-name {
+      color: var(--primary-text-color);
+      font-size: 11px;
+      font-weight: 850;
+      line-height: 1.1;
+    }
+
+    .house-person-mini-state {
+      color: var(--secondary-text-color);
+      font-size: 10px;
+      font-weight: 700;
+      line-height: 1.1;
+    }
+
+    .header-status-scroll {
+      gap: 10px;
+      padding: 2px 2px 4px;
+    }
+
+    .status-card-compact {
+      flex: 0 0 auto;
+      min-width: 92px;
+      max-width: 150px;
+      min-height: 70px;
+      align-items: flex-start;
+      justify-content: flex-start;
+      padding: 7px 12px 9px;
+      border-radius: 8px;
+      border: 1px solid rgba(0, 0, 0, 0.08);
+      background: var(--card-background-color);
+      box-shadow: 0 3px 12px rgba(0, 0, 0, 0.05);
+    }
+
+    .status-card-compact:hover {
+      transform: translateY(-1px);
+      border-color: color-mix(in srgb, var(--status-color) 36%, transparent);
+      box-shadow: 0 8px 18px rgba(0, 0, 0, 0.1);
+    }
+
+    .status-card-compact .status-card-icon-compact {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      background: var(--status-bg);
+    }
+
+    .status-card-compact .status-card-icon-compact ha-icon {
+      --mdc-icon-size: 20px;
+      color: var(--status-color);
+    }
+
+    .status-card-compact .status-card-badge-compact {
+      top: -7px;
+      right: -8px;
+      min-width: 22px;
+      height: 22px;
+      padding: 0 6px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      background: var(--status-color);
+      color: #fff;
+      font-size: 11px;
+      font-weight: 800;
+      box-shadow: 0 4px 10px color-mix(in srgb, var(--status-color) 26%, transparent);
+    }
+
+    .status-card-compact .status-card-title-compact {
+      width: 100%;
+      margin-top: 5px;
+      color: var(--secondary-text-color);
+      font-size: 11px;
+      font-weight: 800;
+      line-height: 1.15;
+      text-align: left;
+      opacity: 1;
+      overflow: hidden;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+    }
+
+    .status-card-compact.has-value .status-card-title-compact {
+      color: var(--primary-text-color);
+      font-size: 13px;
+      font-weight: 900;
+      white-space: nowrap;
+      display: block;
+    }
+
+    .status-card-subtitle-compact {
+      width: 100%;
+      margin-top: 1px;
+      color: var(--secondary-text-color);
+      font-size: 10px;
+      font-weight: 750;
+      line-height: 1.1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    @media (max-width: 768px) {
+      .home-status-grid {
+        display: flex;
+        grid-template-columns: none;
+        gap: 10px;
+        margin: 0;
+        padding: 2px 18px 16px;
+        overflow-x: auto;
+        scroll-padding: 18px;
+        scroll-snap-type: x proximity;
+        scrollbar-width: none;
+      }
+
+      .home-camera-section {
+        margin: 0 -10px 18px;
+      }
+
+      .home-camera-section .home-status-heading {
+        display: none;
+      }
+
+      .home-camera-grid {
+        display: flex;
+        grid-template-columns: none;
+        gap: 10px;
+        padding: 2px 18px 16px;
+        overflow-x: auto;
+        scroll-padding: 18px;
+        scroll-snap-type: x proximity;
+        scrollbar-width: none;
+      }
+
+      .home-camera-grid::-webkit-scrollbar {
+        display: none;
+      }
+
+      .home-camera-card {
+        flex: 0 0 226px;
+        min-height: 146px;
+        border-radius: 18px;
+        scroll-snap-align: start;
+        box-shadow: 0 12px 28px rgba(15, 23, 42, 0.11);
+      }
+
+      .home-camera-content {
+        min-height: 146px;
+        padding: 13px;
+      }
+
+      .home-camera-name {
+        font-size: 16px;
+      }
+
+      .home-status-grid::-webkit-scrollbar {
+        display: none;
+      }
+
+      .home-status-card {
+        flex: 0 0 126px;
+        min-height: 114px;
+        padding: 14px;
+        border-radius: 16px;
+        scroll-snap-align: start;
+        box-shadow: 0 10px 26px rgba(15, 23, 42, 0.08);
+      }
+
+      .home-status-card.house-persons-card {
+        flex: 0 0 230px;
+        min-height: 132px;
+        padding: 14px;
+      }
+
+      .home-status-card.house-power-card {
+        flex: 0 0 250px;
+        min-height: 132px;
+        padding: 14px;
+      }
+
+      .home-status-card .status-card-title {
+        font-size: 15px;
+      }
+
+      .status-card-compact {
+        min-width: 88px;
+      }
+
+      .home-view {
+        max-width: none;
+      }
+
+      .person-cards-section {
+        display: none;
+      }
+
+      .home-status-heading {
+        display: none;
+      }
+
+      .mobile-home-section {
+        display: block;
+        margin: 0 -10px 18px;
+      }
+
+      .mobile-section-heading {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 0 18px;
+        margin-bottom: 10px;
+      }
+
+      .mobile-section-title {
+        min-width: 0;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .mobile-section-title-label {
+        color: var(--primary-text-color);
+        font-size: 16px;
+        font-weight: 850;
+        line-height: 1.1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .mobile-section-action {
+        appearance: none;
+        min-width: 66px;
+        height: 28px;
+        padding: 0 10px 0 12px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 3px;
+        border: 0;
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--primary-color) 12%, transparent);
+        color: var(--primary-color);
+        font-size: 12px;
+        font-weight: 850;
+        font: inherit;
+        cursor: pointer;
+        transition:
+          background-color 0.18s ease,
+          transform 0.18s ease;
+      }
+
+      .mobile-section-action ha-icon {
+        --mdc-icon-size: 15px;
+      }
+
+      .mobile-section-action:active {
+        transform: scale(0.96);
+        background: color-mix(in srgb, var(--primary-color) 18%, transparent);
+      }
+
+      .mobile-area-rail {
+        display: flex;
+        gap: 10px;
+        padding: 2px 18px 16px;
+        overflow-x: auto;
+        scroll-padding: 18px;
+        scroll-snap-type: x proximity;
+        scrollbar-width: none;
+      }
+
+      .mobile-area-rail::-webkit-scrollbar {
+        display: none;
+      }
+
+      .mobile-home-section.layout-grid .mobile-area-rail {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+        padding: 2px 18px 16px;
+        overflow: visible;
+        scroll-snap-type: none;
+      }
+
+      .mobile-area-card {
+        appearance: none;
+        position: relative;
+        box-sizing: border-box;
+        flex: 0 0 152px;
+        min-width: 0;
+        min-height: 130px;
+        padding: 13px;
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        justify-content: space-between;
+        overflow: hidden;
+        border: 1px solid color-mix(in srgb, var(--primary-text-color) 8%, transparent);
+        border-radius: 18px;
+        background: color-mix(in srgb, var(--card-background-color) 96%, var(--primary-background-color));
+        color: var(--primary-text-color);
+        font: inherit;
+        box-shadow: 0 12px 28px color-mix(in srgb, var(--primary-text-color) 8%, transparent);
+        text-align: left;
+        scroll-snap-align: start;
+        cursor: pointer;
+        transition:
+          transform 0.18s ease,
+          border-color 0.18s ease,
+          box-shadow 0.18s ease;
+      }
+
+      .mobile-home-section.layout-grid .mobile-area-card {
+        width: 100%;
+        flex: none;
+        scroll-snap-align: none;
+      }
+
+      @media (max-width: 380px) {
+        .mobile-home-section.layout-grid .mobile-area-rail {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      .mobile-area-card:active {
+        transform: scale(0.98);
+      }
+
+      .mobile-area-card.has-picture {
+        min-height: 146px;
+        color: var(--mobile-area-picture-text-color, #ffffff);
+        border-color: rgba(255, 255, 255, 0.16);
+        background: #182044;
+        --mobile-area-picture-text-color: #ffffff;
+        --mobile-area-picture-muted-text-color: rgba(255, 255, 255, 0.76);
+        --mobile-area-picture-text-shadow: 0 2px 10px rgba(0, 0, 0, 0.62);
+        --mobile-area-picture-overlay:
+          linear-gradient(180deg, rgba(12, 18, 32, 0.03) 0%, rgba(12, 18, 32, 0.18) 42%, rgba(12, 18, 32, 0.82) 100%),
+          linear-gradient(90deg, rgba(12, 18, 32, 0.18), rgba(12, 18, 32, 0.04));
+      }
+
+      .mobile-area-card.has-picture.text-dark {
+        --mobile-area-picture-text-color: #ffffff;
+        --mobile-area-picture-muted-text-color: rgba(255, 255, 255, 0.76);
+        --mobile-area-picture-text-shadow: 0 2px 10px rgba(0, 0, 0, 0.62);
+        --mobile-area-picture-overlay:
+          linear-gradient(180deg, rgba(12, 18, 32, 0.03) 0%, rgba(12, 18, 32, 0.18) 42%, rgba(12, 18, 32, 0.82) 100%),
+          linear-gradient(90deg, rgba(12, 18, 32, 0.18), rgba(12, 18, 32, 0.04));
+      }
+
+      .mobile-area-picture {
+        position: absolute;
+        inset: 0;
+        z-index: 0;
+        background-size: cover;
+        background-position: center;
+        transform: scale(1.02);
+      }
+
+      .mobile-area-card.has-picture::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        z-index: 1;
+        background: var(--mobile-area-picture-overlay);
+      }
+
+      .mobile-area-top,
+      .mobile-area-copy {
+        position: relative;
+        z-index: 2;
+      }
+
+      .mobile-area-top {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 8px;
+      }
+
+      .mobile-area-icon {
+        width: 42px;
+        height: 42px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex: 0 0 auto;
+        border-radius: 13px;
+        color: var(--primary-color);
+        background: color-mix(in srgb, var(--primary-color) 13%, transparent);
+      }
+
+      .mobile-area-icon ha-icon {
+        --mdc-icon-size: 22px;
+      }
+
+      .mobile-area-card.has-picture .mobile-area-icon {
+        color: var(--mobile-area-picture-text-color, #ffffff);
+        background: rgba(255, 255, 255, 0.18);
+        backdrop-filter: blur(12px);
+      }
+
+      .mobile-area-badges {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: 5px;
+        min-width: 0;
+      }
+
+      .mobile-area-badge {
+        min-width: 24px;
+        height: 24px;
+        padding: 0 7px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 4px;
+        border-radius: 999px;
+        color: var(--area-badge-color, var(--primary-color));
+        background: color-mix(in srgb, var(--area-badge-color, var(--primary-color)) 12%, transparent);
+        font-size: 11px;
+        font-weight: 850;
+      }
+
+      .mobile-area-card.has-picture .mobile-area-badge {
+        color: var(--area-badge-color, var(--primary-color));
+        background: color-mix(in srgb, var(--area-badge-color, var(--primary-color)) 18%, rgba(255, 255, 255, 0.88));
+        backdrop-filter: blur(12px);
+        box-shadow: 0 4px 12px rgba(15, 23, 42, 0.16);
+      }
+
+      .mobile-area-badge ha-icon {
+        --mdc-icon-size: 14px;
+      }
+
+      .mobile-area-badge.light {
+        --area-badge-color: #e1a129;
+      }
+
+      .mobile-area-badge.cover {
+        --area-badge-color: #1494aa;
+      }
+
+      .mobile-area-badge.motion {
+        --area-badge-color: #df5b63;
+      }
+
+      .mobile-area-name {
+        font-size: 15px;
+        font-weight: 850;
+        line-height: 1.1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .mobile-area-meta {
+        margin-top: 4px;
+        color: color-mix(in srgb, var(--primary-text-color) 54%, transparent);
+        font-size: 12px;
+        font-weight: 700;
+        line-height: 1.2;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .mobile-area-card.has-picture .mobile-area-meta {
+        color: var(--mobile-area-picture-muted-text-color, rgba(255, 255, 255, 0.72));
+      }
+
+      .mobile-area-card.has-picture .mobile-area-name,
+      .mobile-area-card.has-picture .mobile-area-meta {
+        text-shadow: var(--mobile-area-picture-text-shadow);
+      }
+
+      .mobile-area-card.has-picture.text-dark .mobile-area-icon {
+        color: var(--mobile-area-picture-text-color, #ffffff);
+        background: rgba(255, 255, 255, 0.18);
+      }
+
+      .mobile-area-card.has-picture.text-dark .mobile-area-name,
+      .mobile-area-card.has-picture.text-dark .mobile-area-meta {
+        text-shadow: var(--mobile-area-picture-text-shadow);
+      }
+
+      .home-status-section {
+        margin: 0 -10px 18px;
+      }
+
+      .home-status-section .mobile-section-heading {
+        margin-bottom: 10px;
+      }
+
+      .home-status-section.layout-grid .home-status-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+        padding: 2px 18px 16px;
+        overflow: visible;
+        scroll-snap-type: none;
+      }
+
+      .home-status-section.layout-grid .home-status-card {
+        width: 100%;
+        min-width: 0;
+        box-sizing: border-box;
+        flex: none;
+        scroll-snap-align: none;
+      }
+
+      .home-status-section.layout-grid .house-persons-card,
+      .home-status-section.layout-grid .house-power-card {
+        grid-column: 1 / -1;
+      }
+
+      @media (max-width: 380px) {
+        .home-status-section.layout-grid .home-status-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      .home-status-card::before {
+        left: 14px;
+        right: 14px;
+      }
+
+      .home-status-card .status-card-icon {
+        width: 42px;
+        height: 42px;
+        border-radius: 13px;
+        margin-bottom: 16px;
+      }
+
+      .home-status-card .status-card-icon ha-icon {
+        --mdc-icon-size: 22px;
+      }
+
+      .home-status-card .status-card-badge {
+        min-width: 23px;
+        height: 23px;
+        top: -8px;
+        right: -9px;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        .home-welcome {
+          background:
+            linear-gradient(180deg,
+              color-mix(in srgb, var(--card-background-color) 90%, var(--primary-color) 7%) 0%,
+              color-mix(in srgb, var(--card-background-color) 92%, var(--primary-background-color)) 100%);
+          box-shadow:
+            0 14px 36px rgba(0, 0, 0, 0.34),
+            inset 0 -1px 0 rgba(255, 255, 255, 0.04);
+        }
+
+        .welcome-avatar {
+          box-shadow:
+            0 10px 22px rgba(0, 0, 0, 0.34),
+            0 0 0 3px rgba(255, 255, 255, 0.08);
+        }
+
+        .welcome-action {
+          background:
+            linear-gradient(180deg,
+              color-mix(in srgb, var(--card-background-color) 84%, #ffffff 8%),
+              color-mix(in srgb, var(--card-background-color) 94%, #000000 6%));
+          box-shadow:
+            0 10px 24px rgba(0, 0, 0, 0.28),
+            inset 0 1px 0 rgba(255, 255, 255, 0.08),
+            inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+        }
+
+        .mobile-area-card {
+          background:
+            linear-gradient(180deg,
+              color-mix(in srgb, var(--card-background-color) 88%, #ffffff 4%),
+              color-mix(in srgb, var(--card-background-color) 96%, #000000 4%));
+          border-color: rgba(255, 255, 255, 0.08);
+          box-shadow:
+            0 12px 28px rgba(0, 0, 0, 0.26),
+            inset 0 1px 0 rgba(255, 255, 255, 0.04);
+        }
+
+        .mobile-area-card:not(.has-picture) .mobile-area-icon {
+          background: color-mix(in srgb, var(--primary-color) 22%, transparent);
+        }
+
+        .mobile-area-badge {
+          background: color-mix(in srgb, var(--area-badge-color, var(--primary-color)) 20%, transparent);
+        }
+
+        .home-status-card.house-persons-card {
+          --status-color: #8ea8ff;
+        }
+
+        .home-status-card.house-power-card {
+          --status-color: #f2b447;
+        }
+
+        .house-person-mini {
+          background: color-mix(in srgb, var(--card-background-color) 78%, #ffffff 5%);
+          box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+        }
+
+        .house-power-room-icon {
+          background: color-mix(in srgb, var(--status-color) 20%, transparent);
+        }
+
+        .house-power-bar {
+          background: color-mix(in srgb, var(--status-color) 13%, var(--card-background-color));
+        }
+
+        .house-person-mini.is-home {
+          background: color-mix(in srgb, #2f9b62 20%, var(--card-background-color));
+        }
+
+        .house-person-mini.is-away {
+          background: color-mix(in srgb, #df5b63 16%, var(--card-background-color));
+        }
+      }
+
+      .favorites-section {
+        box-sizing: border-box;
+        width: 100%;
+        max-width: 100%;
+        margin: 0 0 44px;
+        padding: 0;
+        overflow-x: clip;
+      }
+
+      .favorites-header {
+        margin-bottom: 12px;
+        font-size: 16px;
+        font-weight: 850;
+      }
+
+      .favorites-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .favorite-card-wrapper {
+        width: 100%;
+        min-width: 0;
+        box-sizing: border-box;
+        min-height: 116px;
+        padding: 14px;
+        border-radius: 9px;
+      }
+
+      @media (max-width: 380px) {
+        .favorites-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+    }
+
+    /* Area status/action pills */
+    .area-badges {
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 18px;
+    }
+
+    .area-badge {
+      min-height: 38px;
+      padding: 9px 15px;
+      border-radius: 999px;
+      font-size: 14px;
+      font-weight: 800;
+      line-height: 1;
+      box-shadow: none;
+    }
+
+    .area-badge ha-icon {
+      --mdc-icon-size: 17px;
+    }
+
+    .area-badge.cover {
+      background: color-mix(in srgb, var(--area-badge-color, #1494aa) 12%, var(--card-background-color));
+      border-color: color-mix(in srgb, var(--area-badge-color, #1494aa) 22%, transparent);
+      color: var(--area-badge-color, #1494aa);
+    }
+
+    .area-badge.cover ha-icon {
+      color: var(--area-badge-color, #1494aa);
+    }
+
+    .area-badge.light-toggle,
+    .area-badge.switch-toggle {
+      min-width: 132px;
+      justify-content: center;
+      cursor: pointer;
+      background: #089987;
+      border-color: #089987;
+      color: #ffffff;
+      box-shadow: 0 8px 20px rgba(8, 153, 135, 0.18);
+    }
+
+    .area-badge.light-toggle ha-icon {
+      color: #ffc400;
+    }
+
+    .area-badge.switch-toggle ha-icon {
+      color: #1f86d9;
+    }
+
+    .area-badge.light-toggle:hover,
+    .area-badge.switch-toggle:hover {
+      background: #078b7b;
+      border-color: #078b7b;
+      transform: translateY(-1px);
+      box-shadow: 0 10px 24px rgba(8, 153, 135, 0.24);
+    }
+
+    .area-badge.light-toggle:active,
+    .area-badge.switch-toggle:active {
+      transform: translateY(0);
+      box-shadow: 0 5px 14px rgba(8, 153, 135, 0.18);
+    }
+
+    /* Room header */
+    .area-header {
+      position: relative;
+      isolation: isolate;
+      z-index: 0;
+      min-height: 132px;
+      margin-bottom: 18px;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 18px;
+      overflow: hidden;
+      border-radius: 8px;
+      border: 1px solid rgba(0, 0, 0, 0.07);
+      background:
+        linear-gradient(135deg,
+          var(--card-background-color) 0%,
+          color-mix(in srgb, var(--primary-color) 6%, var(--card-background-color)) 100%);
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.08);
+    }
+
+    .area-header::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      pointer-events: none;
+      background-image:
+        linear-gradient(rgba(0, 0, 0, 0.035) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+      background-size: 56px 56px;
+      opacity: 0.38;
+    }
+
+    .area-header-background {
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      background-size: cover;
+      background-position: center;
+      filter: saturate(1.05) contrast(1.02);
+    }
+
+    .area-header.has-picture {
+      border-color: rgba(255, 255, 255, 0.16);
+      background: #172321;
+      color: var(--area-header-picture-text-color, #ffffff);
+      --area-header-picture-text-color: #ffffff;
+      --area-header-picture-muted-text-color: rgba(255, 255, 255, 0.76);
+      --area-header-picture-control-bg: rgba(255, 255, 255, 0.18);
+      --area-header-picture-control-border: rgba(255, 255, 255, 0.16);
+      --area-header-picture-overlay:
+        linear-gradient(135deg, rgba(13, 24, 23, 0.84), rgba(13, 24, 23, 0.46)),
+        linear-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.07) 1px, transparent 1px);
+    }
+
+    .area-header.has-picture.text-dark {
+      --area-header-picture-text-color: #0f172a;
+      --area-header-picture-muted-text-color: rgba(15, 23, 42, 0.72);
+      --area-header-picture-control-bg: rgba(255, 255, 255, 0.72);
+      --area-header-picture-control-border: rgba(15, 23, 42, 0.08);
+      --area-header-picture-overlay:
+        linear-gradient(135deg, rgba(255, 255, 255, 0.88), rgba(255, 255, 255, 0.48)),
+        linear-gradient(rgba(15, 23, 42, 0.045) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(15, 23, 42, 0.04) 1px, transparent 1px);
+    }
+
+    .area-header.has-picture::before {
+      z-index: 1;
+      background: var(--area-header-picture-overlay);
+      background-size: auto, 56px 56px, 56px 56px;
+      opacity: 1;
+    }
+
+    .area-header-content {
+      position: relative;
+      z-index: 2;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      min-width: 0;
+    }
+
+    .area-title-group {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      min-width: 0;
+    }
+
+    .area-mobile-toolbar {
+      display: none;
+    }
+
+    .area-title-copy {
+      min-width: 0;
+    }
+
+    .area-subtitle {
+      display: none;
+    }
+
+    .area-header-icon {
+      width: 52px;
+      height: 52px;
+      border-radius: 8px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex: 0 0 auto;
+      background: color-mix(in srgb, var(--primary-color) 13%, var(--card-background-color));
+      color: var(--primary-color);
+      box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary-color) 14%, transparent);
+    }
+
+    .area-header-icon ha-icon {
+      --mdc-icon-size: 28px;
+    }
+
+    .area-header.has-picture .area-header-icon {
+      background: var(--area-header-picture-control-bg);
+      color: var(--area-header-picture-text-color, #ffffff);
+      box-shadow: inset 0 0 0 1px var(--area-header-picture-control-border);
+    }
+
+    .area-title {
+      margin: 0;
+      color: var(--primary-text-color);
+      font-size: clamp(30px, 4vw, 48px);
+      font-weight: 800;
+      letter-spacing: 0;
+      line-height: 1;
+      overflow-wrap: anywhere;
+    }
+
+    .area-header.has-picture .area-title {
+      color: var(--area-header-picture-text-color, #ffffff);
+    }
+
+    .area-header-actions {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      flex: 0 0 auto;
+    }
+
+    .area-header .dd-edit-toggle {
+      margin-left: 0;
+      width: 42px;
+      height: 42px;
+      border-radius: 999px;
+      background: rgba(0, 0, 0, 0.06);
+      color: var(--primary-text-color);
+    }
+
+    .area-header .dd-edit-toggle:hover,
+    .area-header .dd-edit-toggle.active {
+      background: var(--primary-color);
+      color: var(--text-primary-color);
+    }
+
+    .area-header.has-picture .dd-edit-toggle {
+      background: var(--area-header-picture-control-bg);
+      color: var(--area-header-picture-text-color, #ffffff);
+    }
+
+    .area-header .unavailable-entities-icon {
+      margin-bottom: 0;
+      width: 42px;
+      height: 42px;
+      border-radius: 999px;
+      background: rgba(255, 152, 0, 0.14);
+      color: var(--warning-color);
+    }
+
+    .area-header .unavailable-entities-icon ha-icon {
+      color: var(--warning-color);
+    }
+
+    .area-header.has-picture .unavailable-entities-icon {
+      background: var(--area-header-picture-control-bg);
+    }
+
+    .area-header.has-picture .unavailable-entities-icon ha-icon {
+      color: var(--area-header-picture-text-color, #ffffff);
+    }
+
+    .area-header .area-badges {
+      position: relative;
+      z-index: 2;
+      margin: 0;
+      padding: 0;
+    }
+
+    .area-header.has-picture .area-badge:not(.light-toggle):not(.switch-toggle) {
+      background: var(--area-header-picture-control-bg);
+      border-color: var(--area-header-picture-control-border);
+      color: var(--area-header-picture-text-color, #ffffff);
+    }
+
+    @media (max-width: 768px) {
+      .content-area {
+        padding: 10px 10px calc(108px + env(safe-area-inset-bottom, 0px));
+        background:
+          linear-gradient(180deg,
+            color-mix(in srgb, var(--primary-color) 5%, var(--primary-background-color)) 0%,
+            var(--primary-background-color) 150px);
+      }
+
+      .content-area.home-content-area {
+        padding-bottom: calc(128px + env(safe-area-inset-bottom, 0px));
+      }
+
+      .content-area.area-content-area {
+        padding-top: 0;
+      }
+
+      .global-header.mobile {
+        margin: -10px -10px 0;
+        padding: 12px 14px 22px;
+        border-bottom: 0;
+        border-radius: 0 0 8px 8px;
+        background:
+          linear-gradient(180deg,
+            color-mix(in srgb, var(--card-background-color) 98%, transparent) 0%,
+            color-mix(in srgb, var(--primary-color) 5%, var(--card-background-color)) 100%);
+        box-shadow: 0 10px 26px rgba(15, 23, 42, 0.08);
+      }
+
+      .global-header.mobile .header-content {
+        display: block;
+      }
+
+      .global-header.mobile .header-status-section {
+        width: 100%;
+      }
+
+      .global-header.mobile .header-status-scroll {
+        gap: 10px;
+        padding: 2px 2px 4px;
+        scroll-padding: 14px;
+      }
+
+      .global-header.mobile .status-card-compact {
+        min-width: 112px;
+        min-height: 82px;
+        padding: 10px 12px 11px;
+        border-radius: 8px;
+        border: 1px solid rgba(15, 23, 42, 0.08);
+        background: rgba(255, 255, 255, 0.92);
+        box-shadow: 0 8px 22px rgba(15, 23, 42, 0.08);
+      }
+
+      .global-header.mobile .status-card-compact .status-card-icon-compact {
+        width: 40px;
+        height: 40px;
+        border-radius: 8px;
+      }
+
+      .global-header.mobile .status-card-compact .status-card-title-compact {
+        margin-top: 7px;
+        color: color-mix(in srgb, var(--primary-text-color) 76%, transparent);
+        font-size: 12px;
+        line-height: 1.15;
+      }
+
+      .global-header.mobile .header-expand-button {
+        bottom: -18px;
+        width: 36px;
+        height: 36px;
+        border-width: 2px;
+        background: rgba(255, 255, 255, 0.96);
+        box-shadow: 0 8px 20px rgba(3, 169, 244, 0.18);
+      }
+
+      .area-header {
+        position: relative;
+        top: auto;
+        z-index: 3;
+        min-height: 146px;
+        margin: 0 -10px 20px;
+        padding: calc(14px + env(safe-area-inset-top, 0px)) 22px 24px;
+        align-items: center;
+        gap: 10px;
+        overflow: visible;
+        border-radius: 0 0 8px 8px;
+        border: 0;
+        background:
+          linear-gradient(180deg,
+            color-mix(in srgb, var(--card-background-color) 98%, transparent) 0%,
+            color-mix(in srgb, var(--card-background-color) 88%, transparent) 76%,
+            color-mix(in srgb, var(--card-background-color) 58%, transparent) 100%);
+        backdrop-filter: blur(22px);
+        box-shadow: none;
+        transition:
+          min-height 0.2s ease,
+          padding 0.2s ease,
+          box-shadow 0.2s ease,
+          background-color 0.2s ease;
+      }
+
+      .area-header.has-metrics {
+        min-height: 248px;
+      }
+
+      .area-header.is-stuck {
+        position: sticky;
+        top: 0;
+        z-index: 90;
+        min-height: 122px;
+        margin-top: 0;
+        margin-bottom: 20px;
+        padding: calc(8px + env(safe-area-inset-top, 0px)) 18px 10px;
+        gap: 7px;
+        border-radius: 0;
+        box-shadow: 0 12px 28px rgba(15, 23, 42, 0.1);
+      }
+
+      .area-header::before {
+        opacity: 0;
+      }
+
+      .area-header::after {
+        content: "";
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: -34px;
+        height: 58px;
+        z-index: 1;
+        pointer-events: none;
+        background:
+          linear-gradient(180deg,
+            color-mix(in srgb, var(--card-background-color) 66%, transparent) 0%,
+            transparent 100%);
+        filter: blur(10px);
+        opacity: 0;
+        transition: opacity 0.18s ease;
+      }
+
+      .area-header.is-stuck::after {
+        opacity: 1;
+      }
+
+      .area-mobile-toolbar {
+        position: relative;
+        z-index: 3;
+        width: 100%;
+        display: grid;
+        grid-template-columns: 44px minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .area-mobile-round {
+        width: 38px;
+        height: 38px;
+        padding: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border: 0;
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--card-background-color) 94%, transparent);
+        color: var(--primary-text-color);
+        box-shadow:
+          0 8px 18px rgba(15, 23, 42, 0.1),
+          inset 0 0 0 1px rgba(15, 23, 42, 0.05);
+      }
+
+      .area-mobile-round ha-icon {
+        --mdc-icon-size: 20px;
+      }
+
+      .area-header.is-stuck .area-mobile-round {
+        width: 34px;
+        height: 34px;
+      }
+
+      .area-header.is-stuck .area-mobile-round ha-icon {
+        --mdc-icon-size: 18px;
+      }
+
+      .area-mobile-home {
+        position: absolute;
+        top: 0;
+        left: 0;
+        z-index: 6;
+        justify-self: start;
+        background: #182044;
+        color: #ffffff;
+        box-shadow:
+          0 12px 26px rgba(15, 23, 42, 0.22),
+          inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+      }
+
+      .area-header.has-picture .area-mobile-home {
+        background: rgba(24, 32, 68, 0.94);
+        color: #ffffff;
+        backdrop-filter: blur(14px);
+        box-shadow:
+          0 12px 28px rgba(0, 0, 0, 0.24),
+          inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+      }
+
+      .area-mobile-quick-controls {
+        grid-column: 2;
+        justify-self: center;
+        max-width: 100%;
+        min-height: 40px;
+        padding: 4px;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--card-background-color) 92%, transparent);
+        box-shadow:
+          0 9px 22px rgba(15, 23, 42, 0.1),
+          inset 0 0 0 1px rgba(15, 23, 42, 0.05);
+      }
+
+      .area-mobile-quick-controls.empty {
+        visibility: hidden;
+      }
+
+      .area-header.is-stuck .area-mobile-quick-controls {
+        min-height: 36px;
+        padding: 3px;
+      }
+
+      .area-quick-control {
+        min-width: 58px;
+        height: 34px;
+        padding: 0 6px 0 8px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 6px;
+        border: 0;
+        border-radius: 999px;
+        background: transparent;
+        color: color-mix(in srgb, var(--primary-text-color) 62%, transparent);
+        transition:
+          background-color 0.18s ease,
+          color 0.18s ease,
+          transform 0.18s ease;
+      }
+
+      .area-quick-main {
+        min-width: 0;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+      }
+
+      .area-quick-control ha-icon {
+        --mdc-icon-size: 17px;
+        flex: 0 0 auto;
+      }
+
+      .area-quick-count {
+        color: currentColor;
+        font-size: 11px;
+        font-weight: 850;
+        line-height: 1;
+        white-space: nowrap;
+      }
+
+      .area-quick-switch {
+        position: relative;
+        width: 26px;
+        height: 16px;
+        flex: 0 0 auto;
+        border-radius: 999px;
+        background: rgba(15, 23, 42, 0.12);
+        box-shadow:
+          inset 0 0 0 1px rgba(15, 23, 42, 0.05),
+          inset 0 1px 3px rgba(15, 23, 42, 0.12);
+        transition:
+          background-color 0.18s ease,
+          box-shadow 0.18s ease;
+      }
+
+      .area-quick-switch::after {
+        content: "";
+        position: absolute;
+        top: 3px;
+        left: 3px;
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: #ffffff;
+        box-shadow: 0 1px 4px rgba(15, 23, 42, 0.24);
+        transition: transform 0.18s ease;
+      }
+
+      .area-quick-control.active .area-quick-switch {
+        background: currentColor;
+      }
+
+      .area-quick-control.active .area-quick-switch::after {
+        transform: translateX(10px);
+      }
+
+      .area-quick-direction {
+        width: 22px;
+        height: 22px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex: 0 0 auto;
+        border-radius: 999px;
+        background: rgba(15, 23, 42, 0.08);
+        color: currentColor;
+      }
+
+      .area-quick-direction ha-icon {
+        --mdc-icon-size: 16px;
+      }
+
+      .area-header.is-stuck .area-quick-control {
+        min-width: 50px;
+        height: 30px;
+        padding: 0 5px 0 7px;
+        gap: 4px;
+      }
+
+      .area-header.is-stuck .area-quick-control ha-icon {
+        --mdc-icon-size: 15px;
+      }
+
+      .area-header.is-stuck .area-quick-count {
+        font-size: 10px;
+      }
+
+      .area-header.is-stuck .area-quick-switch {
+        width: 22px;
+        height: 14px;
+      }
+
+      .area-header.is-stuck .area-quick-switch::after {
+        top: 3px;
+        left: 3px;
+        width: 8px;
+        height: 8px;
+      }
+
+      .area-header.is-stuck .area-quick-control.active .area-quick-switch::after {
+        transform: translateX(8px);
+      }
+
+      .area-header.is-stuck .area-quick-direction {
+        width: 20px;
+        height: 20px;
+      }
+
+      .area-header.is-stuck .area-quick-direction ha-icon {
+        --mdc-icon-size: 14px;
+      }
+
+      .area-quick-control:active {
+        transform: scale(0.94);
+      }
+
+      .area-quick-control.active {
+        background: #182044;
+        color: #ffffff;
+      }
+
+      .area-quick-control.light.active {
+        color: #ffd047;
+      }
+
+      .area-quick-control.switch.active {
+        color: #58a9ff;
+      }
+
+      .area-quick-control.cover.active {
+        color: #b984ff;
+      }
+
+      .area-mobile-edit {
+        position: relative;
+        background: #182044;
+        color: #ffffff;
+      }
+
+      .area-mobile-actions {
+        grid-column: 3;
+        justify-self: end;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .area-mobile-actions .unavailable-entities-icon {
+        width: 38px;
+        height: 38px;
+        margin: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border: 0;
+        border-radius: 999px;
+        background: #f44336;
+        color: #ffffff;
+        box-shadow:
+          0 12px 26px rgba(244, 67, 54, 0.28),
+          inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+      }
+
+      .area-mobile-actions .unavailable-entities-icon ha-icon {
+        color: #ffffff;
+        --mdc-icon-size: 19px;
+      }
+
+      .area-mobile-actions .unavailable-count {
+        top: -6px;
+        right: -6px;
+        background: #ff9800;
+        box-shadow: 0 0 0 2px color-mix(in srgb, var(--card-background-color) 92%, transparent);
+      }
+
+      .area-mobile-edit.active {
+        background: var(--primary-color);
+      }
+
+      .area-mobile-dot {
+        position: absolute;
+        top: 3px;
+        right: 3px;
+        width: 7px;
+        height: 7px;
+        border-radius: 999px;
+        background: #3867ff;
+        box-shadow: 0 0 0 2px color-mix(in srgb, var(--card-background-color) 90%, transparent);
+      }
+
+      .area-header-content {
+        position: relative;
+        z-index: 3;
+        width: 100%;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+      }
+
+      .area-header.is-stuck .area-header-content {
+        gap: 6px;
+      }
+
+      .area-header-icon {
+        display: none;
+      }
+
+      .area-title-group {
+        width: 100%;
+        justify-content: center;
+        gap: 0;
+        min-width: 0;
+        text-align: center;
+      }
+
+      .area-title {
+        max-width: min(260px, calc(100vw - 122px));
+        margin: 0 auto;
+        font-size: 16px;
+        font-weight: 850;
+        line-height: 1.1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .area-header.is-stuck .area-title {
+        font-size: 14px;
+      }
+
+      .area-subtitle {
+        display: block;
+        margin-top: 2px;
+        color: color-mix(in srgb, var(--primary-text-color) 52%, transparent);
+        font-size: 13px;
+        font-weight: 750;
+        line-height: 1.1;
+      }
+
+      .area-header.is-stuck .area-subtitle {
+        margin-top: 1px;
+        font-size: 11px;
+      }
+
+      .area-header-metrics {
+        position: relative;
+        z-index: 3;
+        width: 100%;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+        margin-top: 4px;
+        transition:
+          gap 0.2s ease,
+          margin 0.2s ease;
+      }
+
+      .area-header-metric {
+        min-height: 72px;
+        padding: 12px;
+        border-radius: 10px;
+        background:
+          linear-gradient(135deg,
+            color-mix(in srgb, var(--metric-color) 13%, var(--card-background-color)) 0%,
+            color-mix(in srgb, var(--metric-color) 6%, var(--card-background-color)) 100%);
+        box-shadow:
+          0 12px 24px rgba(15, 23, 42, 0.06),
+          inset 0 0 0 1px color-mix(in srgb, var(--metric-color) 18%, transparent);
+        transition:
+          min-height 0.2s ease,
+          padding 0.2s ease,
+          border-radius 0.2s ease;
+      }
+
+      .area-header-metric .metric-ring {
+        width: 46px;
+        height: 46px;
+        transition:
+          width 0.2s ease,
+          height 0.2s ease;
+      }
+
+      .area-header-metric .metric-ring::after {
+        transition: inset 0.2s ease;
+      }
+
+      .area-header-metric .metric-value,
+      .area-header-metric .metric-label,
+      .area-header-metric .metric-range,
+      .area-header-metric .metric-reading {
+        transition:
+          font-size 0.2s ease,
+          opacity 0.2s ease;
+      }
+
+      .area-header.is-stuck .area-header-metrics {
+        gap: 8px;
+        margin-top: 0;
+      }
+
+      .area-header.is-stuck .area-header-metric {
+        min-height: 40px;
+        padding: 6px 9px;
+        gap: 8px;
+        border-radius: 8px;
+        box-shadow:
+          0 8px 18px rgba(15, 23, 42, 0.05),
+          inset 0 0 0 1px color-mix(in srgb, var(--metric-color) 16%, transparent);
+      }
+
+      .area-header.is-stuck .area-header-metric .metric-ring {
+        width: 30px;
+        height: 30px;
+      }
+
+      .area-header.is-stuck .area-header-metric .metric-ring::after {
+        inset: 4px;
+      }
+
+      .area-header.is-stuck .area-header-metric .metric-value {
+        font-size: 9px;
+      }
+
+      .area-header.is-stuck .area-header-metric .metric-label {
+        font-size: 11px;
+      }
+
+      .area-header.is-stuck .area-header-metric .metric-reading {
+        font-size: 10px;
+      }
+
+      .area-header.is-stuck .area-header-metric .metric-range {
+        opacity: 0;
+        height: 0;
+        margin-top: 0;
+        overflow: hidden;
+      }
+
+      .area-header-actions {
+        display: none;
+      }
+
+      .area-header .area-badges {
+        position: relative;
+        z-index: 3;
+        width: 100%;
+        display: none;
+      }
+
+      .area-header .area-badge {
+        min-height: 34px;
+        flex: 0 0 auto;
+        padding: 0 12px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 850;
+        box-shadow: none;
+      }
+
+      .area-header .area-badge.light-toggle,
+      .area-header .area-badge.switch-toggle {
+        min-width: 128px;
+        justify-content: center;
+      }
+
+      .area-header.has-picture {
+        background:
+          linear-gradient(180deg,
+            rgba(23, 35, 33, 0.74) 0%,
+            rgba(23, 35, 33, 0.58) 72%,
+            rgba(23, 35, 33, 0.22) 100%);
+      }
+
+      .area-header.has-picture .area-subtitle {
+        color: rgba(255, 255, 255, 0.72);
+      }
+
+      .area-content-area .area-header {
+        min-height: 252px;
+        margin: 0 -10px 18px;
+        padding: calc(18px + env(safe-area-inset-top, 0px)) 18px 18px;
+        justify-content: flex-start;
+        overflow: hidden;
+        border-radius: 0 0 22px 22px;
+        color: #ffffff;
+        background:
+          radial-gradient(circle at 18% 8%, rgba(255, 255, 255, 0.22), transparent 24%),
+          linear-gradient(145deg, #182044 0%, #26374d 48%, #586c82 100%);
+        box-shadow:
+          0 16px 34px rgba(15, 23, 42, 0.14),
+          inset 0 -1px 0 rgba(255, 255, 255, 0.24);
+      }
+
+      .area-content-area .area-header.has-metrics {
+        min-height: 312px;
+      }
+
+      .area-content-area .area-header.has-picture {
+        background: #0f172a;
+      }
+
+      .area-content-area .area-header-background {
+        inset: 0;
+        background-position: center;
+        background-size: cover;
+        transform: scale(1.015);
+        filter: saturate(1.08) contrast(1.02);
+      }
+
+      .area-content-area .area-header::before {
+        opacity: 1;
+        background:
+          linear-gradient(180deg,
+            rgba(4, 9, 16, 0.2) 0%,
+            rgba(4, 9, 16, 0.02) 36%,
+            rgba(4, 9, 16, 0.24) 70%,
+            rgba(4, 9, 16, 0.64) 100%);
+      }
+
+      .area-content-area .area-header::after {
+        bottom: -22px;
+        height: 46px;
+        opacity: 1;
+        background:
+          linear-gradient(180deg,
+            rgba(255, 255, 255, 0.72) 0%,
+            color-mix(in srgb, var(--primary-background-color) 86%, transparent) 100%);
+        filter: blur(14px);
+      }
+
+      .area-content-area .area-mobile-toolbar {
+        position: static;
+        display: block;
+        width: 100%;
+        height: 0;
+      }
+
+      .area-content-area .area-mobile-home {
+        top: calc(18px + env(safe-area-inset-top, 0px));
+        left: 18px;
+      }
+
+      .area-content-area .area-mobile-actions {
+        position: absolute;
+        top: calc(18px + env(safe-area-inset-top, 0px));
+        right: 18px;
+        z-index: 6;
+        grid-column: auto;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .area-content-area .area-mobile-round,
+      .area-content-area .area-mobile-actions .unavailable-entities-icon {
+        width: 48px;
+        height: 48px;
+        border-radius: 999px;
+        border: 1px solid rgba(255, 255, 255, 0.56);
+        background: rgba(255, 255, 255, 0.9);
+        color: #14181f;
+        backdrop-filter: blur(18px);
+        box-shadow:
+          0 14px 30px rgba(8, 13, 24, 0.2),
+          inset 0 1px 0 rgba(255, 255, 255, 0.62);
+      }
+
+      .area-content-area .area-mobile-round ha-icon,
+      .area-content-area .area-mobile-actions .unavailable-entities-icon ha-icon {
+        --mdc-icon-size: 22px;
+        color: currentColor;
+      }
+
+      .area-content-area .area-mobile-camera {
+        display: inline-flex;
+      }
+
+      .area-content-area .area-mobile-edit {
+        background: rgba(255, 255, 255, 0.92);
+        color: #14181f;
+      }
+
+      .area-content-area .area-mobile-edit.active {
+        background: var(--primary-color);
+        color: var(--text-primary-color);
+      }
+
+      .area-content-area .area-mobile-dot {
+        top: 4px;
+        right: 4px;
+        background: #3867ff;
+        box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.92);
+      }
+
+      .area-content-area .area-mobile-actions .unavailable-entities-icon {
+        background: rgba(244, 67, 54, 0.94);
+        color: #ffffff;
+        border-color: rgba(255, 255, 255, 0.34);
+      }
+
+      .area-content-area .area-mobile-actions .unavailable-count {
+        top: -5px;
+        right: -5px;
+        box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.92);
+      }
+
+      .area-content-area .area-header-content {
+        position: absolute;
+        top: calc(25px + env(safe-area-inset-top, 0px));
+        left: 84px;
+        right: 84px;
+        width: auto;
+        z-index: 4;
+        justify-content: center;
+        pointer-events: none;
+      }
+
+      .area-content-area .area-title-group {
+        width: 100%;
+      }
+
+      .area-content-area .area-title {
+        max-width: 100%;
+        color: #ffffff;
+        font-size: 17px;
+        font-weight: 850;
+        line-height: 1.05;
+        text-shadow: 0 1px 12px rgba(0, 0, 0, 0.42);
+      }
+
+      .area-content-area .area-subtitle {
+        color: rgba(255, 255, 255, 0.82);
+        text-shadow: 0 1px 10px rgba(0, 0, 0, 0.36);
+      }
+
+      .area-content-area .area-mobile-quick-controls {
+        position: absolute;
+        left: 18px;
+        right: auto;
+        bottom: 18px;
+        z-index: 5;
+        justify-self: auto;
+        max-width: calc(100% - 36px);
+        min-height: 42px;
+        padding: 5px;
+        overflow-x: auto;
+        scrollbar-width: none;
+        background: rgba(255, 255, 255, 0.9);
+        box-shadow:
+          0 16px 30px rgba(8, 13, 24, 0.18),
+          inset 0 1px 0 rgba(255, 255, 255, 0.66);
+      }
+
+      .area-content-area .area-mobile-quick-controls::-webkit-scrollbar {
+        display: none;
+      }
+
+      .area-content-area .area-mobile-quick-controls.empty {
+        display: none;
+      }
+
+      .area-content-area .area-header-metrics {
+        position: absolute;
+        left: 18px;
+        right: 18px;
+        bottom: 72px;
+        z-index: 4;
+        width: auto;
+        margin: 0;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .area-content-area .area-header.has-metrics .area-mobile-quick-controls {
+        bottom: 18px;
+      }
+
+      .area-content-area .area-header.has-metrics:not(.has-quick-controls) .area-header-metrics {
+        bottom: 18px;
+      }
+
+      .area-content-area .area-header-metric {
+        min-height: 58px;
+        padding: 9px 10px;
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.86);
+        backdrop-filter: blur(16px);
+        box-shadow:
+          0 14px 28px rgba(8, 13, 24, 0.16),
+          inset 0 1px 0 rgba(255, 255, 255, 0.62),
+          inset 0 0 0 1px color-mix(in srgb, var(--metric-color) 18%, transparent);
+      }
+
+      .area-content-area .area-header-metric .metric-ring {
+        width: 38px;
+        height: 38px;
+      }
+
+      .area-content-area .area-header-metric .metric-value,
+      .area-content-area .area-header-metric .metric-label,
+      .area-content-area .area-header-metric .metric-range,
+      .area-content-area .area-header-metric .metric-reading {
+        color: #182044;
+      }
+
+      .area-content-area .area-header.is-stuck {
+        min-height: 88px;
+        padding: calc(8px + env(safe-area-inset-top, 0px)) 16px 10px;
+        border-radius: 0;
+        background:
+          linear-gradient(180deg,
+            color-mix(in srgb, var(--card-background-color) 94%, transparent) 0%,
+            color-mix(in srgb, var(--card-background-color) 86%, transparent) 100%);
+        color: var(--primary-text-color);
+        backdrop-filter: blur(22px);
+      }
+
+      .area-content-area .area-header.is-stuck .area-header-background {
+        opacity: 0;
+      }
+
+      .area-content-area .area-header.is-stuck::before {
+        background: transparent;
+      }
+
+      .area-content-area .area-header.is-stuck .area-mobile-home,
+      .area-content-area .area-header.is-stuck .area-mobile-actions {
+        top: calc(8px + env(safe-area-inset-top, 0px));
+      }
+
+      .area-content-area .area-header.is-stuck .area-mobile-round,
+      .area-content-area .area-header.is-stuck .area-mobile-actions .unavailable-entities-icon {
+        width: 38px;
+        height: 38px;
+      }
+
+      .area-content-area .area-header.is-stuck .area-mobile-actions {
+        flex-direction: row;
+        gap: 8px;
+      }
+
+      .area-content-area .area-header.is-stuck .area-header-content {
+        top: calc(14px + env(safe-area-inset-top, 0px));
+        left: 68px;
+        right: 100px;
+      }
+
+      .area-content-area .area-header.is-stuck .area-title {
+        color: var(--primary-text-color);
+        text-shadow: none;
+      }
+
+      .area-content-area .area-header.is-stuck .area-subtitle {
+        color: var(--secondary-text-color);
+        text-shadow: none;
+      }
+
+      .area-content-area .area-header.is-stuck .area-mobile-quick-controls,
+      .area-content-area .area-header.is-stuck .area-header-metrics {
+        display: none;
+      }
+
+      .area-content-area .area-header {
+        min-height: 214px;
+        background:
+          radial-gradient(circle at 10% 0%, rgba(255, 255, 255, 0.92), transparent 28%),
+          linear-gradient(180deg, #f8fafc 0%, #eef4f8 100%);
+        color: var(--primary-text-color);
+      }
+
+      .area-content-area .area-header.has-metrics {
+        min-height: 214px;
+      }
+
+      .area-content-area .area-header.has-picture {
+        color: #ffffff;
+      }
+
+      .area-content-area .area-header:not(.has-picture)::before {
+        background:
+          linear-gradient(180deg,
+            rgba(255, 255, 255, 0.72) 0%,
+            rgba(255, 255, 255, 0.18) 46%,
+            rgba(226, 235, 242, 0.78) 100%);
+      }
+
+      .area-content-area .area-mobile-home {
+        top: calc(16px + env(safe-area-inset-top, 0px));
+        left: 18px;
+      }
+
+      .area-content-area .area-mobile-actions {
+        top: calc(16px + env(safe-area-inset-top, 0px));
+        right: 18px;
+      }
+
+      .area-content-area .area-mobile-round,
+      .area-content-area .area-mobile-actions .unavailable-entities-icon {
+        width: 44px;
+        height: 44px;
+        background: rgba(255, 255, 255, 0.92);
+        box-shadow:
+          0 12px 26px rgba(8, 13, 24, 0.16),
+          inset 0 1px 0 rgba(255, 255, 255, 0.68);
+      }
+
+      .area-content-area .area-mobile-home {
+        background: #182044;
+        color: #ffffff;
+      }
+
+      .area-content-area .area-header-content {
+        top: calc(88px + env(safe-area-inset-top, 0px));
+        left: 22px;
+        right: 24px;
+        justify-content: flex-start;
+        text-align: left;
+      }
+
+      .area-content-area .area-header.has-metrics .area-header-content {
+        right: 112px;
+      }
+
+      .area-content-area .area-title-group {
+        justify-content: flex-start;
+        text-align: left;
+      }
+
+      .area-content-area .area-title {
+        margin: 0;
+        max-width: 100%;
+        color: var(--primary-text-color);
+        font-size: 29px;
+        font-weight: 900;
+        line-height: 0.98;
+        text-align: left;
+        text-shadow: none;
+      }
+
+      .area-content-area .area-header.has-picture .area-title {
+        color: #ffffff;
+        text-shadow: 0 1px 16px rgba(0, 0, 0, 0.42);
+      }
+
+      .area-content-area .area-subtitle {
+        margin-top: 6px;
+        color: color-mix(in srgb, var(--primary-text-color) 52%, transparent);
+        font-size: 13px;
+        font-weight: 800;
+        text-align: left;
+        text-shadow: none;
+      }
+
+      .area-content-area .area-header.has-picture .area-subtitle {
+        color: rgba(255, 255, 255, 0.78);
+        text-shadow: 0 1px 12px rgba(0, 0, 0, 0.36);
+      }
+
+      .area-content-area .area-header-metrics {
+        top: calc(90px + env(safe-area-inset-top, 0px));
+        right: 18px;
+        bottom: auto;
+        left: auto;
+        width: auto;
+        grid-template-columns: 1fr;
+        gap: 6px;
+      }
+
+      .area-content-area .area-header.has-metrics:not(.has-quick-controls) .area-header-metrics {
+        bottom: auto;
+      }
+
+      .area-content-area .area-header-metric {
+        min-height: 32px;
+        padding: 5px 9px 5px 6px;
+        gap: 6px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.6);
+        backdrop-filter: blur(16px);
+        box-shadow:
+          inset 0 0 0 1px rgba(255, 255, 255, 0.52),
+          0 8px 18px rgba(15, 23, 42, 0.08);
+      }
+
+      .area-content-area .area-header.has-picture .area-header-metric {
+        background: rgba(255, 255, 255, 0.66);
+        box-shadow:
+          0 10px 22px rgba(8, 13, 24, 0.16),
+          inset 0 0 0 1px rgba(255, 255, 255, 0.22);
+      }
+
+      .area-content-area .area-header-metric .metric-ring {
+        width: 22px;
+        height: 22px;
+        background: color-mix(in srgb, var(--metric-color) 14%, transparent);
+        box-shadow: none;
+      }
+
+      .area-content-area .area-header-metric .metric-ring::after {
+        display: none;
+      }
+
+      .area-content-area .area-header-metric .metric-ring ha-icon {
+        --mdc-icon-size: 15px;
+        color: var(--metric-color);
+      }
+
+      .area-content-area .area-header-metric .metric-value {
+        font-size: 10px;
+      }
+
+      .area-content-area .area-header-metric .metric-label {
+        display: none;
+      }
+
+      .area-content-area .area-header-metric .metric-reading {
+        margin-top: 0;
+        color: #101827;
+        font-size: 12px;
+        font-weight: 950;
+        line-height: 1;
+      }
+
+      .area-content-area .area-header-metric .metric-range {
+        display: none;
+      }
+
+      .area-content-area .area-mobile-quick-controls {
+        top: calc(154px + env(safe-area-inset-top, 0px));
+        left: 22px;
+        right: 24px;
+        bottom: auto;
+        margin: 0;
+        justify-content: flex-start;
+        max-width: calc(100% - 48px);
+        width: max-content;
+        padding: 0;
+        background: transparent;
+        box-shadow: none;
+      }
+
+      .area-content-area .area-header.has-metrics .area-mobile-quick-controls {
+        top: calc(154px + env(safe-area-inset-top, 0px));
+        bottom: auto;
+      }
+
+      .area-content-area .area-header.has-metrics.has-quick-controls {
+        min-height: 214px;
+      }
+
+      .area-content-area .area-header.is-stuck {
+        min-height: 84px;
+      }
+
+      .area-content-area .area-header.is-stuck .area-header-content {
+        top: calc(13px + env(safe-area-inset-top, 0px));
+        left: 68px;
+        right: 106px;
+      }
+
+      .area-content-area .area-header.is-stuck .area-title {
+        font-size: 16px;
+      }
+
+      .area-content-area .area-header {
+        box-sizing: border-box;
+        min-height: calc(146px + env(safe-area-inset-top, 0px));
+        margin: 0 -10px 12px;
+        padding: calc(12px + env(safe-area-inset-top, 0px)) 16px 12px;
+        border-radius: 0 0 18px 18px;
+        background:
+          radial-gradient(circle at 12% 0%, rgba(255, 255, 255, 0.72), transparent 28%),
+          linear-gradient(180deg,
+            color-mix(in srgb, var(--card-background-color) 99%, transparent) 0%,
+            color-mix(in srgb, var(--card-background-color) 92%, #dff4fb 8%) 100%);
+        box-shadow:
+          0 10px 28px rgba(15, 23, 42, 0.08),
+          inset 0 -1px 0 color-mix(in srgb, var(--divider-color) 55%, transparent);
+      }
+
+      .area-content-area .area-header.has-metrics,
+      .area-content-area .area-header.has-quick-controls,
+      .area-content-area .area-header.has-metrics.has-quick-controls {
+        min-height: calc(154px + env(safe-area-inset-top, 0px));
+      }
+
+      .area-content-area .area-header.has-picture {
+        min-height: calc(178px + env(safe-area-inset-top, 0px));
+      }
+
+      .area-content-area .area-header.has-picture.has-metrics,
+      .area-content-area .area-header.has-picture.has-quick-controls {
+        min-height: calc(186px + env(safe-area-inset-top, 0px));
+      }
+
+      .area-content-area .area-header:not(.has-picture)::before {
+        background:
+          linear-gradient(180deg,
+            rgba(255, 255, 255, 0.54) 0%,
+            rgba(255, 255, 255, 0.14) 58%,
+            rgba(226, 235, 242, 0.38) 100%);
+      }
+
+      .area-content-area .area-header::after {
+        bottom: -16px;
+        height: 30px;
+        opacity: 0.55;
+        filter: blur(10px);
+      }
+
+      .area-content-area .area-mobile-home {
+        top: calc(14px + env(safe-area-inset-top, 0px));
+        left: 18px;
+      }
+
+      .area-content-area .area-mobile-actions {
+        top: calc(14px + env(safe-area-inset-top, 0px));
+        right: 18px;
+        flex-direction: row;
+        gap: 8px;
+      }
+
+      .area-content-area .area-mobile-round,
+      .area-content-area .area-mobile-actions .unavailable-entities-icon {
+        width: 40px;
+        height: 40px;
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--card-background-color) 92%, transparent);
+        color: var(--primary-text-color);
+        box-shadow:
+          0 10px 24px rgba(15, 23, 42, 0.12),
+          inset 0 0 0 1px color-mix(in srgb, var(--divider-color) 62%, transparent);
+      }
+
+      .area-content-area .area-mobile-home {
+        background: #182044;
+        color: #ffffff;
+      }
+
+      .area-content-area .area-mobile-round ha-icon,
+      .area-content-area .area-mobile-actions .unavailable-entities-icon ha-icon {
+        --mdc-icon-size: 20px;
+      }
+
+      .area-content-area .area-header-content {
+        top: calc(58px + env(safe-area-inset-top, 0px));
+        left: 20px;
+        right: 22px;
+        justify-content: flex-start;
+      }
+
+      .area-content-area .area-header.has-metrics .area-header-content {
+        right: 136px;
+      }
+
+      .area-content-area .area-title {
+        max-width: 100%;
+        font-size: 25px;
+        font-weight: 900;
+        line-height: 1.02;
+        letter-spacing: 0;
+      }
+
+      .area-content-area .area-subtitle {
+        margin-top: 3px;
+        padding-bottom: 5px;
+        font-size: 12px;
+        font-weight: 800;
+        line-height: 1.1;
+      }
+
+      .area-content-area .area-header-metrics {
+        top: calc(63px + env(safe-area-inset-top, 0px));
+        right: 18px;
+        left: auto;
+        bottom: auto;
+        width: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+
+      .area-content-area .area-header.has-metrics:not(.has-quick-controls) .area-header-metrics {
+        bottom: auto;
+      }
+
+      .area-content-area .area-header-metric {
+        min-height: 29px;
+        height: 29px;
+        min-width: 96px;
+        padding: 4px 9px 4px 5px;
+        gap: 6px;
+        border-radius: 999px;
+        background:
+          linear-gradient(135deg,
+            color-mix(in srgb, var(--metric-color) 13%, var(--card-background-color)) 0%,
+            color-mix(in srgb, var(--metric-color) 4%, var(--card-background-color)) 100%);
+        box-shadow:
+          0 8px 18px rgba(15, 23, 42, 0.08),
+          inset 0 0 0 1px color-mix(in srgb, var(--metric-color) 16%, transparent);
+      }
+
+      .area-content-area .area-header.has-picture .area-header-metric {
+        background: rgba(255, 255, 255, 0.76);
+      }
+
+      .area-content-area .area-header-metric .metric-ring {
+        width: 21px;
+        height: 21px;
+      }
+
+      .area-content-area .area-header-metric .metric-ring ha-icon {
+        --mdc-icon-size: 14px;
+      }
+
+      .area-content-area .area-header-metric .metric-copy {
+        min-width: 0;
+        display: flex;
+        align-items: center;
+      }
+
+      .area-content-area .area-header-metric .metric-reading {
+        max-width: 62px;
+        overflow: hidden;
+        color: var(--primary-text-color);
+        font-size: 12px;
+        font-weight: 950;
+        text-overflow: ellipsis;
+      }
+
+      .area-content-area .area-mobile-quick-controls,
+      .area-content-area .area-header.has-metrics .area-mobile-quick-controls {
+        top: auto;
+        bottom: 8px;
+        left: 20px;
+        right: 20px;
+        width: auto;
+        max-width: none;
+        min-height: 36px;
+        padding: 3px;
+        display: grid;
+        grid-template-columns: 1fr;
+        align-items: center;
+        justify-content: stretch;
+        overflow-x: auto;
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--card-background-color) 90%, transparent);
+        box-shadow:
+          0 10px 24px rgba(15, 23, 42, 0.1),
+          inset 0 0 0 1px color-mix(in srgb, var(--divider-color) 58%, transparent);
+      }
+
+      .area-content-area .area-header:not(.has-metrics) .area-mobile-quick-controls {
+        top: auto;
+        bottom: 8px;
+        right: 20px;
+        width: auto;
+        max-width: none;
+      }
+
+      .area-content-area .area-mobile-quick-controls.count-2 {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .area-content-area .area-mobile-quick-controls.count-3 {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .area-content-area .area-mobile-quick-controls.count-1 {
+        right: auto;
+        width: min(148px, calc(50% - 20px));
+        min-width: 122px;
+      }
+
+      .area-content-area .area-header.has-metrics .area-mobile-quick-controls.count-1 {
+        right: auto;
+        width: min(148px, calc(100% - 176px));
+      }
+
+      .area-content-area .area-quick-control {
+        min-width: 48px;
+        width: 100%;
+        height: 30px;
+        padding: 0 6px 0 8px;
+        justify-content: space-between;
+      }
+
+      .area-content-area .area-quick-control ha-icon {
+        --mdc-icon-size: 16px;
+      }
+
+      .area-content-area .area-quick-count {
+        font-size: 10px;
+      }
+
+      .area-content-area .area-quick-switch {
+        width: 24px;
+        height: 15px;
+      }
+
+      .area-content-area .area-quick-switch::after {
+        top: 3px;
+        left: 3px;
+        width: 9px;
+        height: 9px;
+      }
+
+      .area-content-area .area-quick-control.active .area-quick-switch::after {
+        transform: translateX(9px);
+      }
+
+      .area-content-area .area-quick-direction {
+        width: 20px;
+        height: 20px;
+      }
+
+      .area-content-area .area-quick-direction ha-icon {
+        --mdc-icon-size: 14px;
+      }
+
+      .area-content-area .area-header {
+        position: sticky;
+        top: 0;
+        z-index: 90;
+      }
+
+      .area-content-area .area-header.is-stuck,
+      .area-content-area .area-header.is-stuck.has-metrics,
+      .area-content-area .area-header.is-stuck.has-quick-controls,
+      .area-content-area .area-header.is-stuck.has-metrics.has-quick-controls,
+      .area-content-area .area-header.is-stuck.has-picture,
+      .area-content-area .area-header.is-stuck.has-picture.has-metrics,
+      .area-content-area .area-header.is-stuck.has-picture.has-quick-controls {
+        min-height: calc(62px + env(safe-area-inset-top, 0px));
+        margin-bottom: 4px;
+        padding: calc(8px + env(safe-area-inset-top, 0px)) 14px 7px;
+        border-radius: 0;
+      }
+
+      .area-content-area .area-header.is-stuck .area-mobile-home,
+      .area-content-area .area-header.is-stuck .area-mobile-actions {
+        top: calc(9px + env(safe-area-inset-top, 0px));
+      }
+
+      .area-content-area .area-header.is-stuck .area-mobile-round,
+      .area-content-area .area-header.is-stuck .area-mobile-actions .unavailable-entities-icon {
+        width: 36px;
+        height: 36px;
+      }
+
+      .area-content-area .area-header.is-stuck .area-header-content {
+        top: calc(10px + env(safe-area-inset-top, 0px));
+        left: 66px;
+        right: 66px;
+      }
+
+      .area-content-area .area-header.is-stuck .area-title {
+        font-size: 15px;
+        line-height: 1.05;
+      }
+
+      .area-content-area .area-header.is-stuck .area-subtitle {
+        display: block;
+        margin-top: 2px;
+        padding-bottom: 0;
+        color: color-mix(in srgb, var(--secondary-text-color) 88%, var(--primary-text-color) 12%);
+        font-size: 11px;
+        font-weight: 800;
+        line-height: 1.05;
+        text-shadow: none;
+      }
+
+      .area-content-area .area-header.is-stuck::after,
+      .area-content-area .area-header.is-stuck .area-mobile-quick-controls,
+      .area-content-area .area-header.is-stuck.has-metrics .area-mobile-quick-controls,
+      .area-content-area .area-header.is-stuck.has-quick-controls .area-mobile-quick-controls,
+      .area-content-area .area-header.is-stuck .area-header-metrics,
+      .area-content-area .area-header.is-stuck .area-badges {
+        display: none;
+      }
+
+      .area-content-area .area-header.is-stuck.is-revealed {
+        overflow: visible;
+      }
+
+      .area-content-area .area-header.is-stuck.is-revealed::before {
+        content: "";
+        position: absolute;
+        inset: 0 0 auto;
+        height: calc(154px + env(safe-area-inset-top, 0px));
+        display: block;
+        border-radius: 0 0 18px 18px;
+        background:
+          radial-gradient(circle at 12% 0%, rgba(255, 255, 255, 0.72), transparent 28%),
+          linear-gradient(180deg,
+            color-mix(in srgb, var(--card-background-color) 99%, transparent) 0%,
+            color-mix(in srgb, var(--card-background-color) 92%, #dff4fb 8%) 100%);
+        box-shadow:
+          0 14px 34px rgba(15, 23, 42, 0.12),
+          inset 0 -1px 0 color-mix(in srgb, var(--divider-color) 55%, transparent);
+        pointer-events: none;
+      }
+
+      .area-content-area .area-header.is-stuck.is-revealed .area-header-content {
+        top: calc(58px + env(safe-area-inset-top, 0px));
+        left: 20px;
+        right: 22px;
+        justify-content: flex-start;
+      }
+
+      .area-content-area .area-header.is-stuck.is-revealed.has-metrics .area-header-content {
+        right: 136px;
+      }
+
+      .area-content-area .area-header.is-stuck.is-revealed .area-title {
+        font-size: 25px;
+        line-height: 1.02;
+      }
+
+      .area-content-area .area-header.is-stuck.is-revealed .area-subtitle {
+        display: block;
+        margin-top: 3px;
+        padding-bottom: 5px;
+        color: color-mix(in srgb, var(--primary-text-color) 52%, transparent);
+        font-size: 12px;
+        font-weight: 800;
+        line-height: 1.1;
+      }
+
+      .area-content-area .area-header.is-stuck.is-revealed.has-picture .area-title,
+      .area-content-area .area-header.is-stuck.is-revealed.has-picture .area-subtitle {
+        color: var(--primary-text-color);
+        text-shadow: none;
+      }
+
+      .area-content-area .area-header.is-stuck.is-revealed .area-header-metrics {
+        top: calc(63px + env(safe-area-inset-top, 0px));
+        right: 18px;
+        left: auto;
+        bottom: auto;
+        width: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+
+      .area-content-area .area-header.is-stuck.is-revealed .area-mobile-quick-controls,
+      .area-content-area .area-header.is-stuck.is-revealed.has-metrics .area-mobile-quick-controls,
+      .area-content-area .area-header.is-stuck.is-revealed.has-quick-controls .area-mobile-quick-controls {
+        top: calc(110px + env(safe-area-inset-top, 0px));
+        bottom: auto;
+        left: 20px;
+        right: 20px;
+        width: auto;
+        max-width: none;
+        min-height: 36px;
+        padding: 3px;
+        display: grid;
+        grid-template-columns: 1fr;
+        align-items: center;
+        justify-content: stretch;
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--card-background-color) 90%, transparent);
+        box-shadow:
+          0 10px 24px rgba(15, 23, 42, 0.1),
+          inset 0 0 0 1px color-mix(in srgb, var(--divider-color) 58%, transparent);
+      }
+
+      .area-content-area .area-header.is-stuck.is-revealed .area-mobile-quick-controls.count-2 {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .area-content-area .area-header.is-stuck.is-revealed .area-mobile-quick-controls.count-3 {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .area-content-area .area-header.is-stuck.is-revealed .area-mobile-quick-controls.count-1 {
+        right: auto;
+        width: min(148px, calc(50% - 20px));
+        min-width: 122px;
+      }
+
+      .area-content-area .area-header.is-stuck.is-revealed.has-metrics .area-mobile-quick-controls.count-1 {
+        right: auto;
+        width: min(148px, calc(100% - 176px));
+      }
+
+      .area-content-area .area-header.is-stuck.is-revealed .area-mobile-quick-controls.empty {
+        display: none;
+      }
+
+      .area-view .entities-section,
+      .area-view .dd-custom-section {
+        position: relative;
+        z-index: 2;
+      }
+
+      .area-view .entities-section {
+        display: none;
+      }
+
+      .mobile-area-overview {
+        display: block;
+        position: relative;
+        z-index: 2;
+        margin: 12px 0 20px;
+      }
+
+      .mobile-entities-section {
+        display: grid;
+        position: relative;
+        z-index: 2;
+      }
+
+      .layout-container > .sidebar,
+      .sidebar {
+        position: fixed !important;
+        left: 18px !important;
+        right: 18px !important;
+        top: auto !important;
+        bottom: calc(82px + env(safe-area-inset-bottom, 0px)) !important;
+        width: auto !important;
+        height: auto !important;
+        max-height: min(62vh, 520px);
+        padding: 10px;
+        overflow-y: auto;
+        border-radius: 8px;
+        border: 1px solid rgba(0, 0, 0, 0.08);
+        background: rgba(255, 255, 255, 0.94);
+        box-shadow: 0 22px 48px rgba(0, 0, 0, 0.24);
+        backdrop-filter: blur(20px);
+        transform: translate3d(0, calc(100% + 140px), 0) !important;
+        transition: transform 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
+        z-index: 121;
+      }
+
+      .layout-container > .sidebar.open,
+      .sidebar.open {
+        transform: translate3d(0, 0, 0) !important;
+      }
+
+      .sidebar::before {
+        content: "";
+        width: 42px;
+        height: 4px;
+        margin: 0 auto 10px;
+        display: block;
+        border-radius: 999px;
+        background: rgba(0, 0, 0, 0.14);
+      }
+
+      .sidebar .area-list {
+        padding: 0;
+      }
+
+      .sidebar .floor-section {
+        margin-bottom: 12px;
+      }
+
+      .sidebar .floor-header {
+        padding: 6px 12px 9px;
+      }
+
+      .sidebar .floor-header h3 {
+        font-size: 13px;
+        font-weight: 850;
+        letter-spacing: 0;
+        text-transform: none;
+      }
+
+      .sidebar .area-button {
+        min-height: 64px;
+        height: auto;
+        margin-bottom: 8px;
+        padding: 11px 12px 11px 56px;
+        border-radius: 9px;
+        border: 1px solid rgba(15, 23, 42, 0.06);
+        background:
+          linear-gradient(180deg,
+            color-mix(in srgb, var(--card-background-color) 97%, #ffffff),
+            color-mix(in srgb, var(--card-background-color) 96%, var(--primary-background-color)));
+        box-shadow:
+          0 10px 22px rgba(15, 23, 42, 0.07),
+          inset 0 1px 0 rgba(255, 255, 255, 0.42);
+      }
+
+      .sidebar .area-button.home-button {
+        height: 48px;
+        min-height: 48px;
+        padding: 10px 14px 10px 54px;
+        border-radius: 8px;
+      }
+
+      .sidebar .area-button.home-button .area-icon {
+        position: absolute;
+        left: 12px;
+        top: 50%;
+        width: 34px;
+        height: 34px;
+        transform: translateY(-50%);
+        border-radius: 999px;
+      }
+
+      .sidebar .area-button.selected,
+      .sidebar .area-button.home-button.selected {
+        border-color: color-mix(in srgb, var(--primary-color) 42%, transparent);
+        background:
+          linear-gradient(180deg,
+            color-mix(in srgb, var(--primary-color) 88%, #ffffff 10%),
+            var(--primary-color));
+        color: var(--text-primary-color);
+        box-shadow:
+          0 14px 28px color-mix(in srgb, var(--primary-color) 24%, transparent),
+          inset 0 1px 0 rgba(255, 255, 255, 0.2);
+      }
+
+      .sidebar .area-content {
+        min-height: 42px;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        grid-template-rows: auto auto;
+        align-items: center;
+        gap: 3px 10px;
+      }
+
+      .sidebar .area-top-section {
+        min-width: 0;
+        margin-top: 0;
+        grid-column: 1;
+        grid-row: 1 / span 2;
+      }
+
+      .sidebar .area-bottom-section {
+        display: contents;
+        min-height: 0;
+      }
+
+      .sidebar .area-main-icon {
+        position: absolute;
+        left: -44px;
+        top: 50%;
+        bottom: auto;
+        width: 34px;
+        height: 34px;
+        border-radius: 10px;
+        transform: translateY(-50%);
+        background: color-mix(in srgb, var(--primary-color) 12%, transparent);
+        box-shadow: none;
+      }
+
+      .sidebar .area-main-icon ha-icon {
+        --mdc-icon-size: 20px;
+      }
+
+      .sidebar .area-button.has-picture {
+        min-height: 70px;
+        color: var(--area-picture-text-color, #ffffff);
+        border-color: rgba(255, 255, 255, 0.18);
+        background: #182044;
+      }
+
+      .sidebar .area-button.has-picture.selected {
+        border-color: color-mix(in srgb, var(--primary-color) 44%, rgba(255, 255, 255, 0.18));
+        box-shadow:
+          0 14px 30px rgba(15, 23, 42, 0.18),
+          inset 0 0 0 1px color-mix(in srgb, var(--primary-color) 34%, transparent);
+      }
+
+      .sidebar .area-button.has-picture::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        z-index: 0;
+        background: var(--area-picture-overlay);
+        pointer-events: none;
+      }
+
+      .sidebar .area-button.has-picture .area-background {
+        opacity: 0.78;
+        transform: scale(1.02);
+      }
+
+      .sidebar .area-button.has-picture .area-content,
+      .sidebar .area-button.has-picture .area-info-badges,
+      .sidebar .area-button.has-picture .area-main-icon {
+        z-index: 1;
+      }
+
+      .sidebar .area-info-badges {
+        position: relative;
+        top: auto;
+        right: auto;
+        grid-column: 2;
+        grid-row: 1 / span 2;
+        max-width: 130px;
+        justify-content: flex-end;
+        align-self: center;
+        gap: 5px;
+      }
+
+      .sidebar .area-name {
+        max-width: 100%;
+        margin: 0;
+        font-size: 15px;
+        font-weight: 850;
+        line-height: 1.1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .sidebar .area-sensors {
+        margin-top: 4px;
+        color: color-mix(in srgb, var(--primary-text-color) 58%, transparent);
+        font-size: 12px;
+        font-weight: 700;
+        line-height: 1.1;
+      }
+
+      .sidebar .area-button.has-picture .area-sensors {
+        color: var(--area-picture-muted-text-color, rgba(255, 255, 255, 0.72));
+      }
+
+      .sidebar .info-badge {
+        min-width: 24px;
+        height: 22px;
+        padding: 0 7px;
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--primary-color) 9%, var(--card-background-color));
+        box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.04);
+      }
+
+      .sidebar .info-badge ha-icon {
+        --mdc-icon-size: 13px;
+      }
+
+      .sidebar .badge-count {
+        font-size: 11px;
+        font-weight: 850;
+      }
+
+      .sidebar .area-button.has-picture .info-badge {
+        background: color-mix(in srgb, var(--badge-color, var(--primary-color)) 18%, rgba(255, 255, 255, 0.88));
+        color: var(--badge-color, var(--primary-color));
+        backdrop-filter: blur(10px);
+        box-shadow: 0 4px 12px rgba(15, 23, 42, 0.16);
+      }
+
+      .sidebar .area-button.selected .area-main-icon,
+      .sidebar .area-button.selected .area-icon {
+        background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.14);
+        color: var(--primary-color);
+      }
+
+      .sidebar .area-list {
+        display: grid;
+        gap: 8px;
+      }
+
+      .sidebar .floor-section {
+        display: grid;
+        gap: 8px;
+        margin-bottom: 10px;
+      }
+
+      .sidebar .floor-areas {
+        display: grid;
+        gap: 8px;
+      }
+
+      .sidebar .floor-header {
+        margin: 0;
+        padding: 4px 6px 2px;
+      }
+
+      .sidebar .floor-header h3 {
+        color: var(--secondary-text-color);
+        font-size: 14px;
+        font-weight: 760;
+        line-height: 1.2;
+      }
+
+      .sidebar .area-button,
+      .sidebar .area-button.home-button {
+        display: grid;
+        grid-template-columns: 48px minmax(0, 1fr) auto 22px;
+        align-items: center;
+        gap: 12px;
+        min-height: 68px;
+        height: auto;
+        margin: 0;
+        padding: 10px 12px;
+        border-radius: 8px;
+        border: 1px solid rgba(15, 23, 42, 0.06);
+        background: rgba(255, 255, 255, 0.92);
+        color: var(--primary-text-color);
+        box-shadow: 0 10px 22px rgba(15, 23, 42, 0.06);
+        transform: none;
+      }
+
+      .sidebar .area-button:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 12px 24px rgba(15, 23, 42, 0.09);
+      }
+
+      .sidebar .area-button.selected,
+      .sidebar .area-button.home-button.selected {
+        border-color: rgba(var(--rgb-primary-color, 3, 169, 244), 0.34);
+        background: rgba(255, 255, 255, 0.98);
+        color: var(--primary-text-color);
+        box-shadow:
+          0 14px 28px rgba(15, 23, 42, 0.1),
+          inset 3px 0 0 var(--primary-color);
+      }
+
+      .sidebar .area-button.home-button .area-icon,
+      .sidebar .area-icon,
+      .sidebar .area-main-icon {
+        position: relative;
+        left: auto;
+        top: auto;
+        bottom: auto;
+        grid-column: 1;
+        grid-row: 1;
+        width: 46px;
+        height: 46px;
+        border-radius: 8px;
+        transform: none;
+        background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.1);
+        color: var(--primary-color);
+        box-shadow: none;
+      }
+
+      .sidebar .area-button.home-button .area-icon {
+        position: relative;
+        left: auto;
+        top: auto;
+      }
+
+      .sidebar .area-main-icon ha-icon,
+      .sidebar .area-icon ha-icon {
+        --mdc-icon-size: 24px;
+        color: currentColor;
+      }
+
+      .sidebar .area-content {
+        display: contents;
+        width: auto;
+        height: auto;
+        min-height: 0;
+      }
+
+      .sidebar .area-info,
+      .sidebar .area-top-section {
+        grid-column: 2;
+        grid-row: 1;
+        min-width: 0;
+        margin: 0;
+      }
+
+      .sidebar .area-bottom-section {
+        display: contents;
+      }
+
+      .sidebar .area-name {
+        margin: 0;
+        color: inherit;
+        font-size: 15px;
+        font-weight: 750;
+        line-height: 1.1;
+      }
+
+      .sidebar .area-sensors {
+        margin-top: 4px;
+        color: var(--secondary-text-color);
+        font-size: 12px;
+        font-weight: 500;
+        line-height: 1.1;
+      }
+
+      .sidebar .area-info-badges {
+        position: relative;
+        top: auto;
+        right: auto;
+        grid-column: 3;
+        grid-row: 1;
+        max-width: 104px;
+        display: flex;
+        justify-content: flex-end;
+        align-items: center;
+        gap: 4px;
+        z-index: 1;
+      }
+
+      .sidebar .area-menu-chevron {
+        display: block;
+        grid-column: 4;
+        grid-row: 1;
+        z-index: 1;
+        --mdc-icon-size: 22px;
+        color: rgba(15, 23, 42, 0.52);
+        transition: transform 0.18s ease, color 0.18s ease;
+      }
+
+      .sidebar .home-notification-shortcut {
+        grid-column: 3;
+        grid-row: 1;
+        justify-self: end;
+        width: auto;
+        min-width: 44px;
+        height: 30px;
+        margin-left: 0;
+      }
+
+      .sidebar .area-button.selected .area-menu-chevron {
+        color: var(--primary-color);
+        transform: translateX(2px);
+      }
+
+      .sidebar .area-button.has-picture {
+        min-height: 68px;
+        border-color: rgba(15, 23, 42, 0.12);
+        background: rgba(18, 24, 38, 0.9);
+        color: var(--area-picture-text-color, #ffffff);
+      }
+
+      .sidebar .area-button.has-picture.selected {
+        border-color: rgba(var(--rgb-primary-color, 3, 169, 244), 0.48);
+        background: rgba(18, 24, 38, 0.92);
+        box-shadow:
+          0 14px 28px rgba(15, 23, 42, 0.16),
+          inset 3px 0 0 var(--primary-color);
+      }
+
+      .sidebar .area-button.has-picture .area-background {
+        opacity: 0.78;
+        transform: scale(1.02);
+      }
+
+      .sidebar .area-button.has-picture .area-top-section,
+      .sidebar .area-button.has-picture .area-name,
+      .sidebar .area-button.has-picture .area-sensors,
+      .sidebar .area-button.has-picture .area-menu-chevron,
+      .sidebar .area-button.has-picture .area-info-badges,
+      .sidebar .area-button.has-picture .area-main-icon,
+      .sidebar .area-button.has-picture .area-icon {
+        position: relative;
+        z-index: 2;
+      }
+
+      .sidebar .area-button.has-picture::after {
+        background: var(--area-picture-overlay);
+      }
+
+      .sidebar .area-button.has-picture .area-name {
+        width: fit-content;
+        max-width: 100%;
+        padding: 4px 8px;
+        margin-left: -2px;
+        border-radius: 8px;
+        color: #ffffff;
+        background: linear-gradient(90deg, rgba(8, 13, 24, 0.66), rgba(8, 13, 24, 0.28));
+        text-shadow: 0 2px 8px rgba(0, 0, 0, 0.72);
+        backdrop-filter: blur(2px);
+      }
+
+      .sidebar .area-button.has-picture .area-main-icon,
+      .sidebar .area-button.has-picture .area-icon {
+        background: rgba(255, 255, 255, 0.18);
+        color: var(--area-picture-text-color, #ffffff);
+        backdrop-filter: blur(10px);
+      }
+
+      .sidebar .area-button.has-picture .area-sensors,
+      .sidebar .area-button.has-picture .area-menu-chevron {
+        color: var(--area-picture-muted-text-color, rgba(255, 255, 255, 0.72));
+      }
+
+      .sidebar .area-button.has-picture.selected .area-menu-chevron {
+        color: var(--area-picture-text-color, #ffffff);
+      }
+
+      .sidebar .area-button.has-picture.text-dark .area-main-icon,
+      .sidebar .area-button.has-picture.text-dark .area-icon {
+        background: rgba(255, 255, 255, 0.18);
+        color: var(--area-picture-text-color, #ffffff);
+      }
+
+      .sidebar .area-button.has-picture.text-dark .info-badge {
+        background: color-mix(in srgb, var(--badge-color, var(--primary-color)) 18%, rgba(255, 255, 255, 0.88));
+        color: var(--badge-color, var(--primary-color));
+      }
+
+      .mobile-nav-overlay {
+        z-index: 120 !important;
+        background: rgba(0, 0, 0, 0.45);
+        backdrop-filter: blur(2px);
+      }
+
+      @media (prefers-color-scheme: dark) {
+        .layout-container > .sidebar,
+        .sidebar {
+          border-color: rgba(255, 255, 255, 0.1);
+          background:
+            linear-gradient(180deg, rgba(37, 40, 48, 0.96), rgba(18, 20, 25, 0.94)),
+            color-mix(in srgb, var(--card-background-color) 92%, #000000);
+          box-shadow:
+            0 24px 58px rgba(0, 0, 0, 0.58),
+            inset 0 1px 0 rgba(255, 255, 255, 0.06);
+          color: var(--primary-text-color);
+        }
+
+        .sidebar::before {
+          background: rgba(255, 255, 255, 0.18);
+        }
+
+        .sidebar .floor-header h3 {
+          color: color-mix(in srgb, var(--primary-text-color) 58%, transparent);
+        }
+
+        .sidebar .area-button {
+          border: 1px solid rgba(255, 255, 255, 0.06);
+          background:
+            linear-gradient(180deg,
+              color-mix(in srgb, var(--card-background-color) 86%, #ffffff 4%),
+              color-mix(in srgb, var(--card-background-color) 96%, #000000 4%));
+          color: var(--primary-text-color);
+          box-shadow: 0 10px 22px rgba(0, 0, 0, 0.24);
+        }
+
+        .sidebar .area-button.selected,
+        .sidebar .area-button.home-button.selected {
+          border-color: color-mix(in srgb, var(--primary-color) 42%, transparent);
+          background:
+            linear-gradient(180deg,
+              color-mix(in srgb, var(--card-background-color) 90%, var(--primary-color) 12%),
+              color-mix(in srgb, var(--card-background-color) 96%, #000000 5%));
+          color: var(--primary-text-color);
+          box-shadow:
+            0 14px 30px rgba(0, 0, 0, 0.36),
+            inset 3px 0 0 var(--primary-color),
+            inset 0 1px 0 rgba(255, 255, 255, 0.06);
+        }
+
+        .sidebar .area-button.has-picture {
+          border-color: rgba(255, 255, 255, 0.08);
+          background: #17202b;
+        }
+
+        .sidebar .area-button.has-picture .area-background {
+          opacity: 0.58;
+        }
+
+        .sidebar .area-button.has-picture:hover .area-background {
+          opacity: 0.66;
+        }
+
+        .sidebar .area-main-icon,
+        .sidebar .area-icon {
+          background: color-mix(in srgb, var(--primary-color) 22%, transparent);
+          color: var(--primary-color);
+        }
+
+        .sidebar .area-button.selected .area-main-icon,
+        .sidebar .area-button.selected .area-icon {
+          background: color-mix(in srgb, var(--primary-color) 24%, transparent);
+          color: var(--primary-color);
+        }
+
+        .sidebar .area-menu-chevron,
+        .sidebar .area-button.selected .area-menu-chevron {
+          color: color-mix(in srgb, var(--primary-text-color) 62%, transparent);
+        }
+
+        .sidebar .area-button.selected .area-menu-chevron {
+          color: var(--primary-color);
+        }
+
+        .sidebar .area-sensors,
+        .sidebar .area-bottom-section {
+          color: color-mix(in srgb, var(--primary-text-color) 68%, transparent);
+        }
+
+        .sidebar .info-badge {
+          background: rgba(255, 255, 255, 0.08);
+          box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+        }
+
+        .home-notification-shortcut {
+          color: #ff9a9a;
+          background: rgba(239, 68, 68, 0.16);
+          box-shadow:
+            inset 0 0 0 1px rgba(255, 255, 255, 0.05),
+            0 8px 18px rgba(0, 0, 0, 0.18);
+        }
+
+        .mobile-nav-overlay {
+          background: rgba(0, 0, 0, 0.58);
+          backdrop-filter: blur(4px);
+        }
+      }
+
+      .home-view,
+      .home-content-area {
+        max-width: 100% !important;
+        overflow-x: hidden !important;
+      }
+
+      .home-view .favorites-section {
+        box-sizing: border-box !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        margin: 0 0 44px !important;
+        padding: 0 !important;
+        overflow-x: hidden !important;
+      }
+
+      .home-view .favorites-grid {
+        box-sizing: border-box !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+      }
+
+      .home-view .favorite-card-wrapper {
+        max-width: 100% !important;
+        min-width: 0 !important;
+      }
+    }
   `;
 
   connectedCallback() {
     super.connectedCallback();
+    this._loadMobileEntityLayoutPreference();
     this._checkMobile();
     this._setupEventListeners();
+    window.addEventListener('dwains-toggle-area-nav', this._handleAreaNavToggle);
     this._startTimeUpdate();
     this._initializeObservers();
     makeDialogManager(this);
@@ -2001,10 +7131,17 @@ export class DwainsLayoutCard extends LitElement {
   protected override willUpdate(changedProps: PropertyValues): void {
     super.willUpdate(changedProps);
 
+    if (changedProps.has('config') && this.hass) {
+      ensureBottomNav(this.hass, this.config?.settings);
+      if (!this._canManageDashboard() && this._editMode) this._editMode = false;
+    }
+
     // Handle hass updates for live entity state changes
     if (changedProps.has('hass') && this.hass) {
       // Houd de mobiele onderbalk levend en up-to-date.
-      ensureBottomNav(this.hass);
+      ensureBottomNav(this.hass, this.config?.settings);
+      this._syncBottomNavAreaContext();
+      if (!this._canManageDashboard() && this._editMode) this._editMode = false;
 
       const oldHass = changedProps.get('hass') as HomeAssistant | undefined;
 
@@ -2019,10 +7156,18 @@ export class DwainsLayoutCard extends LitElement {
 
   disconnectedCallback() {
     super.disconnectedCallback();
+    window.removeEventListener('dwains-toggle-area-nav', this._handleAreaNavToggle);
+    this._persistentNotificationsUnsub?.();
+    this._persistentNotificationsUnsub = undefined;
+    this._removeMobileDomainMenuPortal();
     this._cleanupEventListeners();
     this._cleanupObservers();
     if (this._timeInterval) {
       clearInterval(this._timeInterval);
+    }
+    if (this._areaHeaderScrollRaf) {
+      cancelAnimationFrame(this._areaHeaderScrollRaf);
+      this._areaHeaderScrollRaf = undefined;
     }
   }
 
@@ -2037,8 +7182,101 @@ export class DwainsLayoutCard extends LitElement {
   }
 
   private _handleResize = () => {
+    this._closeMobileDomainMenu();
     this._checkMobile();
+    this._updateAreaHeaderScrollState();
   };
+
+  private _handleContentScroll = (event: Event) => {
+    if (!this._isMobile || this._selectedView !== 'area') {
+      if (this._areaHeaderStuck) this._areaHeaderStuck = false;
+      if (this._areaHeaderRevealed) this._areaHeaderRevealed = false;
+      return;
+    }
+
+    const target = event.currentTarget as HTMLElement | null;
+    const scrollTop = target?.scrollTop || 0;
+
+    if (this._areaHeaderScrollRaf) {
+      cancelAnimationFrame(this._areaHeaderScrollRaf);
+    }
+    this._areaHeaderScrollRaf = requestAnimationFrame(() => {
+      this._areaHeaderScrollRaf = undefined;
+      this._setAreaHeaderStuckForScroll(scrollTop, true);
+    });
+  };
+
+  private _updateAreaHeaderScrollState(): void {
+    const scrollContainer = this.shadowRoot?.querySelector('.content-area') as HTMLElement | null;
+    if (!this._isMobile || this._selectedView !== 'area' || !scrollContainer) {
+      if (this._areaHeaderStuck) this._areaHeaderStuck = false;
+      if (this._areaHeaderRevealed) this._areaHeaderRevealed = false;
+      return;
+    }
+    this._setAreaHeaderStuckForScroll(scrollContainer.scrollTop, false);
+  }
+
+  private _setAreaHeaderStuckForScroll(scrollTop: number, fromScroll: boolean): void {
+    if (!this._isMobile || this._selectedView !== 'area') {
+      if (this._areaHeaderStuck) this._areaHeaderStuck = false;
+      if (this._areaHeaderRevealed) this._areaHeaderRevealed = false;
+      this._lastAreaScrollTop = 0;
+      this._areaScrollUpDistance = 0;
+      return;
+    }
+
+    if (!fromScroll) {
+      this._lastAreaScrollTop = scrollTop;
+      this._areaScrollUpDistance = 0;
+      const shouldStick = scrollTop > 28;
+      if (this._areaHeaderStuck !== shouldStick) {
+        this._areaHeaderStuck = shouldStick;
+      }
+      if (this._areaHeaderRevealed) this._areaHeaderRevealed = false;
+      return;
+    }
+
+    const previousScrollTop = this._lastAreaScrollTop;
+    const delta = scrollTop - previousScrollTop;
+    this._lastAreaScrollTop = scrollTop;
+
+    if (scrollTop <= 2) {
+      this._areaScrollUpDistance = 0;
+      if (this._areaHeaderStuck) this._areaHeaderStuck = false;
+      if (this._areaHeaderRevealed) this._areaHeaderRevealed = false;
+      return;
+    }
+
+    if (delta < -1) {
+      this._areaScrollUpDistance += Math.abs(delta);
+    } else if (delta > 1) {
+      this._areaScrollUpDistance = 0;
+    }
+
+    let shouldStick = this._areaHeaderStuck;
+    let shouldReveal = this._areaHeaderRevealed;
+
+    if (delta > 1 && scrollTop > 34) {
+      shouldStick = true;
+      shouldReveal = false;
+    }
+
+    if (this._areaHeaderStuck && this._areaScrollUpDistance >= 14 && scrollTop > 34) {
+      shouldReveal = true;
+    }
+
+    if (scrollTop <= 28) {
+      shouldStick = false;
+      shouldReveal = false;
+    }
+
+    if (this._areaHeaderStuck !== shouldStick) {
+      this._areaHeaderStuck = shouldStick;
+    }
+    if (this._areaHeaderRevealed !== shouldReveal) {
+      this._areaHeaderRevealed = shouldReveal;
+    }
+  }
 
   private _handleShowMoreInfo = (e: Event) => {
     const event = e as CustomEvent;
@@ -2071,6 +7309,49 @@ export class DwainsLayoutCard extends LitElement {
       month: 'short'
     });
   }
+
+  private _loadMobileEntityLayoutPreference(): void {
+    try {
+      const savedEntityLayout = window.localStorage.getItem('dd-next-mobile-entity-layout');
+      const savedAreasLayout = window.localStorage.getItem('dd-next-mobile-home-areas-layout');
+      const savedDevicesLayout = window.localStorage.getItem('dd-next-mobile-home-devices-layout');
+      if (savedEntityLayout === 'rail' || savedEntityLayout === 'grid') this._mobileEntityLayout = savedEntityLayout;
+      if (savedAreasLayout === 'rail' || savedAreasLayout === 'grid') this._mobileHomeAreasLayout = savedAreasLayout;
+      if (savedDevicesLayout === 'rail' || savedDevicesLayout === 'grid') this._mobileHomeDevicesLayout = savedDevicesLayout;
+    } catch {
+      // localStorage can be unavailable in private or restricted contexts.
+    }
+  }
+
+  private _toggleMobileEntityLayout = (event?: Event): void => {
+    event?.stopPropagation();
+    this._mobileEntityLayout = this._mobileEntityLayout === 'rail' ? 'grid' : 'rail';
+    try {
+      window.localStorage.setItem('dd-next-mobile-entity-layout', this._mobileEntityLayout);
+    } catch {
+      // Preference persistence is best-effort only.
+    }
+  };
+
+  private _toggleMobileHomeAreasLayout = (event?: Event): void => {
+    event?.stopPropagation();
+    this._mobileHomeAreasLayout = this._mobileHomeAreasLayout === 'rail' ? 'grid' : 'rail';
+    try {
+      window.localStorage.setItem('dd-next-mobile-home-areas-layout', this._mobileHomeAreasLayout);
+    } catch {
+      // Preference persistence is best-effort only.
+    }
+  };
+
+  private _toggleMobileHomeDevicesLayout = (event?: Event): void => {
+    event?.stopPropagation();
+    this._mobileHomeDevicesLayout = this._mobileHomeDevicesLayout === 'rail' ? 'grid' : 'rail';
+    try {
+      window.localStorage.setItem('dd-next-mobile-home-devices-layout', this._mobileHomeDevicesLayout);
+    } catch {
+      // Preference persistence is best-effort only.
+    }
+  };
 
   private _initializeObservers() {
     // Intersection Observer for lazy loading
@@ -2158,6 +7439,20 @@ export class DwainsLayoutCard extends LitElement {
       if (this._headerExpanded) {
         this._renderFavoriteTileCards();
       }
+
+      if (!this._persistentNotificationsLoaded) {
+        this._persistentNotificationsLoaded = true;
+        void this._loadPersistentNotifications(false);
+        void this._ensurePersistentNotificationsSubscription();
+      }
+    }
+
+    if (
+      changedProps.has('_selectedView') ||
+      changedProps.has('_selectedArea') ||
+      changedProps.has('config')
+    ) {
+      this._syncBottomNavAreaContext();
     }
 
     // Reset the state changes flag after render
@@ -2173,12 +7468,8 @@ export class DwainsLayoutCard extends LitElement {
       }, 0);
     }
 
-    // Render home favorite cards when home view is selected
-    if (changedProps.has('_selectedView') && this._selectedView === 'home' && this.hass) {
-      // Use setTimeout to ensure DOM is updated
-      setTimeout(() => {
-        this._renderHomeFavoriteCards();
-      }, 0);
+    if (changedProps.has('_selectedView') || changedProps.has('_selectedArea')) {
+      setTimeout(() => this._updateAreaHeaderScrollState(), 0);
     }
 
     // Re-observe entity card wrappers after update
@@ -2228,8 +7519,11 @@ export class DwainsLayoutCard extends LitElement {
         ${this._renderMobileOverlay()}
         ${this._renderSidebar()}
         <div class="main-content">
-          ${this._selectedView !== 'home' ? this._renderGlobalHeader() : nothing}
-          <div class="content-area">
+          ${this._selectedView !== 'home' && !this._isMobile ? this._renderGlobalHeader() : nothing}
+          <div
+            class="content-area ${this._selectedView === 'home' ? 'home-content-area' : ''} ${this._selectedView === 'area' ? 'area-content-area' : ''}"
+            @scroll=${this._handleContentScroll}
+          >
             ${this._selectedView === 'home'
               ? this._renderHomeView()
               : this._selectedView === 'area' && this._selectedArea
@@ -2238,9 +7532,9 @@ export class DwainsLayoutCard extends LitElement {
           </div>
         </div>
       </div>
-      ${this._renderMobileFAB()}
       ${this._renderToast()}
       ${this._renderConfirmationDialog()}
+      ${this._renderNotificationsPanel()}
     `;
   }
 
@@ -2255,18 +7549,113 @@ export class DwainsLayoutCard extends LitElement {
     `;
   }
 
-  private _renderMobileFAB() {
-    if (!this._isMobile) return nothing;
+  private _renderNotificationsPanel() {
+    const count = this._persistentNotifications.length;
+    const hasNotifications = count > 0;
 
     return html`
-      <button
-        class="mobile-fab ${this._mobileNavOpen ? 'hidden' : ''}"
-        @click=${this._toggleMobileNav}
-        title=${this._t('sidebar.areas')}
+      <div
+        class="notifications-overlay ${this._notificationsOpen ? 'open' : ''}"
+        @click=${this._closeNotifications}
+      ></div>
+      <section
+        class="notifications-panel ${this._notificationsOpen ? 'open' : ''}"
+        aria-hidden=${this._notificationsOpen ? 'false' : 'true'}
       >
-        <ha-icon icon="mdi:floor-plan"></ha-icon>
-        <span class="fab-label">${this._t('sidebar.areas')}</span>
-      </button>
+        <div class="notifications-head">
+          <div class="notifications-title">
+            <div class="notifications-title-row">
+              <ha-icon icon="mdi:bell-outline"></ha-icon>
+              <span>Notifications</span>
+            </div>
+            <div class="notifications-subtitle">
+              ${hasNotifications
+                ? `${count} persistent ${count === 1 ? 'notification' : 'notifications'}`
+                : 'Persistent notifications from Home Assistant'}
+            </div>
+          </div>
+          <div class="notifications-actions">
+            ${hasNotifications ? html`
+              <button
+                class="notifications-icon-button"
+                type="button"
+                title="Dismiss all"
+                @click=${this._dismissAllPersistentNotifications}
+              >
+                <ha-icon icon="mdi:delete-sweep-outline"></ha-icon>
+              </button>
+            ` : nothing}
+            <button
+              class="notifications-icon-button"
+              type="button"
+              title="Refresh"
+              @click=${() => this._loadPersistentNotifications(true)}
+            >
+              <ha-icon icon="mdi:refresh"></ha-icon>
+            </button>
+            <button
+              class="notifications-icon-button"
+              type="button"
+              title="Close"
+              @click=${this._closeNotifications}
+            >
+              <ha-icon icon="mdi:close"></ha-icon>
+            </button>
+          </div>
+        </div>
+
+        <div class="notifications-list">
+          ${this._notificationsLoading && !hasNotifications
+            ? html`
+                <div class="notifications-loading">
+                  <ha-icon icon="mdi:loading"></ha-icon>
+                  <span>Loading notifications...</span>
+                </div>
+              `
+            : this._notificationsError
+              ? html`
+                  <div class="notifications-error">
+                    <ha-icon icon="mdi:alert-circle-outline"></ha-icon>
+                    <span>${this._notificationsError}</span>
+                  </div>
+                `
+              : hasNotifications
+                ? this._persistentNotifications.map((notification) =>
+                    this._renderPersistentNotification(notification)
+                  )
+                : html`
+                    <div class="notifications-empty">
+                      <ha-icon icon="mdi:bell-check-outline"></ha-icon>
+                      <span>No persistent notifications</span>
+                    </div>
+                  `}
+        </div>
+      </section>
+    `;
+  }
+
+  private _renderPersistentNotification(notification: PersistentNotification) {
+    return html`
+      <article class="notification-row">
+        <div class="notification-icon">
+          <ha-icon icon="mdi:bell-badge-outline"></ha-icon>
+        </div>
+        <div class="notification-copy">
+          <div class="notification-title">${notification.title || 'Notification'}</div>
+          <div class="notification-message">${notification.message}</div>
+          ${notification.created_at ? html`
+            <div class="notification-date">${this._formatNotificationDate(notification.created_at)}</div>
+          ` : nothing}
+        </div>
+        <button
+          class="notification-dismiss"
+          type="button"
+          title="Dismiss"
+          @click=${() => this._dismissPersistentNotification(notification.notification_id)}
+        >
+          <ha-icon icon="mdi:close"></ha-icon>
+        </button>
+      </article>
     `;
   }
 
@@ -2279,9 +7668,12 @@ export class DwainsLayoutCard extends LitElement {
     return html`
       <nav class=${classMap(classes)}>
         <div class="area-list">
-          <button
-            class="area-button home-button ${this._selectedView === 'home' ? 'selected' : ''}"
+          <div
+            class="area-button home-button ${this._selectedView === 'home' ? 'selected' : ''} ${this._persistentNotifications.length ? 'has-notifications' : ''}"
+            role="button"
+            tabindex="0"
             @click=${() => this._selectView('home')}
+            @keydown=${this._handleHomeNavigationKeydown}
           >
             <div class="area-icon">
               <ha-icon icon="mdi:home"></ha-icon>
@@ -2289,11 +7681,34 @@ export class DwainsLayoutCard extends LitElement {
             <div class="area-info">
               <div class="area-name">${this._t('sidebar.home')}</div>
             </div>
-          </button>
+            ${this._renderHomeNotificationShortcut()}
+            <ha-icon class="area-menu-chevron" icon="mdi:chevron-right"></ha-icon>
+          </div>
 
           ${this._renderAreaButtons()}
         </div>
       </nav>
+    `;
+  }
+
+  private _renderHomeNotificationShortcut() {
+    const count = this._persistentNotifications.length;
+    if (!count) return nothing;
+
+    const label = `${count} persistent ${count === 1 ? 'notification' : 'notifications'}`;
+    const displayCount = count > 99 ? '99+' : String(count);
+
+    return html`
+      <button
+        class="home-notification-shortcut"
+        type="button"
+        title=${label}
+        aria-label=${label}
+        @click=${this._openNotificationsFromHomeShortcut}
+      >
+        <ha-icon icon="mdi:bell-outline"></ha-icon>
+        <span class="home-notification-count">${displayCount}</span>
+      </button>
     `;
   }
 
@@ -2369,10 +7784,11 @@ export class DwainsLayoutCard extends LitElement {
         const areaData = this._getCachedAreaData(area);
         const isSelected = this._selectedArea === area.area_id;
     const hasPicture = area.picture ? true : false;
+    const pictureContrastClass = hasPicture ? this._getPictureContrastClass(area.picture) : '';
 
         return html`
           <button
-            class="area-button ${isSelected ? 'selected' : ''} ${hasPicture ? 'has-picture' : ''}"
+            class="area-button ${isSelected ? 'selected' : ''} ${hasPicture ? 'has-picture' : ''} ${pictureContrastClass}"
             @click=${() => this._selectArea(area.area_id)}
           >
             ${hasPicture ? html`
@@ -2397,60 +7813,59 @@ export class DwainsLayoutCard extends LitElement {
               <!-- Bottom section: Icon and badges -->
               <div class="area-bottom-section">
                 <!-- Left: Main area icon -->
-                ${area.icon ? html`
-                  <div class="area-main-icon">
-                    <ha-icon icon=${getAreaIcon(area)}></ha-icon>
-                  </div>
-                ` : nothing}
+                <div class="area-main-icon">
+                  <ha-icon icon=${getAreaIcon(area)}></ha-icon>
+                </div>
 
                 <!-- Right: Info badges -->
                 <div class="area-info-badges">
                   ${areaData.domains.light && areaData.domains.light.on > 0 ? html`
                     <span class="info-badge light clickable"
+                          style=${this._domainBadgeStyle('light')}
                           @click=${(e: Event) => this._handleLightToggle(e, area.area_id)}>
-                      <ha-icon icon="mdi:lightbulb"></ha-icon>
+                      <ha-icon icon=${getDomainIcon('light')}></ha-icon>
                       <span class="badge-count">${areaData.domains.light.on}</span>
                     </span>
                   ` : nothing}
 
                   ${areaData.domains.switch && areaData.domains.switch.on > 0 ? html`
-                    <span class="info-badge switch">
-                      <ha-icon icon="mdi:flash"></ha-icon>
+                    <span class="info-badge switch" style=${this._domainBadgeStyle('switch')}>
+                      <ha-icon icon=${getDomainIcon('switch')}></ha-icon>
                       <span class="badge-count">${areaData.domains.switch.on}</span>
                     </span>
                   ` : nothing}
 
                   ${areaData.domains.climate && areaData.domains.climate.on > 0 ? html`
-                    <span class="info-badge climate">
-                      <ha-icon icon="mdi:thermostat"></ha-icon>
+                    <span class="info-badge climate" style=${this._domainBadgeStyle('climate')}>
+                      <ha-icon icon=${getDomainIcon('climate')}></ha-icon>
                       <span class="badge-count">${areaData.domains.climate.on}</span>
                     </span>
                   ` : nothing}
 
                   ${areaData.domains.media_player && areaData.domains.media_player.on > 0 ? html`
-                    <span class="info-badge media_player">
-                      <ha-icon icon="mdi:play-circle"></ha-icon>
+                    <span class="info-badge media_player" style=${this._domainBadgeStyle('media_player')}>
+                      <ha-icon icon=${getDomainIcon('media_player')}></ha-icon>
                       <span class="badge-count">${areaData.domains.media_player.on}</span>
                     </span>
                   ` : nothing}
 
                   ${areaData.domains.cover && areaData.domains.cover.on > 0 ? html`
-                    <span class="info-badge cover">
-                      <ha-icon icon="mdi:garage-open"></ha-icon>
+                    <span class="info-badge cover" style=${this._domainBadgeStyle('cover')}>
+                      <ha-icon icon=${getDomainIcon('cover')}></ha-icon>
                       <span class="badge-count">${areaData.domains.cover.on}</span>
                     </span>
                   ` : nothing}
 
                   ${areaData.domains.fan && areaData.domains.fan.on > 0 ? html`
-                    <span class="info-badge fan">
-                      <ha-icon icon="mdi:fan"></ha-icon>
+                    <span class="info-badge fan" style=${this._domainBadgeStyle('fan')}>
+                      <ha-icon icon=${getDomainIcon('fan')}></ha-icon>
                       <span class="badge-count">${areaData.domains.fan.on}</span>
                     </span>
                   ` : nothing}
 
                   ${areaData.domains.motion && areaData.domains.motion.on > 0 ? html`
-                    <span class="info-badge motion">
-                      <ha-icon icon="mdi:motion-sensor"></ha-icon>
+                    <span class="info-badge motion" style=${this._domainBadgeStyle('binary_sensor', 'motion')}>
+                      <ha-icon icon=${getDeviceClassIcon('binary_sensor', 'motion')}></ha-icon>
                       <span class="badge-count">${areaData.domains.motion.on}</span>
                     </span>
                   ` : nothing}
@@ -2464,6 +7879,7 @@ export class DwainsLayoutCard extends LitElement {
                 </div>
               </div>
             </div>
+            <ha-icon class="area-menu-chevron" icon="mdi:chevron-right"></ha-icon>
           </button>
         `;
   }
@@ -2535,10 +7951,11 @@ export class DwainsLayoutCard extends LitElement {
         <div class="header-status-scroll">
           ${repeat(
             domains,
-            d => d.domain,
+            d => `${d.domain}-${d.deviceClass || d.name}`,
             domain => html`
               <div
-                class="status-card-compact ${domain.domain} header-card"
+                class="status-card-compact ${domain.domain} ${domain.value ? 'has-value' : ''} header-card"
+                style=${this._domainStatusStyle(domain.domain, domain.deviceClass)}
                 @click=${() => this._handleStatusCardClick(domain)}
                 data-domain=${domain.domain}
               >
@@ -2548,7 +7965,8 @@ export class DwainsLayoutCard extends LitElement {
                     <div class="status-card-badge-compact">${domain.count}</div>
                   ` : nothing}
                 </div>
-                <div class="status-card-title-compact">${this._statusCardTitle(domain)}</div>
+                <div class="status-card-title-compact">${domain.value || this._statusCardTitle(domain)}</div>
+                ${domain.value ? html`<div class="status-card-subtitle-compact">${domain.name}</div>` : nothing}
               </div>
             `
           )}
@@ -2571,6 +7989,15 @@ export class DwainsLayoutCard extends LitElement {
     `;
   }
 
+  private _domainStatusStyle(domain: string, deviceClass?: string): string {
+    return `--status-color: ${getDomainColor(domain, deviceClass)};`;
+  }
+
+  private _domainBadgeStyle(domain: string, deviceClass?: string): string {
+    const color = getDomainColor(domain, deviceClass);
+    return `--badge-color: ${color}; --area-badge-color: ${color};`;
+  }
+
   private _statusCardTitle(domain: DomainCount): string {
     // Bij precies 1 actief: toon de ruimte ("Motion in Slaapkamer").
     if (domain.domain !== 'person' && domain.count === 1 && domain.entities?.length === 1) {
@@ -2590,42 +8017,111 @@ export class DwainsLayoutCard extends LitElement {
   }
 
   private _renderHomeView() {
+    const sections = this._getVisibleHomeSections();
+
     return html`
       <div class="home-view">
         ${this._renderHomeWelcome()}
-        ${this._renderHomeStatusCards()}
-        ${this._renderFavorites()}
-        </div>
+        ${sections.map(section => this._renderHomeSection(section))}
+      </div>
     `;
+  }
+
+  private _getHomeSectionsOrder(): HomeSectionKey[] {
+    return normalizeHomeSectionsOrder(this.config?.settings?.home_sections_order);
+  }
+
+  private _getVisibleHomeSections(): HomeSectionKey[] {
+    const hidden = new Set(normalizeHiddenHomeSections(this.config?.settings?.home_sections_hidden));
+    return this._getHomeSectionsOrder().filter(section => !hidden.has(section));
+  }
+
+  private _renderHomeSection(section: HomeSectionKey) {
+    switch (section) {
+      case 'cameras':
+        return this._renderHomeCameras();
+      case 'areas':
+        return this._renderMobileHomeAreas();
+      case 'devices':
+        return this._renderHomeStatusCards();
+      case 'favorites':
+        return this._renderFavorites();
+      default:
+        return nothing;
+    }
   }
 
   private _renderHomeWelcome() {
     const userName = this.hass?.user?.name || 'User';
     const greeting = this._getGreeting();
     const weatherEntity = this._getWeatherEntity();
+    const userPicture = this._getWelcomeUserPicture(userName);
+    const alarmContent = this._renderHomeAlarm();
 
     return html`
       <div class="home-welcome">
         <div class="welcome-content">
           <div class="welcome-header">
-            <div class="welcome-text">
-              <span class="welcome-greeting">${greeting}</span>
-              <span class="welcome-name">, ${userName}!</span>
+            <div class="welcome-user">
+              <button
+                class="welcome-avatar"
+                type="button"
+                title="Profile settings"
+                aria-label="Profile settings"
+                @click=${this._openProfileSettings}
+              >
+                ${userPicture
+                  ? html`<img src=${userPicture} alt=${userName} />`
+                  : html`<ha-icon icon="mdi:account"></ha-icon>`}
+              </button>
+              <div class="welcome-copy">
+                <div class="welcome-text">
+                  <span class="welcome-greeting">${greeting}</span>
+                  <span class="welcome-name">, ${userName}!</span>
+                  <span class="welcome-title">Hello, ${userName}</span>
+                </div>
+                <div class="welcome-return">Welcome Back</div>
+              </div>
+            </div>
+            <div class="welcome-actions">
+              ${this._canManageDashboard() ? html`
+                <button
+                  class="welcome-action"
+                  type="button"
+                  title=${this._t('sidebar.dashboard_settings')}
+                  @click=${this._openDashboardSettings}
+                >
+                  <ha-icon icon="mdi:cog-outline"></ha-icon>
+                </button>
+              ` : nothing}
+              <button
+                class="welcome-action"
+                type="button"
+                title="Notifications"
+                @click=${this._openNotifications}
+              >
+                <ha-icon icon="mdi:bell-outline"></ha-icon>
+                ${this._persistentNotifications.length
+                  ? html`<span class="welcome-action-badge">${this._persistentNotifications.length}</span>`
+                  : nothing}
+              </button>
             </div>
             <div class="welcome-time-section">
               <div class="welcome-time">${this._currentTime}</div>
               <div class="welcome-date">${this._currentDate}</div>
             </div>
           </div>
-          <div class="welcome-subheader">
-            ${this._renderHomeAlarm()}
-            ${weatherEntity ? html`
-              <div class="welcome-weather" @click=${() => this._showMoreInfo(weatherEntity.entity_id)}>
-                <ha-icon icon=${weatherEntity.attributes.icon || 'mdi:weather-cloudy'}></ha-icon>
-                <span class="weather-temp">${weatherEntity.attributes.temperature}${weatherEntity.attributes.temperature_unit}</span>
-              </div>
-            ` : nothing}
-          </div>
+          ${alarmContent !== nothing || weatherEntity ? html`
+            <div class="welcome-subheader">
+              ${alarmContent}
+              ${weatherEntity ? html`
+                <div class="welcome-weather" @click=${() => this._showMoreInfo(weatherEntity.entity_id)}>
+                  <ha-icon icon=${weatherEntity.attributes.icon || 'mdi:weather-cloudy'}></ha-icon>
+                  <span class="weather-temp">${weatherEntity.attributes.temperature}${weatherEntity.attributes.temperature_unit}</span>
+                </div>
+              ` : nothing}
+            </div>
+          ` : nothing}
         </div>
       </div>
     `;
@@ -2633,17 +8129,47 @@ export class DwainsLayoutCard extends LitElement {
 
   private _renderHomeStatusCards() {
     const domains = this._getStatusDomains();
+    const visibleDomains = domains.filter(d => d.domain !== 'person' && d.domain !== 'wattage');
+    const gridMode = this._mobileHomeDevicesLayout === 'grid';
 
     return html`
-      <div class="home-status-section">
-        ${this._renderPersonCards()}
+      <div class="home-status-section layout-${this._mobileHomeDevicesLayout}">
+        <div class="home-status-heading">
+          <ha-icon icon="mdi:view-dashboard-outline"></ha-icon>
+          <span>House information</span>
+        </div>
+        <div class="mobile-section-heading">
+          <div class="mobile-section-title">
+            <button
+              class="mobile-layout-toggle ${gridMode ? 'active' : ''}"
+              type="button"
+              title=${gridMode ? 'Swipe house information' : 'Show all house information'}
+              aria-label=${gridMode ? 'Switch house information to swipe cards' : 'Show all house information'}
+              @click=${this._toggleMobileHomeDevicesLayout}
+            >
+              <ha-icon icon=${gridMode ? 'mdi:view-carousel-outline' : 'mdi:view-grid-outline'}></ha-icon>
+            </button>
+            <span class="mobile-section-title-label">House information</span>
+          </div>
+          <button
+            class="mobile-section-action"
+            type="button"
+            @click=${this._openMobileDeviceSwitcher}
+          >
+            <span>See all</span>
+            <ha-icon icon="mdi:chevron-right"></ha-icon>
+          </button>
+        </div>
         <div class="home-status-grid">
+          ${this._renderHousePersonsStatusCard()}
+          ${this._renderHousePowerStatusCard()}
           ${repeat(
-            domains.filter(d => d.domain !== 'person'), // Filter out person domain
-            d => d.domain,
+            visibleDomains,
+            d => `${d.domain}-${d.deviceClass || d.name}`,
             domain => html`
               <div
-                class="home-status-card ${domain.domain}"
+                class="home-status-card ${domain.domain} ${domain.value ? 'has-value' : ''}"
+                style=${this._domainStatusStyle(domain.domain, domain.deviceClass)}
                 @click=${() => this._handleStatusCardClick(domain)}
                 data-domain=${domain.domain}
               >
@@ -2653,12 +8179,540 @@ export class DwainsLayoutCard extends LitElement {
                     <div class="status-card-badge">${domain.count}</div>
                   ` : nothing}
                 </div>
+                ${domain.value ? html`<div class="status-card-value">${domain.value}</div>` : nothing}
                 <div class="status-card-title">${this._statusCardTitle(domain)}</div>
               </div>
             `
           )}
         </div>
       </div>
+    `;
+  }
+
+  private _renderHomeCameras() {
+    const cameras = this._getHomeAreaCameras();
+    if (!cameras.length) return nothing;
+
+    return html`
+      <section class="home-camera-section">
+        <div class="home-status-heading">
+          <ha-icon icon="mdi:cctv"></ha-icon>
+          <span>Cameras</span>
+        </div>
+        <div class="mobile-section-heading">
+          <div class="mobile-section-title">
+            <button
+              class="mobile-layout-toggle active"
+              type="button"
+              title="Area cameras"
+              aria-label="Area cameras"
+            >
+              <ha-icon icon="mdi:cctv"></ha-icon>
+            </button>
+            <span class="mobile-section-title-label">Cameras</span>
+          </div>
+          <span class="mobile-section-action" aria-label="${cameras.length} camera areas">
+            <span>${cameras.length}</span>
+            <ha-icon icon="mdi:cctv"></ha-icon>
+          </span>
+        </div>
+        <div class="home-camera-grid">
+          ${repeat(
+            cameras,
+            camera => `${camera.areaId}-${camera.entityId}`,
+            camera => this._renderHomeCameraCard(camera)
+          )}
+        </div>
+      </section>
+    `;
+  }
+
+  private _renderHomeCameraCard(camera: HomeAreaCamera) {
+    return html`
+      <button
+        class="home-camera-card"
+        type="button"
+        title=${camera.name}
+        @click=${() => this._showMoreInfo(camera.entityId)}
+      >
+        ${camera.imageUrl
+          ? html`<div class="home-camera-image" style=${`background-image: url('${camera.imageUrl}');`}></div>`
+          : html`
+              <div class="home-camera-placeholder">
+                <ha-icon icon="mdi:cctv"></ha-icon>
+              </div>
+            `}
+        <div class="home-camera-content">
+          <div class="home-camera-top">
+            <div class="home-camera-area-icon">
+              <ha-icon icon=${camera.areaIcon}></ha-icon>
+            </div>
+            ${camera.count > 1 ? html`
+              <div class="home-camera-count">
+                <ha-icon icon="mdi:cctv"></ha-icon>
+                <span>${camera.count}</span>
+              </div>
+            ` : nothing}
+          </div>
+          <div class="home-camera-copy">
+            <div class="home-camera-name">${camera.areaName}</div>
+            <div class="home-camera-meta">${camera.name} · ${camera.state}</div>
+          </div>
+        </div>
+      </button>
+    `;
+  }
+
+  private _getHomeAreaCameras(): HomeAreaCamera[] {
+    const cameras: HomeAreaCamera[] = [];
+
+    this._getVisibleSortedAreas().forEach(area => {
+      const cameraEntities = this._getFilteredAreaEntities(area.area_id)
+        .filter(entity => entity.entity_id.startsWith('camera.'))
+        .filter(entity => Boolean(this.hass?.states?.[entity.entity_id]));
+
+      if (!cameraEntities.length) return;
+
+      const firstAvailable = cameraEntities.find(entity => {
+        const state = this.hass.states[entity.entity_id]?.state;
+        return state && state !== 'unavailable' && state !== 'unknown';
+      });
+      const cameraEntity = firstAvailable || cameraEntities[0]!;
+      const stateObj = this.hass.states[cameraEntity.entity_id];
+      const name = stateObj?.attributes?.friendly_name || cameraEntity.entity_id;
+      const state = stateObj ? this.hass.formatEntityState(stateObj) : 'Unknown';
+      const imageUrl = this._getCameraImageUrl(cameraEntity.entity_id);
+      const camera: HomeAreaCamera = {
+        areaId: area.area_id,
+        areaName: area.name,
+        areaIcon: getAreaIcon(area),
+        entityId: cameraEntity.entity_id,
+        name,
+        state,
+        count: cameraEntities.length,
+      };
+
+      if (imageUrl) {
+        camera.imageUrl = imageUrl;
+      }
+
+      cameras.push(camera);
+    });
+
+    return cameras;
+  }
+
+  private _getCameraImageUrl(entityId: string): string | undefined {
+    const stateObj = this.hass?.states?.[entityId];
+    if (!stateObj) return undefined;
+
+    const entityPicture = stateObj.attributes?.entity_picture;
+    const token = stateObj.attributes?.access_token;
+    const baseUrl = typeof entityPicture === 'string' && entityPicture
+      ? entityPicture
+      : token
+        ? `/api/camera_proxy/${entityId}?token=${encodeURIComponent(token)}`
+        : '';
+
+    if (!baseUrl) return undefined;
+
+    const separator = baseUrl.includes('?') ? '&' : '?';
+    return `${baseUrl}${separator}dd_cache=${encodeURIComponent(stateObj.last_updated || stateObj.last_changed || '')}`;
+  }
+
+  private _renderHousePowerStatusCard() {
+    const powerUsage = this._getHousePowerUsage();
+    const subtitle = powerUsage.sensorCount
+      ? `${powerUsage.sensorCount} live power ${powerUsage.sensorCount === 1 ? 'sensor' : 'sensors'}`
+      : 'No live power sensors';
+
+    return html`
+      <div
+        class="home-status-card house-power-card wattage ${powerUsage.sensorCount ? 'has-power' : 'is-empty'}"
+        @click=${() => this._showWattageEntities()}
+        @keydown=${this._handleHousePowerKeydown}
+        data-domain="wattage"
+        role="button"
+        tabindex="0"
+        aria-label=${`House power usage: ${powerUsage.formattedTotal}`}
+      >
+        <div class="house-power-head">
+          <div class="status-card-icon house-power-icon">
+            <ha-icon icon="mdi:flash"></ha-icon>
+          </div>
+          <div class="house-power-copy">
+            <div class="house-power-title">House power usage</div>
+            <div class="house-power-subtitle">${subtitle}</div>
+          </div>
+          <div class="house-power-total">${powerUsage.formattedTotal}</div>
+        </div>
+        ${powerUsage.rooms.length ? html`
+          <div class="house-power-list" aria-label="Top rooms by power usage">
+            ${repeat(
+              powerUsage.rooms,
+              room => room.areaId,
+              room => this._renderHousePowerRoom(room)
+            )}
+          </div>
+        ` : html`
+          <div class="house-power-empty">No room power usage right now</div>
+        `}
+      </div>
+    `;
+  }
+
+  private _renderHousePowerRoom(room: HousePowerRoom) {
+    return html`
+      <div class="house-power-room">
+        <span class="house-power-room-icon">
+          <ha-icon icon=${room.icon}></ha-icon>
+        </span>
+        <span class="house-power-room-name">${room.name}</span>
+        <span class="house-power-room-value">${room.formatted}</span>
+        <span
+          class="house-power-bar"
+          aria-hidden="true"
+          style=${`--power-width: ${room.percentage}%`}
+        >
+          <span class="house-power-bar-fill"></span>
+        </span>
+      </div>
+    `;
+  }
+
+  private _handleHousePowerKeydown = (event: KeyboardEvent): void => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    this._showWattageEntities();
+  };
+
+  private _renderHousePersonsStatusCard() {
+    const personEntities = this._getVisiblePersonEntities();
+    const homeCount = personEntities.filter(person => person.state === 'home').length;
+    const subtitle = personEntities.length
+      ? `${homeCount}/${personEntities.length} home`
+      : 'No people';
+
+    return html`
+      <div
+        class="home-status-card house-persons-card person"
+        @click=${() => this._openDeviceDomain('person')}
+        data-domain="person"
+      >
+        <div class="house-persons-head">
+          <div class="status-card-icon house-persons-icon">
+            <ha-icon icon="mdi:account-group"></ha-icon>
+          </div>
+          <div class="house-persons-copy">
+            <div class="house-persons-title">People</div>
+            <div class="house-persons-subtitle">${subtitle}</div>
+          </div>
+        </div>
+        ${personEntities.length ? html`
+          <div class="house-persons-grid">
+            ${repeat(
+              personEntities.slice(0, 4),
+              person => person.entity_id,
+              person => this._renderHousePersonMini(person)
+            )}
+          </div>
+        ` : html`
+          <div class="house-persons-empty">No visible persons configured</div>
+        `}
+      </div>
+    `;
+  }
+
+  private _renderHousePersonMini(person: any) {
+    const name = person.attributes?.friendly_name || person.entity_id.split('.')[1];
+    const picture = person.attributes?.entity_picture;
+    const stateLabel = this._formatPersonState(person);
+    const presenceClass = person.state === 'home'
+      ? 'is-home'
+      : person.state === 'not_home'
+        ? 'is-away'
+        : 'is-zone';
+
+    return html`
+      <button
+        class="house-person-mini ${presenceClass}"
+        type="button"
+        aria-label=${`${name}: ${stateLabel}`}
+        @click=${(event: Event) => this._handleHousePersonClick(event, person.entity_id)}
+      >
+        <span class="house-person-avatar">
+          ${picture ? html`
+            <img src=${picture} alt=${name}>
+          ` : html`
+            <ha-icon icon="mdi:account"></ha-icon>
+          `}
+        </span>
+        <span class="house-person-mini-copy">
+          <span class="house-person-mini-name">${name}</span>
+          <span class="house-person-mini-state">${stateLabel}</span>
+        </span>
+      </button>
+    `;
+  }
+
+  private _handleHousePersonClick(event: Event, entityId: string) {
+    event.stopPropagation();
+    this._showMoreInfo(entityId);
+  }
+
+  private _getVisiblePersonEntities(): any[] {
+    if (!this.hass || !this.config) return [];
+
+    const hiddenPersons = new Set(this.config.settings?.hidden_persons || []);
+    return Object.values(this.hass.states).filter(
+      (entity: any) =>
+        entity.entity_id.startsWith('person.') &&
+        !hiddenPersons.has(entity.entity_id) &&
+        !this.hass.entities?.[entity.entity_id]?.hidden_by
+    );
+  }
+
+  private _formatPersonState(person: any): string {
+    if (person.state === 'home') return this._t('person.home');
+    if (person.state === 'not_home') return this._t('person.away');
+    if (!person.state || person.state === 'unknown') return 'Unknown';
+    if (person.state === 'unavailable') return 'Unavailable';
+
+    return String(person.state)
+      .replace(/_/g, ' ')
+      .replace(/\b\w/g, letter => letter.toUpperCase());
+  }
+
+  private _getHousePowerUsage(): HousePowerUsage {
+    const total = this._getTotalLivePowerWatts();
+    const rooms = this._getVisibleSortedAreas()
+      .map(area => {
+        const roomPower = this._getAreaLivePowerWatts(area.area_id);
+        return {
+          areaId: area.area_id,
+          name: area.name,
+          icon: getAreaIcon(area),
+          watts: roomPower.watts,
+          formatted: this._formatPowerWatts(roomPower.watts),
+          percentage: 0,
+        };
+      })
+      .filter(room => room.watts > 0)
+      .sort((a, b) => b.watts - a.watts)
+      .slice(0, 4);
+
+    const maxReference = Math.max(...rooms.map(room => room.watts), 0);
+    const roomsWithPercent = rooms.map(room => ({
+      ...room,
+      percentage: maxReference > 0
+        ? Math.max(6, Math.min(100, Math.round((room.watts / maxReference) * 100)))
+        : 0,
+    }));
+
+    return {
+      totalWatts: total.watts,
+      formattedTotal: total.sensorCount ? this._formatPowerWatts(total.watts) : 'No data',
+      sensorCount: total.sensorCount,
+      rooms: roomsWithPercent,
+    };
+  }
+
+  private _getAreaLivePowerWatts(areaId: string): { watts: number; sensorCount: number } {
+    let watts = 0;
+    let sensorCount = 0;
+
+    for (const entity of this._getFilteredAreaEntities(areaId)) {
+      const value = this._getLivePowerValue(entity.entity_id, entity);
+      if (value === null) continue;
+      watts += value;
+      sensorCount++;
+    }
+
+    return { watts, sensorCount };
+  }
+
+  private _getTotalLivePowerWatts(): { watts: number; sensorCount: number } {
+    let watts = 0;
+    let sensorCount = 0;
+    const entityConfigById = new Map(
+      (this.config?.entities || []).map(entity => [entity.entity_id, entity])
+    );
+
+    for (const state of Object.values(this.hass?.states || {})) {
+      const entityId = state.entity_id;
+      const entityConfig = entityConfigById.get(entityId);
+      const value = this._getLivePowerValue(entityId, entityConfig || entityId);
+      if (value === null) continue;
+      watts += value;
+      sensorCount++;
+    }
+
+    return { watts, sensorCount };
+  }
+
+  private _getLivePowerValue(entityId: string, entity: EntityConfig | string): number | null {
+    if (!entityId.startsWith('sensor.')) return null;
+
+    const state = this.hass?.states?.[entityId];
+    if (!state || state.state === 'unavailable' || state.state === 'unknown') return null;
+    if (state.attributes?.unit_of_measurement !== 'W') return null;
+
+    const registry = this.hass.entities?.[entityId];
+    if (registry?.hidden_by || registry?.entity_category === 'diagnostic' || registry?.entity_category === 'config') {
+      return null;
+    }
+
+    if (isEntityFromHiddenDevice(this.hass, this.config, entity)) return null;
+
+    const areaId = this._resolvePowerEntityAreaId(entityId, typeof entity === 'string' ? undefined : entity);
+    if (areaId) {
+      const hiddenAreas = this.config?.areas_display?.hidden || [];
+      if (hiddenAreas.includes(areaId)) return null;
+
+      const areaOptions = this.config?.areas_options?.[areaId];
+      if (areaOptions?.groups_options) {
+        for (const groupOptions of Object.values(areaOptions.groups_options)) {
+          if (groupOptions.hidden?.includes(entityId)) return null;
+        }
+      }
+    }
+
+    const value = Number.parseFloat(state.state);
+    if (!Number.isFinite(value)) return null;
+
+    return Math.max(0, value);
+  }
+
+  private _resolvePowerEntityAreaId(entityId: string, entityConfig?: EntityConfig): string | null {
+    if (entityConfig?.area_id) return entityConfig.area_id;
+
+    const deviceId = entityConfig?.device_id || this.hass.entities?.[entityId]?.device_id;
+    if (deviceId) {
+      const device = this.config?.devices?.find(device => device.device_id === deviceId);
+      if (device?.area_id) return device.area_id;
+    }
+
+    return (
+      this.hass.entities?.[entityId]?.area_id ||
+      this.hass.states?.[entityId]?.attributes?.area_id ||
+      null
+    );
+  }
+
+  private _formatPowerWatts(watts: number): string {
+    if (watts >= 1000) return `${(watts / 1000).toFixed(1)} kW`;
+    return `${Math.round(watts)} W`;
+  }
+
+  private _renderMobileHomeAreas() {
+    const areas = this._getVisibleSortedAreas();
+    if (!areas.length) return nothing;
+    const gridMode = this._mobileHomeAreasLayout === 'grid';
+
+    return html`
+      <section class="mobile-home-section mobile-home-areas layout-${this._mobileHomeAreasLayout}">
+        <div class="mobile-section-heading">
+          <div class="mobile-section-title">
+            <button
+              class="mobile-layout-toggle ${gridMode ? 'active' : ''}"
+              type="button"
+              title=${gridMode ? 'Swipe areas' : 'Show all areas'}
+              aria-label=${gridMode ? 'Switch areas to swipe cards' : 'Show all areas'}
+              @click=${this._toggleMobileHomeAreasLayout}
+            >
+              <ha-icon icon=${gridMode ? 'mdi:view-carousel-outline' : 'mdi:view-grid-outline'}></ha-icon>
+            </button>
+            <span class="mobile-section-title-label">Areas</span>
+          </div>
+          <button
+            class="mobile-section-action"
+            type="button"
+            @click=${this._openMobileAreaSwitcher}
+          >
+            <span>See all</span>
+            <ha-icon icon="mdi:chevron-right"></ha-icon>
+          </button>
+        </div>
+        <div class="mobile-area-rail">
+          ${repeat(
+            areas,
+            area => area.area_id,
+            area => this._renderMobileHomeAreaCard(area)
+          )}
+        </div>
+      </section>
+    `;
+  }
+
+  private _renderMobileHomeAreaCard(area: AreaConfig) {
+    const entities = this._getFilteredAreaEntities(area.area_id);
+    const areaData = this._getCachedAreaData(area);
+    const deviceCount = this._getAreaDeviceCount(area.area_id, entities);
+    const hasPicture = Boolean(area.picture);
+    const sensorSummary = [
+      areaData.temperature,
+      areaData.humidity,
+      areaData.wattage
+    ].filter(Boolean).join(' • ');
+    const meta = sensorSummary || (deviceCount === 1 ? '1 device' : `${deviceCount} devices`);
+    const badges: Array<{ className: string; icon: string; count: number; color: string }> = [];
+    const pictureContrastClass = hasPicture ? this._getPictureContrastClass(area.picture) : '';
+
+    if (areaData.domains.cover?.on) {
+      badges.push({
+        className: 'cover',
+        icon: getDomainIcon('cover'),
+        count: areaData.domains.cover.on,
+        color: getDomainColor('cover'),
+      });
+    }
+    if (areaData.domains.light?.on) {
+      badges.push({
+        className: 'light',
+        icon: getDomainIcon('light'),
+        count: areaData.domains.light.on,
+        color: getDomainColor('light'),
+      });
+    }
+    if (areaData.domains.motion?.on) {
+      badges.push({
+        className: 'motion',
+        icon: getDeviceClassIcon('binary_sensor', 'motion'),
+        count: areaData.domains.motion.on,
+        color: getDomainColor('binary_sensor', 'motion'),
+      });
+    }
+
+    return html`
+      <button
+        class="mobile-area-card ${hasPicture ? 'has-picture' : ''} ${pictureContrastClass}"
+        type="button"
+        @click=${() => this._selectArea(area.area_id)}
+      >
+        ${hasPicture ? html`
+          <div class="mobile-area-picture" style=${`background-image: url('${area.picture}');`}></div>
+        ` : nothing}
+        <div class="mobile-area-top">
+          <div class="mobile-area-icon">
+            <ha-icon icon=${getAreaIcon(area)}></ha-icon>
+          </div>
+          <div class="mobile-area-badges">
+            ${badges.slice(0, 2).map(badge => html`
+              <span
+                class="mobile-area-badge ${badge.className}"
+                style=${`--area-badge-color: ${badge.color};`}
+              >
+                <ha-icon icon=${badge.icon}></ha-icon>
+                <span>${badge.count}</span>
+              </span>
+            `)}
+          </div>
+        </div>
+        <div class="mobile-area-copy">
+          <div class="mobile-area-name">${area.name}</div>
+          <div class="mobile-area-meta">${meta}</div>
+        </div>
+      </button>
     `;
   }
 
@@ -2669,140 +8723,10 @@ export class DwainsLayoutCard extends LitElement {
     return 'Good evening';
   }
 
-  private _renderPersonCards() {
-    if (!this.hass || !this.config) return nothing;
-
-    // Get all person entities and filter out hidden ones
-    const hiddenPersons = new Set(this.config.settings?.hidden_persons || []);
-    const personEntities = Object.values(this.hass.states).filter(
-      entity =>
-        entity.entity_id.startsWith('person.') &&
-        !hiddenPersons.has(entity.entity_id) &&
-        !this.hass.entities?.[entity.entity_id]?.hidden_by
-    );
-
-    if (personEntities.length === 0) return nothing;
-
-    return html`
-      <div class="person-cards-section">
-        <div class="person-cards-grid">
-          ${repeat(
-            personEntities,
-            person => person.entity_id,
-            person => this._renderPersonCard(person)
-          )}
-        </div>
-      </div>
-    `;
-  }
-
-  private _renderPersonCard(person: any) {
-    const isHome = person.state === 'home';
-    const name = person.attributes.friendly_name || person.entity_id.split('.')[1];
-    const picture = person.attributes.entity_picture;
-
-    // Get device tracker for battery and GPS info
-    const deviceTracker = this._getPersonDeviceTracker(person);
-    const battery = deviceTracker?.attributes?.battery_level;
-    const distance = this._getDistanceFromHome(deviceTracker);
-
-    return html`
-      <div class="person-card ${isHome ? 'home' : 'away'}" @click=${() => this._showMoreInfo(person.entity_id)}>
-        <div class="person-avatar-wrapper">
-          <div class="person-avatar">
-            ${picture ? html`
-              <img src="${picture}" alt="${name}">
-            ` : html`
-              <ha-icon icon="mdi:account"></ha-icon>
-            `}
-          </div>
-          ${isHome ? html`
-            <div class="person-home-indicator">
-              <ha-icon icon="mdi:home"></ha-icon>
-              </div>
-            ` : nothing}
-          </div>
-        <div class="person-info">
-          <div class="person-name">${name}</div>
-          <div class="person-status">${isHome ? this._t('person.home') : person.state === 'not_home' ? this._t('person.away') : person.state}</div>
-
-        </div>
-        <div class="person-details">
-            ${battery !== undefined ? html`
-              <div class="person-battery">
-                <ha-icon icon="mdi:battery${battery > 90 ? '' : battery > 60 ? '-70' : battery > 30 ? '-40' : battery > 10 ? '-20' : '-alert'}"></ha-icon>
-                <span>${battery}%</span>
-              </div>
-            ` : nothing}
-            ${distance && !isHome ? html`
-              <div class="person-distance">
-                <ha-icon icon="mdi:map-marker-distance"></ha-icon>
-                <span>${distance}</span>
-              </div>
-            ` : nothing}
-          </div>
-      </div>
-    `;
-  }
-
-  private _getPersonDeviceTracker(person: any): any {
-    // Try to find associated device tracker
-    const deviceTrackers = person.attributes.device_trackers || [];
-    if (deviceTrackers.length > 0) {
-      // Return the first device tracker that has battery info
-      for (const trackerId of deviceTrackers) {
-        const tracker = this.hass.states[trackerId];
-        if (tracker?.attributes?.battery_level !== undefined) {
-          return tracker;
-        }
-      }
-      // If none have battery, return the first one
-      return this.hass.states[deviceTrackers[0]];
-    }
-    return null;
-  }
-
-  private _getDistanceFromHome(deviceTracker: any): string | null {
-    if (!deviceTracker || !deviceTracker.attributes.latitude || !deviceTracker.attributes.longitude) {
-      return null;
-    }
-
-    // Get home location from Home Assistant config
-    const homeLatitude = this.hass.config.latitude;
-    const homeLongitude = this.hass.config.longitude;
-
-    if (!homeLatitude || !homeLongitude) {
-      return null;
-    }
-
-    // Calculate distance using Haversine formula
-    const R = 6371; // Earth's radius in kilometers
-    const dLat = (deviceTracker.attributes.latitude - homeLatitude) * Math.PI / 180;
-    const dLon = (deviceTracker.attributes.longitude - homeLongitude) * Math.PI / 180;
-    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-              Math.cos(homeLatitude * Math.PI / 180) * Math.cos(deviceTracker.attributes.latitude * Math.PI / 180) *
-              Math.sin(dLon/2) * Math.sin(dLon/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    const distance = R * c;
-
-    // Format distance
-    if (distance < 1) {
-      return `${Math.round(distance * 1000)} m`;
-    } else {
-      return `${distance.toFixed(1)} km`;
-    }
-  }
-
   private _renderHomeAlarm() {
-    const alarmEntities = Object.values(this.hass.states).filter(
-      entity =>
-        entity.entity_id.startsWith('alarm_control_panel.') &&
-        !this.hass.entities?.[entity.entity_id]?.hidden_by
-    );
+    const alarm = this._getAlarmEntity();
+    if (!alarm) return nothing;
 
-    if (alarmEntities.length === 0) return nothing;
-
-    const alarm = alarmEntities[0];
     const state = alarm?.state || '';
     const isArmed = ['armed_away', 'armed_home', 'armed_night', 'armed_vacation'].includes(state);
     const isDisarmed = state === 'disarmed';
@@ -2865,11 +8789,125 @@ export class DwainsLayoutCard extends LitElement {
     const registry = this.hass.entities?.[entityId];
     if (!state || registry?.hidden_by) return nothing;
 
+    const domain = entityId.split('.')[0] || 'unknown';
+    const deviceClass = state.attributes?.device_class;
+    const name = state.attributes?.friendly_name || registry?.name || entityId;
+    const formattedState = this._formatFavoriteState(state);
+    const areaName = this._entityAreaName(entityId);
+    const icon = registry?.icon || state.attributes?.icon || getDeviceClassIcon(domain, deviceClass) || getDomainIcon(domain);
+    const activeState = this._favoriteActiveState(state, domain);
+    const supportsToggle = this._favoriteSupportsQuickToggle(domain);
+    const classes = [
+      'favorite-card-wrapper',
+      `favorite-${domain}`,
+      deviceClass ? `favorite-${deviceClass}` : '',
+      activeState,
+      supportsToggle ? 'can-toggle' : 'info-only',
+    ].filter(Boolean).join(' ');
+
     return html`
-      <div class="favorite-card-wrapper" data-entity="${entityId}">
-        <!-- Card will be rendered here programmatically -->
-      </div>
+      <article
+        class=${classes}
+        data-entity=${entityId}
+        role="button"
+        tabindex="0"
+        @click=${() => this._showMoreInfo(entityId)}
+        @keydown=${(event: KeyboardEvent) => this._handleFavoriteKeydown(event, entityId)}
+      >
+        <div class="favorite-top">
+          <div class="favorite-icon">
+            <ha-icon icon=${icon}></ha-icon>
+          </div>
+          <button
+            class="favorite-quick-action"
+            type="button"
+            title=${this._favoriteQuickTitle(state, domain)}
+            @click=${(event: Event) => this._handleFavoriteQuickAction(event, state, domain)}
+          >
+            <ha-icon icon=${this._favoriteQuickIcon(state, domain)}></ha-icon>
+          </button>
+        </div>
+        <div class="favorite-body">
+          <div class="favorite-name">${name}</div>
+          <div class="favorite-state">${formattedState}</div>
+          ${areaName ? html`<div class="favorite-area">${areaName}</div>` : nothing}
+        </div>
+      </article>
     `;
+  }
+
+  private _handleFavoriteKeydown(event: KeyboardEvent, entityId: string): void {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    this._showMoreInfo(entityId);
+  }
+
+  private _formatFavoriteState(state: any): string {
+    try {
+      return this.hass.formatEntityState(state);
+    } catch {
+      return String(state?.state || '');
+    }
+  }
+
+  private _favoriteActiveState(state: any, domain: string): string {
+    const value = String(state?.state || '').toLowerCase();
+    if (['unavailable', 'unknown'].includes(value)) return 'is-idle';
+    if (domain === 'cover') return ['open', 'opening'].includes(value) ? 'is-active' : 'is-off';
+    if (domain === 'lock') return value === 'unlocked' ? 'is-active' : 'is-off';
+    if (domain === 'climate') {
+      const action = state?.attributes?.hvac_action;
+      return action && action !== 'idle' && action !== 'off' ? 'is-active' : 'is-idle';
+    }
+    if (['off', 'closed', 'locked', 'not_home', 'idle'].includes(value)) return 'is-off';
+    return 'is-active';
+  }
+
+  private _favoriteSupportsQuickToggle(domain: string): boolean {
+    return ['light', 'switch', 'fan', 'input_boolean', 'cover', 'lock'].includes(domain);
+  }
+
+  private _favoriteQuickIcon(state: any, domain: string): string {
+    const value = String(state?.state || '').toLowerCase();
+    if (domain === 'cover') return ['open', 'opening'].includes(value) ? 'mdi:arrow-down' : 'mdi:arrow-up';
+    if (domain === 'lock') return value === 'unlocked' ? 'mdi:lock-open-variant-outline' : 'mdi:lock-outline';
+    if (['light', 'switch', 'fan', 'input_boolean'].includes(domain)) return 'mdi:power';
+    return 'mdi:chevron-right';
+  }
+
+  private _favoriteQuickTitle(state: any, domain: string): string {
+    const value = String(state?.state || '').toLowerCase();
+    if (domain === 'cover') return ['open', 'opening'].includes(value) ? 'Close' : 'Open';
+    if (domain === 'lock') return value === 'unlocked' ? 'Lock' : 'Unlock';
+    if (['light', 'switch', 'fan', 'input_boolean'].includes(domain)) return value === 'off' ? 'Turn on' : 'Turn off';
+    return 'More info';
+  }
+
+  private async _handleFavoriteQuickAction(event: Event, state: any, domain: string): Promise<void> {
+    event.stopPropagation();
+    const entityId = state?.entity_id;
+    if (!entityId) return;
+
+    try {
+      if (['light', 'switch', 'fan', 'input_boolean'].includes(domain)) {
+        await this.hass.callService('homeassistant', 'toggle', { entity_id: entityId });
+        return;
+      }
+      if (domain === 'cover') {
+        const open = ['open', 'opening'].includes(String(state.state).toLowerCase());
+        await this.hass.callService('cover', open ? 'close_cover' : 'open_cover', { entity_id: entityId });
+        return;
+      }
+      if (domain === 'lock') {
+        const unlocked = String(state.state).toLowerCase() === 'unlocked';
+        await this.hass.callService('lock', unlocked ? 'lock' : 'unlock', { entity_id: entityId });
+        return;
+      }
+    } catch (err) {
+      console.warn(`Failed to run favorite quick action for ${entityId}:`, err);
+    }
+
+    this._showMoreInfo(entityId);
   }
 
 
@@ -2882,22 +8920,81 @@ export class DwainsLayoutCard extends LitElement {
 
     const areaEntities = this._getFilteredAreaEntities(this._selectedArea);
     const areaData = this._getCachedAreaData(area);
+    const hasPicture = area.picture ? true : false;
+    const pictureContrastClass = hasPicture ? this._getPictureContrastClass(area.picture) : '';
+    const deviceCount = this._getAreaDeviceCount(area.area_id, areaEntities);
+    const hasHeaderMetrics = Boolean(areaData.temperature || areaData.humidity);
+    const hasMobileQuickControls = areaEntities.some(entity =>
+      entity.entity_id.startsWith('light.') ||
+      entity.entity_id.startsWith('switch.') ||
+      entity.entity_id.startsWith('cover.')
+    );
+    const deviceLabel = deviceCount === 1 ? '1 device' : `${deviceCount} devices`;
+    const stickyMetrics = [
+      areaData.temperature,
+      areaData.humidity,
+    ].filter(Boolean).join(' · ');
+    const areaSubtitle = this._areaHeaderStuck && !this._areaHeaderRevealed && stickyMetrics ? stickyMetrics : deviceLabel;
 
     return html`
       <div class="area-view">
-        <div class="area-header">
-          <h1 class="area-title">${area.name}</h1>
-          ${this._renderUnavailableEntitiesIcon(area.area_id)}
-          <button
-            class="dd-edit-toggle ${this._editMode ? 'active' : ''}"
-            title=${this._editMode ? this._t('layout.done_editing') : this._t('layout.edit_custom_cards')}
-            @click=${this._toggleEditMode}
-          >
-            <ha-icon icon=${this._editMode ? 'mdi:check' : 'mdi:pencil'}></ha-icon>
-          </button>
+        <div class="area-header ${hasPicture ? 'has-picture' : ''} ${pictureContrastClass} ${hasHeaderMetrics ? 'has-metrics' : ''} ${hasMobileQuickControls ? 'has-quick-controls' : ''} ${this._areaHeaderStuck ? 'is-stuck' : ''} ${this._areaHeaderRevealed ? 'is-revealed' : ''}">
+          ${hasPicture ? html`
+            <div class="area-header-background" style="background-image: url('${area.picture}');"></div>
+          ` : nothing}
+          <div class="area-mobile-toolbar">
+            <button
+              class="area-mobile-round area-mobile-home"
+              title="Home"
+              aria-label="Back to home"
+              @click=${() => this._selectView('home')}
+            >
+              <ha-icon icon="mdi:arrow-left"></ha-icon>
+            </button>
+            ${this._renderAreaMobileQuickControls(area.area_id, areaEntities)}
+            <div class="area-mobile-actions">
+              ${this._renderAreaMobileCameraAction(areaEntities)}
+              ${this._renderUnavailableEntitiesIcon(area.area_id)}
+              ${this._canManageDashboard() ? html`
+                <button
+                  class="area-mobile-round area-mobile-edit ${this._editMode ? 'active' : ''}"
+                  title=${this._editMode ? this._t('layout.done_editing') : this._t('layout.edit_custom_cards')}
+                  @click=${this._toggleEditMode}
+                >
+                  <ha-icon icon=${this._editMode ? 'mdi:check' : 'mdi:pencil'}></ha-icon>
+                  <span class="area-mobile-dot"></span>
+                </button>
+              ` : nothing}
+            </div>
+          </div>
+          <div class="area-header-content">
+            <div class="area-title-group">
+              <div class="area-header-icon">
+                <ha-icon icon=${getAreaIcon(area)}></ha-icon>
+              </div>
+              <div class="area-title-copy">
+                <h1 class="area-title">${area.name}</h1>
+                <div class="area-subtitle">${areaSubtitle}</div>
+              </div>
+            </div>
+            <div class="area-header-actions">
+              ${this._renderUnavailableEntitiesIcon(area.area_id)}
+              ${this._canManageDashboard() ? html`
+                <button
+                  class="dd-edit-toggle ${this._editMode ? 'active' : ''}"
+                  title=${this._editMode ? this._t('layout.done_editing') : this._t('layout.edit_custom_cards')}
+                  @click=${this._toggleEditMode}
+                >
+                  <ha-icon icon=${this._editMode ? 'mdi:check' : 'mdi:pencil'}></ha-icon>
+                </button>
+              ` : nothing}
+            </div>
+          </div>
+          ${this._renderAreaHeaderMetrics(areaData)}
+          ${this._renderAreaBadges(area, areaEntities, areaData)}
         </div>
 
-        ${this._renderAreaBadges(area, areaEntities, areaData)}
+        ${this._renderMobileEntitiesSection(area, areaEntities)}
         ${this._renderEntitiesSection(areaEntities)}
         ${this._renderCustomCards(area)}
       </div>
@@ -2905,12 +9002,18 @@ export class DwainsLayoutCard extends LitElement {
   }
 
   private _toggleEditMode = () => {
+    if (!this._canManageDashboard()) {
+      this._editMode = false;
+      return;
+    }
     this._editMode = !this._editMode;
   };
 
   // Eigen kaarten van de gebruiker per ruimte (read + edit affordances)
   private _renderCustomCards(area: AreaConfig) {
     const cards = this.config?.areas_options?.[area.area_id]?.cards || [];
+    const canEdit = this._canManageDashboard();
+    if (!canEdit && this._editMode) this._editMode = false;
     if (cards.length === 0 && !this._editMode) return nothing;
 
     return html`
@@ -2925,7 +9028,7 @@ export class DwainsLayoutCard extends LitElement {
           : nothing}
         <div class="dd-custom-grid">
           ${cards.map((card, i) => this._renderCustomCard(area.area_id, card, i))}
-          ${this._editMode
+          ${this._editMode && canEdit
             ? html`
                 <button class="dd-add-card" @click=${() => this._addCard(area.area_id)}>
                   <ha-icon icon="mdi:plus"></ha-icon>
@@ -2967,6 +9070,7 @@ export class DwainsLayoutCard extends LitElement {
   }
 
   private _addCard(areaId: string) {
+    if (!this._canManageDashboard()) return;
     // Probeer HA's eigen kaart-picker (+ visuele editor). Die is geladen zodra
     // je 'm één keer in een normaal dashboard hebt gebruikt.
     if (customElements.get('hui-dialog-create-card')) {
@@ -2990,6 +9094,7 @@ export class DwainsLayoutCard extends LitElement {
   }
 
   private _editCard(areaId: string, index: number) {
+    if (!this._canManageDashboard()) return;
     const existing = this.config?.areas_options?.[areaId]?.cards?.[index];
     if (!existing) return;
 
@@ -3013,6 +9118,7 @@ export class DwainsLayoutCard extends LitElement {
   }
 
   private _addCardYaml(areaId: string) {
+    if (!this._canManageDashboard()) return;
     showCardEditorDialog(this, {
       areaName: this.config?.areas?.find(a => a.area_id === areaId)?.name,
       onSave: (card) => {
@@ -3024,6 +9130,7 @@ export class DwainsLayoutCard extends LitElement {
   }
 
   private _editCardYaml(areaId: string, index: number) {
+    if (!this._canManageDashboard()) return;
     const existing = this.config?.areas_options?.[areaId]?.cards?.[index];
     if (!existing) return;
     showCardEditorDialog(this, {
@@ -3038,6 +9145,7 @@ export class DwainsLayoutCard extends LitElement {
   }
 
   private _deleteCard(areaId: string, index: number) {
+    if (!this._canManageDashboard()) return;
     if (!confirm(this._t('layout.delete_card_confirm'))) return;
     const cards = [...(this.config?.areas_options?.[areaId]?.cards || [])];
     if (index < 0 || index >= cards.length) return;
@@ -3052,6 +9160,7 @@ export class DwainsLayoutCard extends LitElement {
   }
 
   private async _saveAreaCards(areaId: string, cards: any[]): Promise<void> {
+    if (!this._canManageDashboard()) return;
     // Lokale config immutabel bijwerken (HA bevriest config-objecten)
     const prevOptions: any = this.config.areas_options || {};
     this.config = {
@@ -3099,8 +9208,8 @@ export class DwainsLayoutCard extends LitElement {
     // Lights count badge
     if (areaData.domains.light && areaData.domains.light.on > 0) {
       badges.push(html`
-        <div class="area-badge light">
-          <ha-icon icon="mdi:lightbulb"></ha-icon>
+        <div class="area-badge light" style=${this._domainBadgeStyle('light')}>
+          <ha-icon icon=${getDomainIcon('light')}></ha-icon>
           <span>${areaData.domains.light.on} on</span>
         </div>
       `);
@@ -3109,8 +9218,8 @@ export class DwainsLayoutCard extends LitElement {
     // Switches count badge
     if (areaData.domains.switch && areaData.domains.switch.on > 0) {
       badges.push(html`
-        <div class="area-badge switch">
-          <ha-icon icon="mdi:flash"></ha-icon>
+        <div class="area-badge switch" style=${this._domainBadgeStyle('switch')}>
+          <ha-icon icon=${getDomainIcon('switch')}></ha-icon>
           <span>${areaData.domains.switch.on} on</span>
         </div>
       `);
@@ -3119,8 +9228,8 @@ export class DwainsLayoutCard extends LitElement {
     // Climate count badge
     if (areaData.domains.climate && areaData.domains.climate.on > 0) {
       badges.push(html`
-        <div class="area-badge climate">
-          <ha-icon icon="mdi:thermostat"></ha-icon>
+        <div class="area-badge climate" style=${this._domainBadgeStyle('climate')}>
+          <ha-icon icon=${getDomainIcon('climate')}></ha-icon>
                             <span>${areaData.domains.climate.on} active</span>
         </div>
       `);
@@ -3135,8 +9244,8 @@ export class DwainsLayoutCard extends LitElement {
 
     if (motionEntities.length > 0) {
       badges.push(html`
-        <div class="area-badge motion active">
-          <ha-icon icon="mdi:motion-sensor"></ha-icon>
+        <div class="area-badge motion active" style=${this._domainBadgeStyle('binary_sensor', 'motion')}>
+          <ha-icon icon=${getDeviceClassIcon('binary_sensor', 'motion')}></ha-icon>
                             <span>${motionEntities.length} active</span>
         </div>
       `);
@@ -3145,8 +9254,8 @@ export class DwainsLayoutCard extends LitElement {
     // Covers count badge
     if (areaData.domains.cover && areaData.domains.cover.on > 0) {
       badges.push(html`
-        <div class="area-badge cover">
-          <ha-icon icon="mdi:garage-open"></ha-icon>
+        <div class="area-badge cover" style=${this._domainBadgeStyle('cover')}>
+          <ha-icon icon=${getDomainIcon('cover')}></ha-icon>
           <span>${areaData.domains.cover.on} open</span>
         </div>
       `);
@@ -3155,8 +9264,8 @@ export class DwainsLayoutCard extends LitElement {
     // Media players count badge
     if (areaData.domains.media_player && areaData.domains.media_player.on > 0) {
       badges.push(html`
-        <div class="area-badge media_player">
-          <ha-icon icon="mdi:play-circle"></ha-icon>
+        <div class="area-badge media_player" style=${this._domainBadgeStyle('media_player')}>
+          <ha-icon icon=${getDomainIcon('media_player')}></ha-icon>
                             <span>${areaData.domains.media_player.on} active</span>
         </div>
       `);
@@ -3241,6 +9350,750 @@ export class DwainsLayoutCard extends LitElement {
     ` : nothing;
   }
 
+  private _renderAreaMobileQuickControls(areaId: string, entities: EntityConfig[]) {
+    const lights = entities.filter(e => e.entity_id.startsWith('light.'));
+    const switches = entities.filter(e => e.entity_id.startsWith('switch.'));
+    const covers = entities.filter(e => e.entity_id.startsWith('cover.'));
+
+    if (!lights.length && !switches.length && !covers.length) {
+      return html`<div class="area-mobile-quick-controls empty"></div>`;
+    }
+
+    const activeLights = this._countActiveEntities(lights, 'light');
+    const activeSwitches = this._countActiveEntities(switches, 'switch');
+    const openCovers = this._countActiveEntities(covers, 'cover');
+    const lightsActive = activeLights > 0;
+    const switchesActive = activeSwitches > 0;
+    const coversOpen = openCovers > 0;
+    const controlsCount = [lights.length, switches.length, covers.length].filter(Boolean).length;
+
+    return html`
+      <div class="area-mobile-quick-controls count-${controlsCount}">
+        ${lights.length ? html`
+          <button
+            class="area-quick-control light ${lightsActive ? 'active' : ''}"
+            title=${lightsActive ? `Turn all lights off (${activeLights}/${lights.length} on)` : `Turn all lights on (${lights.length})`}
+            aria-label=${lightsActive ? `Turn all lights off, ${activeLights} of ${lights.length} are on` : `Turn all lights on, ${lights.length} lights`}
+            @click=${() => this._toggleAreaLights(areaId)}
+          >
+            <span class="area-quick-main">
+              <ha-icon icon=${lightsActive ? 'mdi:lightbulb' : 'mdi:lightbulb-outline'}></ha-icon>
+              <span class="area-quick-count">${activeLights}/${lights.length}</span>
+            </span>
+            <span class="area-quick-switch" aria-hidden="true"></span>
+          </button>
+        ` : nothing}
+        ${switches.length ? html`
+          <button
+            class="area-quick-control switch ${switchesActive ? 'active' : ''}"
+            title=${switchesActive ? `Turn all switches off (${activeSwitches}/${switches.length} on)` : `Turn all switches on (${switches.length})`}
+            aria-label=${switchesActive ? `Turn all switches off, ${activeSwitches} of ${switches.length} are on` : `Turn all switches on, ${switches.length} switches`}
+            @click=${() => this._toggleAreaSwitches(areaId)}
+          >
+            <span class="area-quick-main">
+              <ha-icon icon=${switchesActive ? 'mdi:power-plug' : 'mdi:power-plug-off-outline'}></ha-icon>
+              <span class="area-quick-count">${activeSwitches}/${switches.length}</span>
+            </span>
+            <span class="area-quick-switch" aria-hidden="true"></span>
+          </button>
+        ` : nothing}
+        ${covers.length ? html`
+          <button
+            class="area-quick-control cover ${coversOpen ? 'active' : ''}"
+            title=${coversOpen ? `Close all covers (${openCovers}/${covers.length} open)` : `Open all covers (${covers.length})`}
+            aria-label=${coversOpen ? `Close all covers, ${openCovers} of ${covers.length} are open` : `Open all covers, ${covers.length} covers`}
+            @click=${() => this._toggleAreaCovers(areaId, true)}
+          >
+            <span class="area-quick-main">
+              <ha-icon icon=${coversOpen ? 'mdi:window-shutter-open' : 'mdi:window-shutter'}></ha-icon>
+              <span class="area-quick-count">${openCovers}/${covers.length}</span>
+            </span>
+            <span class="area-quick-direction" aria-hidden="true">
+              <ha-icon icon=${coversOpen ? 'mdi:arrow-down' : 'mdi:arrow-up'}></ha-icon>
+            </span>
+          </button>
+        ` : nothing}
+      </div>
+    `;
+  }
+
+  private _renderAreaMobileCameraAction(entities: EntityConfig[]) {
+    const camera = entities.find(entity => entity.entity_id.startsWith('camera.'));
+    if (!camera) return nothing;
+
+    return html`
+      <button
+        class="area-mobile-round area-mobile-camera"
+        title="Camera"
+        aria-label="Open camera"
+        @click=${() => this._showMoreInfo(camera.entity_id)}
+      >
+        <ha-icon icon="mdi:video-outline"></ha-icon>
+      </button>
+    `;
+  }
+
+  private _renderAreaHeaderMetrics(areaData: AreaData) {
+    const metrics = [
+      areaData.temperature ? this._renderMobileAreaMetric('temperature', 'Temp', areaData.temperature, 0, 30, 'area-header-metric') : nothing,
+      areaData.humidity ? this._renderMobileAreaMetric('humidity', 'Humidity', areaData.humidity, 20, 90, 'area-header-metric') : nothing,
+    ].filter((item) => item !== nothing);
+
+    if (!metrics.length) return nothing;
+
+    return html`
+      <div class="area-header-metrics">
+        ${metrics}
+      </div>
+    `;
+  }
+
+  private _renderMobileAreaMetric(
+    kind: 'temperature' | 'humidity' | 'power' | 'energy',
+    label: string,
+    value: string,
+    min?: number,
+    max?: number,
+    className = 'mobile-area-metric'
+  ) {
+    const hasRange = typeof min === 'number' && typeof max === 'number';
+    const numeric = this._numericValue(value);
+    const progress = hasRange && numeric !== null ? Math.max(0, Math.min(1, (numeric - min) / (max - min))) : 0.65;
+    const angle = Math.round(progress * 270);
+    const isHeaderMetric = className.includes('area-header-metric');
+    const icon = kind === 'temperature'
+      ? 'mdi:thermometer'
+      : kind === 'humidity'
+        ? 'mdi:water-percent'
+        : kind === 'power'
+          ? 'mdi:flash'
+          : kind === 'energy'
+            ? 'mdi:lightning-bolt'
+            : 'mdi:gauge';
+
+    return html`
+      <div class="${className} ${kind}">
+        <div class="metric-ring ${!hasRange || isHeaderMetric ? 'metric-icon' : ''}" style=${`--metric-angle: ${angle}deg;`}>
+          ${hasRange && !isHeaderMetric
+            ? html`<span class="metric-value">${value}</span>`
+            : html`<ha-icon icon=${icon}></ha-icon>`}
+        </div>
+        <div class="metric-copy">
+          <div class="metric-label">${label}</div>
+          ${hasRange && !isHeaderMetric
+            ? html`<div class="metric-range">${min} - ${max}</div>`
+            : html`<div class="metric-reading">${value}</div>`}
+        </div>
+      </div>
+    `;
+  }
+
+  private _renderMobileEntitiesSection(area: AreaConfig, entities: EntityConfig[]) {
+    const groups = this._mobileEntityGroups(entities);
+    if (!groups.length) return nothing;
+
+    return html`
+      <section class="mobile-entities-section layout-${this._mobileEntityLayout}">
+        ${groups.map(group => {
+          const hasActions = this._mobileControllableEntities(group.entities).length > 0;
+          const gridMode = this._mobileEntityLayout === 'grid';
+
+          return html`
+            <div class="mobile-domain-group ${this._isMobileDomainMenuOpen(area.area_id, group.key) ? 'menu-open' : ''}">
+              <div class="mobile-domain-header">
+                <div class="mobile-domain-title">
+                  <button
+                    class="mobile-layout-toggle ${gridMode ? 'active' : ''}"
+                    type="button"
+                    title=${gridMode ? 'Swipe cards' : 'Show all cards'}
+                    aria-label=${gridMode ? 'Switch to swipe cards' : 'Show all cards'}
+                    @click=${this._toggleMobileEntityLayout}
+                  >
+                    <ha-icon icon=${gridMode ? 'mdi:view-carousel-outline' : 'mdi:view-grid-outline'}></ha-icon>
+                  </button>
+                  <span class="mobile-domain-title-copy">
+                    <span class="mobile-domain-title-label">${group.name}</span>
+                    <span class="mobile-domain-count">(${group.entities.length} ${group.entities.length === 1 ? 'item' : 'items'})</span>
+                  </span>
+                </div>
+                ${hasActions ? html`
+                  <button
+                    class="mobile-domain-more ${this._isMobileDomainMenuOpen(area.area_id, group.key) ? 'active' : ''}"
+                    type="button"
+                    title=${group.name}
+                    @click=${(event: Event) => this._toggleMobileDomainMenu(event, area.area_id, group)}
+                  >
+                    <ha-icon icon="mdi:dots-horizontal"></ha-icon>
+                  </button>
+                ` : nothing}
+              </div>
+              <div class="mobile-entity-rail">
+                ${repeat(
+                  group.entities,
+                  entity => entity.entity_id,
+                  entity => this._renderMobileEntityCard(area, entity)
+                )}
+              </div>
+            </div>
+          `;
+        })}
+      </section>
+    `;
+  }
+
+  private _isMobileDomainMenuOpen(areaId: string, groupKey: string): boolean {
+    return this._mobileDomainMenu?.areaId === areaId && this._mobileDomainMenu.groupKey === groupKey;
+  }
+
+  private _toggleMobileDomainMenu(event: Event, areaId: string, group: MobileEntityGroup): void {
+    event.stopPropagation();
+    const anchor = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
+    if (this._isMobileDomainMenuOpen(areaId, group.key)) {
+      this._closeMobileDomainMenu();
+      return;
+    }
+
+    this._mobileDomainMenu = { areaId, groupKey: group.key };
+    if (anchor) this._openMobileDomainMenuPortal(anchor, group);
+  }
+
+  private _closeMobileDomainMenu(): void {
+    this._mobileDomainMenu = null;
+    this._removeMobileDomainMenuPortal();
+  }
+
+  private _removeMobileDomainMenuPortal(): void {
+    this._mobileDomainMenuPortal?.remove();
+    this._mobileDomainMenuPortal = undefined;
+  }
+
+  private _openMobileDomainMenuPortal(anchor: HTMLElement, group: MobileEntityGroup): void {
+    this._removeMobileDomainMenuPortal();
+
+    if (!this._mobileControllableEntities(group.entities).length) return;
+
+    const actions = this._mobileGroupActionLabels(group.key);
+    const portal = document.createElement('div');
+    portal.setAttribute('data-dd-mobile-domain-menu', '');
+    Object.assign(portal.style, {
+      position: 'static',
+      pointerEvents: 'none',
+    });
+
+    const backdrop = document.createElement('button');
+    backdrop.type = 'button';
+    backdrop.setAttribute('aria-label', 'Close');
+    Object.assign(backdrop.style, {
+      position: 'fixed',
+      inset: '0',
+      zIndex: '2147483646',
+      padding: '0',
+      border: '0',
+      background: 'rgba(0, 0, 0, 0.52)',
+      cursor: 'default',
+      pointerEvents: 'auto',
+      WebkitTapHighlightColor: 'transparent',
+    });
+    backdrop.addEventListener('click', () => this._closeMobileDomainMenu());
+
+    const menu = document.createElement('div');
+    menu.setAttribute('role', 'menu');
+    const rect = anchor.getBoundingClientRect();
+    const menuWidth = 178;
+    const menuHeight = 94;
+    const viewportGap = 10;
+    const left = Math.max(viewportGap, Math.min(window.innerWidth - menuWidth - viewportGap, rect.right - menuWidth));
+    const preferredTop = rect.bottom + 8;
+    const top = preferredTop + menuHeight > window.innerHeight - viewportGap
+      ? Math.max(viewportGap, rect.top - menuHeight - 8)
+      : preferredTop;
+
+    Object.assign(menu.style, {
+      position: 'fixed',
+      left: `${left}px`,
+      top: `${top}px`,
+      zIndex: '2147483647',
+      width: `${menuWidth}px`,
+      overflow: 'hidden',
+      borderRadius: '10px',
+      background: 'var(--card-background-color, #fff)',
+      color: 'var(--primary-text-color, #111827)',
+      boxShadow: '0 18px 42px rgba(15, 23, 42, 0.26), inset 0 0 0 1px rgba(255, 255, 255, 0.56)',
+      backdropFilter: 'blur(18px)',
+      WebkitBackdropFilter: 'blur(18px)',
+      pointerEvents: 'auto',
+    });
+    menu.addEventListener('click', (portalEvent) => portalEvent.stopPropagation());
+
+    menu.appendChild(this._createMobileDomainMenuButton(actions.offLabel, actions.offIcon, () => {
+      void this._setMobileGroupState(group.entities, false);
+    }, true));
+    menu.appendChild(this._createMobileDomainMenuButton(actions.onLabel, actions.onIcon, () => {
+      void this._setMobileGroupState(group.entities, true);
+    }, false));
+
+    portal.append(backdrop, menu);
+    document.body.appendChild(portal);
+    this._mobileDomainMenuPortal = portal;
+  }
+
+  private _createMobileDomainMenuButton(label: string, icon: string, action: () => void, hasDivider: boolean): HTMLButtonElement {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.setAttribute('role', 'menuitem');
+    Object.assign(button.style, {
+      width: '100%',
+      minHeight: '46px',
+      padding: '0 12px 0 14px',
+      border: '0',
+      borderBottom: hasDivider ? '1px solid rgba(15, 23, 42, 0.12)' : '0',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: '12px',
+      background: 'transparent',
+      color: 'inherit',
+      font: 'inherit',
+      fontSize: '15px',
+      fontWeight: '700',
+      textAlign: 'left',
+      cursor: 'pointer',
+      WebkitTapHighlightColor: 'transparent',
+    });
+
+    const labelNode = document.createElement('span');
+    labelNode.textContent = label;
+
+    const iconNode = document.createElement('ha-icon');
+    iconNode.setAttribute('icon', icon);
+    iconNode.style.setProperty('--mdc-icon-size', '22px');
+    iconNode.style.flex = '0 0 auto';
+
+    button.append(labelNode, iconNode);
+    button.addEventListener('click', (event) => {
+      event.stopPropagation();
+      action();
+    });
+
+    return button;
+  }
+
+  private _mobileGroupActionLabels(groupKey: string): { offLabel: string; onLabel: string; offIcon: string; onIcon: string } {
+    if (groupKey === 'cover') {
+      return {
+        offLabel: 'Close All',
+        onLabel: 'Open All',
+        offIcon: 'mdi:window-shutter',
+        onIcon: 'mdi:window-shutter-open',
+      };
+    }
+
+    if (groupKey === 'lock') {
+      return {
+        offLabel: 'Lock All',
+        onLabel: 'Unlock All',
+        offIcon: 'mdi:lock-outline',
+        onIcon: 'mdi:lock-open-variant-outline',
+      };
+    }
+
+    if (groupKey === 'light') {
+      return {
+        offLabel: 'Turn Off All',
+        onLabel: 'Turn On All',
+        offIcon: 'mdi:lightbulb-off',
+        onIcon: 'mdi:lightbulb',
+      };
+    }
+
+    if (groupKey === 'fan') {
+      return {
+        offLabel: 'Turn Off All',
+        onLabel: 'Turn On All',
+        offIcon: 'mdi:fan-off',
+        onIcon: 'mdi:fan',
+      };
+    }
+
+    return {
+      offLabel: 'Turn Off All',
+      onLabel: 'Turn On All',
+      offIcon: 'mdi:toggle-switch-off',
+      onIcon: 'mdi:toggle-switch',
+    };
+  }
+
+  private _mobileEntityGroups(entities: EntityConfig[]): MobileEntityGroup[] {
+    const grouped = entities.reduce((acc, entity) => {
+      const key = this._mobileEntityTypeKey(entity.entity_id);
+      if (!key) return acc;
+      if (!acc[key]) acc[key] = [];
+      acc[key].push(entity);
+      return acc;
+    }, {} as Record<string, EntityConfig[]>);
+
+    const order = ['light', 'switch', 'cover', 'climate', 'motion', 'binary_sensor', 'sensor', 'media_player', 'fan', 'lock', 'camera', 'vacuum'];
+
+    return Object.entries(grouped)
+      .sort(([a], [b]) => {
+        const ai = order.indexOf(a);
+        const bi = order.indexOf(b);
+        if (ai !== -1 || bi !== -1) return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+        return this._mobileGroupName(a).localeCompare(this._mobileGroupName(b));
+      })
+      .map(([key, groupEntities]) => ({
+        key,
+        name: this._mobileGroupName(key),
+        icon: this._mobileGroupIcon(key),
+        entities: groupEntities,
+      }));
+  }
+
+  private _mobileEntityTypeKey(entityId: string): string | undefined {
+    const domain = entityId.split('.')[0];
+    if (!domain) return undefined;
+    if (domain === 'binary_sensor') {
+      const deviceClass = this.hass.states[entityId]?.attributes?.device_class;
+      return deviceClass === 'motion' ? 'motion' : 'binary_sensor';
+    }
+    return domain;
+  }
+
+  private _mobileGroupName(key: string): string {
+    if (key === 'light') return 'Lighting';
+    if (key === 'switch') return 'Switches';
+    if (key === 'cover') return 'Covers';
+    if (key === 'climate') return 'Climate Control';
+    if (key === 'motion') return 'Motion';
+    return getDomainName(this.hass, key);
+  }
+
+  private _mobileGroupIcon(key: string): string {
+    if (key === 'motion') return 'mdi:motion-sensor';
+    return getDomainIcon(key);
+  }
+
+  private _renderMobileEntityCard(area: AreaConfig, entity: EntityConfig) {
+    const state = this.hass.states[entity.entity_id];
+    if (!state) return nothing;
+
+    const domain = entity.entity_id.split('.')[0] || 'unknown';
+    const deviceClass = state.attributes?.device_class;
+    const icon = this.hass.entities?.[entity.entity_id]?.icon || state.attributes?.icon || getDeviceClassIcon(domain, deviceClass) || getDomainIcon(domain);
+    const name = state.attributes?.friendly_name || this.hass.entities?.[entity.entity_id]?.name || entity.entity_id;
+    const active = this._isEntityActiveForUi(state, domain);
+    const actionKind = this._mobileEntityActionKind(domain);
+    const unavailable = ['unavailable', 'unknown'].includes(String(state.state).toLowerCase());
+    const classes = [
+      'mobile-entity-card',
+      `mobile-entity-${domain}`,
+      `action-${actionKind}`,
+      active ? 'is-active' : 'is-off',
+      unavailable ? 'is-unavailable' : '',
+    ].join(' ');
+
+    return html`
+      <article
+        class=${classes}
+        style=${`--entity-color: ${this._mobileEntityColor(domain, deviceClass)};`}
+        role="button"
+        tabindex="0"
+        aria-label=${name}
+        @click=${() => this._showMoreInfo(entity.entity_id)}
+        @keydown=${(event: KeyboardEvent) => this._handleMobileEntityKeydown(event, entity.entity_id)}
+      >
+        <div class="mobile-entity-top">
+          <div class="mobile-entity-icon">
+            <ha-icon icon=${icon}></ha-icon>
+          </div>
+          ${this._renderMobileEntityActions(state, domain, active)}
+        </div>
+        <div>
+          <div class="mobile-entity-meta">${area.name}</div>
+          <div class="mobile-entity-name">${name}</div>
+          <div class="mobile-entity-status">${this._mobileEntityStatusText(state, domain)}</div>
+        </div>
+      </article>
+    `;
+  }
+
+  private _handleMobileEntityKeydown(event: KeyboardEvent, entityId: string): void {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    this._showMoreInfo(entityId);
+  }
+
+  private _renderMobileEntityActions(state: any, domain: string, active: boolean) {
+    const entityId = state?.entity_id;
+    const actionKind = this._mobileEntityActionKind(domain);
+    const unavailable = ['unavailable', 'unknown'].includes(String(state?.state || '').toLowerCase());
+
+    if (actionKind === 'toggle') {
+      return html`
+        <button
+          class="mobile-entity-action mobile-entity-toggle"
+          type="button"
+          title=${active ? 'Turn off' : 'Turn on'}
+          aria-label=${active ? 'Turn off' : 'Turn on'}
+          ?disabled=${unavailable}
+          @click=${(event: Event) => this._handleMobileEntityToggle(event, state, domain)}
+        ></button>
+      `;
+    }
+
+    if (actionKind === 'cover') {
+      return this._renderMobileCoverActions(state);
+    }
+
+    if (actionKind === 'lock') {
+      const unlocked = this._isEntityActiveForUi(state, domain);
+      return html`
+        <button
+          class="mobile-entity-action mobile-lock-action ${unlocked ? 'is-unlocked' : ''}"
+          type="button"
+          title=${unlocked ? 'Lock' : 'Unlock'}
+          aria-label=${unlocked ? 'Lock' : 'Unlock'}
+          ?disabled=${unavailable}
+          @click=${(event: Event) => this._handleMobileLockAction(event, state)}
+        >
+          <ha-icon icon=${unlocked ? 'mdi:lock-open-variant-outline' : 'mdi:lock-outline'}></ha-icon>
+        </button>
+      `;
+    }
+
+    return html`
+      <button
+        class="mobile-entity-action mobile-entity-more"
+        type="button"
+        title="More info"
+        aria-label="More info"
+        @click=${(event: Event) => this._handleMobileMoreInfo(event, entityId)}
+      >
+        <ha-icon icon="mdi:chevron-right"></ha-icon>
+      </button>
+    `;
+  }
+
+  private _renderMobileCoverActions(state: any) {
+    const value = String(state?.state || '').toLowerCase();
+    const unavailable = ['unavailable', 'unknown'].includes(value);
+    const canOpen = this._coverSupportsFeature(state, 1);
+    const canClose = this._coverSupportsFeature(state, 2);
+    const canStop = this._coverSupportsFeature(state, 8);
+
+    return html`
+      <div class="mobile-cover-actions" @click=${(event: Event) => event.stopPropagation()}>
+        ${canOpen ? html`
+          <button
+            class="mobile-entity-action mobile-cover-action ${value === 'opening' ? 'active' : ''}"
+            type="button"
+            title="Open"
+            aria-label="Open"
+            ?disabled=${unavailable}
+            @click=${(event: Event) => this._handleMobileCoverAction(event, state, 'open')}
+          >
+            <ha-icon icon="mdi:arrow-up"></ha-icon>
+          </button>
+        ` : nothing}
+        ${canStop ? html`
+          <button
+            class="mobile-entity-action mobile-cover-action ${value === 'opening' || value === 'closing' ? 'active' : ''}"
+            type="button"
+            title="Stop"
+            aria-label="Stop"
+            ?disabled=${unavailable}
+            @click=${(event: Event) => this._handleMobileCoverAction(event, state, 'stop')}
+          >
+            <ha-icon icon="mdi:stop"></ha-icon>
+          </button>
+        ` : nothing}
+        ${canClose ? html`
+          <button
+            class="mobile-entity-action mobile-cover-action ${value === 'closing' ? 'active' : ''}"
+            type="button"
+            title="Close"
+            aria-label="Close"
+            ?disabled=${unavailable}
+            @click=${(event: Event) => this._handleMobileCoverAction(event, state, 'close')}
+          >
+            <ha-icon icon="mdi:arrow-down"></ha-icon>
+          </button>
+        ` : nothing}
+      </div>
+    `;
+  }
+
+  private async _handleMobileEntityToggle(event: Event, state: any, domain: string): Promise<void> {
+    event.stopPropagation();
+    const entityId = state?.entity_id;
+    if (!entityId) return;
+
+    try {
+      if (['light', 'switch', 'fan', 'input_boolean'].includes(domain)) {
+        await this.hass.callService('homeassistant', 'toggle', { entity_id: entityId });
+        return;
+      }
+    } catch (err) {
+      console.warn(`Failed to toggle mobile entity ${entityId}:`, err);
+    }
+
+    this._showMoreInfo(entityId);
+  }
+
+  private async _handleMobileCoverAction(event: Event, state: any, action: 'open' | 'stop' | 'close'): Promise<void> {
+    event.stopPropagation();
+    const entityId = state?.entity_id;
+    if (!entityId) return;
+
+    const service = action === 'open' ? 'open_cover' : action === 'close' ? 'close_cover' : 'stop_cover';
+
+    try {
+      await this.hass.callService('cover', service, { entity_id: entityId });
+    } catch (err) {
+      console.warn(`Failed to ${action} cover ${entityId}:`, err);
+      this._showMoreInfo(entityId);
+    }
+  }
+
+  private async _handleMobileLockAction(event: Event, state: any): Promise<void> {
+    event.stopPropagation();
+    const entityId = state?.entity_id;
+    if (!entityId) return;
+
+    try {
+      const unlocked = this._isEntityActiveForUi(state, 'lock');
+      await this.hass.callService('lock', unlocked ? 'lock' : 'unlock', { entity_id: entityId });
+    } catch (err) {
+      console.warn(`Failed to toggle lock ${entityId}:`, err);
+      this._showMoreInfo(entityId);
+    }
+  }
+
+  private _handleMobileMoreInfo(event: Event, entityId?: string): void {
+    event.stopPropagation();
+    if (entityId) this._showMoreInfo(entityId);
+  }
+
+  private _mobileControllableEntities(entities: EntityConfig[]): EntityConfig[] {
+    return entities.filter(entity => {
+      const domain = entity.entity_id.split('.')[0] || '';
+      return Boolean(this.hass.states[entity.entity_id]) && this._mobileEntitySupportsToggle(domain);
+    });
+  }
+
+  private async _setMobileGroupState(entities: EntityConfig[], turnOn: boolean): Promise<void> {
+    const grouped = this._mobileControllableEntities(entities).reduce((acc, entity) => {
+      const domain = entity.entity_id.split('.')[0] || '';
+      if (!acc[domain]) acc[domain] = [];
+      acc[domain].push(entity.entity_id);
+      return acc;
+    }, {} as Record<string, string[]>);
+
+    this._closeMobileDomainMenu();
+
+    try {
+      await Promise.all(Object.entries(grouped).map(([domain, entityIds]) => {
+        if (!entityIds.length) return Promise.resolve();
+
+        if (['light', 'switch', 'fan', 'input_boolean'].includes(domain)) {
+          return this.hass.callService(domain, turnOn ? 'turn_on' : 'turn_off', {
+            entity_id: entityIds,
+          });
+        }
+
+        if (domain === 'cover') {
+          return this.hass.callService('cover', turnOn ? 'open_cover' : 'close_cover', {
+            entity_id: entityIds,
+          });
+        }
+
+        if (domain === 'lock') {
+          return this.hass.callService('lock', turnOn ? 'unlock' : 'lock', {
+            entity_id: entityIds,
+          });
+        }
+
+        return Promise.resolve();
+      }));
+
+      const count = Object.values(grouped).reduce((total, entityIds) => total + entityIds.length, 0);
+      if (count) this._showToast(`${count} ${count === 1 ? 'entity' : 'entities'} turned ${turnOn ? 'on' : 'off'}`);
+    } catch (err) {
+      console.warn('Failed to run mobile group action:', err);
+      this._showToast('Could not update group');
+    }
+  }
+
+  private _mobileEntitySupportsToggle(domain: string): boolean {
+    return ['light', 'switch', 'fan', 'input_boolean', 'cover', 'lock'].includes(domain);
+  }
+
+  private _mobileEntityActionKind(domain: string): 'toggle' | 'cover' | 'lock' | 'more' {
+    if (['light', 'switch', 'fan', 'input_boolean'].includes(domain)) return 'toggle';
+    if (domain === 'cover') return 'cover';
+    if (domain === 'lock') return 'lock';
+    return 'more';
+  }
+
+  private _coverSupportsFeature(state: any, feature: number): boolean {
+    const supported = Number(state?.attributes?.supported_features);
+    if (!Number.isFinite(supported) || supported <= 0) {
+      return feature === 1 || feature === 2;
+    }
+    return (supported & feature) !== 0;
+  }
+
+  private _mobileEntityStatusText(state: any, domain: string): string {
+    if (!state) return '';
+    const formatted = this._formatFavoriteState(state);
+
+    if (domain === 'light' && state.state === 'on' && typeof state.attributes?.brightness === 'number') {
+      return `${Math.round((state.attributes.brightness / 255) * 100)}% brightness`;
+    }
+
+    if (domain === 'cover' && typeof state.attributes?.current_position === 'number') {
+      return `${formatted} · ${state.attributes.current_position}%`;
+    }
+
+    if (domain === 'climate') {
+      const current = state.attributes?.current_temperature;
+      const target = state.attributes?.temperature;
+      const unit = this.hass?.config?.unit_system?.temperature || '°C';
+      if (current !== undefined && target !== undefined) return `${current}${unit} · set ${target}${unit}`;
+      if (current !== undefined) return `${current}${unit}`;
+    }
+
+    if (domain === 'media_player' && state.attributes?.media_title) {
+      return `${formatted} · ${state.attributes.media_title}`;
+    }
+
+    return formatted;
+  }
+
+  private _isEntityActiveForUi(state: any, domain: string): boolean {
+    if (!state || ['unavailable', 'unknown'].includes(String(state.state))) return false;
+    const value = String(state.state).toLowerCase();
+    if (domain === 'cover') return ['open', 'opening'].includes(value);
+    if (domain === 'lock') return value === 'unlocked';
+    if (domain === 'climate') {
+      const action = state.attributes?.hvac_action;
+      return action && action !== 'idle' && action !== 'off';
+    }
+    if (domain === 'media_player') return ['playing', 'paused'].includes(value);
+    return !['off', 'closed', 'locked', 'not_home', 'idle'].includes(value);
+  }
+
+  private _mobileEntityColor(domain: string, deviceClass?: string): string {
+    return getDomainColor(domain, deviceClass);
+  }
+
+  private _numericValue(value: string): number | null {
+    const match = String(value).replace(',', '.').match(/-?\d+(\.\d+)?/);
+    if (!match) return null;
+    const parsed = Number(match[0]);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
   private _renderEntitiesSection(entities: EntityConfig[]) {
     if (entities.length === 0) return nothing;
 
@@ -3291,7 +10144,7 @@ export class DwainsLayoutCard extends LitElement {
                 <ha-icon icon=${displayIcon}></ha-icon>
                 <span>${displayName}</span>
             </div>
-            <div class="entities-grid">
+            <div class=${this._entitiesGridClass(groupKey)}>
               ${repeat(
                 domainEntities,
                 e => e.entity_id,
@@ -3312,13 +10165,35 @@ export class DwainsLayoutCard extends LitElement {
     // Via dd-card-host (eigen light-DOM) i.p.v. een rauw element + observer die
     // de Lit-beheerde wrapper direct manipuleert → geen 'nextSibling'-crash.
     return html`
-      <div class="entity-card-wrapper">
+      <div class=${this._entityWrapperClass(entity.entity_id)}>
         <dd-card-host
           .hass=${this.hass}
           .config=${this._entityCardConfig(entity.entity_id)}
         ></dd-card-host>
       </div>
     `;
+  }
+
+  private _entitiesGridClass(groupKey: string): string {
+    return [
+      'entities-grid',
+      groupKey === 'cover' ? 'cover-entities-grid' : '',
+      groupKey === 'light' ? 'light-entities-grid' : '',
+      groupKey === 'sensor' ? 'sensor-entities-grid' : '',
+      groupKey === 'motion' ? 'motion-entities-grid' : '',
+    ].filter(Boolean).join(' ');
+  }
+
+  private _entityWrapperClass(entityId: string): string {
+    const domain = entityId.split('.')[0] || '';
+    const deviceClass = this.hass.states?.[entityId]?.attributes?.device_class;
+    return [
+      'entity-card-wrapper',
+      `${domain}-entity-card`,
+      domain === 'binary_sensor' && ['motion', 'occupancy', 'presence'].includes(String(deviceClass))
+        ? 'motion-entity-card'
+        : '',
+    ].filter(Boolean).join(' ');
   }
 
   private _entityCardConfig(entityId: string): any {
@@ -3387,6 +10262,20 @@ export class DwainsLayoutCard extends LitElement {
     );
   }
 
+  private _getAlarmEntity() {
+    const configuredAlarmId = this.config?.settings?.alarm_entity_id;
+    if (!configuredAlarmId) {
+      return undefined;
+    }
+
+    const chosen = this.hass.states[configuredAlarmId];
+    if (chosen && !this.hass.entities?.[chosen.entity_id]?.hidden_by) {
+      return chosen;
+    }
+
+    return undefined;
+  }
+
   private _getStatusDomains(): DomainCount[] {
     // Check cache first
     const cacheKey = 'status_domains';
@@ -3404,7 +10293,8 @@ export class DwainsLayoutCard extends LitElement {
       result.unshift({
         domain: 'wattage',
         count: 0,
-        name: totalWattage,
+        name: 'Power usage',
+        value: totalWattage,
         icon: 'mdi:flash'
       });
     }
@@ -3426,6 +10316,24 @@ export class DwainsLayoutCard extends LitElement {
   private _getHiddenStatusCount(): string {
     // TODO: Calculate hidden status cards count
     return '';
+  }
+
+  private _getAreaDeviceCount(areaId: string, entities: EntityConfig[] = []): number {
+    const deviceIds = new Set<string>();
+
+    this.config?.devices?.forEach(device => {
+      if (device.area_id === areaId) {
+        deviceIds.add(device.device_id);
+      }
+    });
+
+    entities.forEach(entity => {
+      if (entity.device_id) {
+        deviceIds.add(entity.device_id);
+      }
+    });
+
+    return deviceIds.size;
   }
 
   private _getAreaEntities(areaId: string): EntityConfig[] {
@@ -3529,9 +10437,25 @@ export class DwainsLayoutCard extends LitElement {
   }
 
   private _getUnavailableAreaEntities(areaId: string): { unavailable: string[], unknown: string[] } {
-    const entities = this._getAreaEntities(areaId);
+    let entities = this._getAreaEntities(areaId);
     const unavailable: string[] = [];
     const unknown: string[] = [];
+
+    entities = entities.filter(entity => {
+      const registry = this.hass.entities?.[entity.entity_id];
+      return !(registry?.hidden_by || registry?.entity_category === 'diagnostic' || registry?.entity_category === 'config');
+    });
+
+    const areaOptions = this.config?.areas_options?.[areaId];
+    if (areaOptions?.groups_options) {
+      const hiddenEntityIds = new Set<string>();
+      for (const groupOptions of Object.values(areaOptions.groups_options)) {
+        groupOptions.hidden?.forEach(entityId => hiddenEntityIds.add(entityId));
+      }
+      entities = entities.filter(entity => !hiddenEntityIds.has(entity.entity_id));
+    }
+
+    entities = filterHiddenDeviceEntities(this.hass, this.config, entities);
 
     entities.forEach(entity => {
       const state = this.hass.states[entity.entity_id];
@@ -3591,33 +10515,138 @@ export class DwainsLayoutCard extends LitElement {
     return data;
   }
 
+  private _getPictureContrastClass(picture?: string | null): string {
+    if (!picture) return '';
+
+    const cached = this._pictureContrastCache.get(picture);
+    if (!cached) {
+      this._pictureContrastCache.set(picture, 'pending');
+      void this._analyzePictureContrast(picture);
+      return 'text-light';
+    }
+
+    return cached === 'dark' ? 'text-dark' : 'text-light';
+  }
+
+  private async _analyzePictureContrast(picture: string): Promise<void> {
+    try {
+      const tone = await this._calculatePictureTextTone(picture);
+      this._pictureContrastCache.set(picture, tone);
+    } catch {
+      // If canvas access is blocked by CORS, keep the safer dark overlay with light text.
+      this._pictureContrastCache.set(picture, 'light');
+    }
+
+    this.requestUpdate();
+  }
+
+  private _calculatePictureTextTone(picture: string): Promise<PictureTextTone> {
+    return new Promise((resolve, reject) => {
+      const image = new Image();
+      image.decoding = 'async';
+
+      image.onload = () => {
+        try {
+          const sampleSize = 28;
+          const canvas = document.createElement('canvas');
+          canvas.width = sampleSize;
+          canvas.height = sampleSize;
+
+          const context = canvas.getContext('2d', { willReadFrequently: true });
+          if (!context) {
+            reject(new Error('Canvas context unavailable'));
+            return;
+          }
+
+          context.drawImage(image, 0, 0, sampleSize, sampleSize);
+          const pixels = context.getImageData(0, 0, sampleSize, sampleSize).data;
+          const regions = [
+            { x0: 0.1, x1: 0.7, y0: 0.2, y1: 0.75 },
+            { x0: 0.08, x1: 0.72, y0: 0.56, y1: 0.96 },
+            { x0: 0.18, x1: 0.82, y0: 0.18, y1: 0.82 },
+          ];
+          const luminances = regions.map(region => {
+            const startX = Math.floor(region.x0 * sampleSize);
+            const endX = Math.ceil(region.x1 * sampleSize);
+            const startY = Math.floor(region.y0 * sampleSize);
+            const endY = Math.ceil(region.y1 * sampleSize);
+            let total = 0;
+            let count = 0;
+
+            for (let y = startY; y < endY; y++) {
+              for (let x = startX; x < endX; x++) {
+                const index = (y * sampleSize + x) * 4;
+                const alpha = (pixels[index + 3] ?? 255) / 255;
+                const r = (pixels[index] ?? 255) * alpha + 255 * (1 - alpha);
+                const g = (pixels[index + 1] ?? 255) * alpha + 255 * (1 - alpha);
+                const b = (pixels[index + 2] ?? 255) * alpha + 255 * (1 - alpha);
+                total += (0.2126 * r) + (0.7152 * g) + (0.0722 * b);
+                count++;
+              }
+            }
+
+            return count ? total / count : 0;
+          });
+
+          const darkestTextArea = Math.min(...luminances);
+          resolve(darkestTextArea > 170 ? 'dark' : 'light');
+        } catch (err) {
+          reject(err);
+        }
+      };
+
+      image.onerror = () => reject(new Error('Image could not be loaded'));
+      image.src = picture;
+    });
+  }
+
   // Note: getDomainTitle is now handled by the header-status-domains utility
 
-  private _areAllEntitiesOff(entities: EntityConfig[], _domain: string): boolean {
-    return entities.every(entity => {
-      const state = this.hass.states[entity.entity_id];
-      return !state || state.state === 'off' || state.state === 'unavailable';
-    });
+  private _countActiveEntities(entities: EntityConfig[], domain: string): number {
+    return entities.filter(entity => this._isEntityActiveForUi(this.hass.states[entity.entity_id], domain)).length;
+  }
+
+  private _areAllEntitiesOff(entities: EntityConfig[], domain: string): boolean {
+    return this._countActiveEntities(entities, domain) === 0;
   }
 
   // Event Handlers
   private _selectView(view: 'home' | 'area') {
+    this._closeMobileDomainMenu();
+    this._areaHeaderStuck = false;
+    this._areaHeaderRevealed = false;
+    this._lastAreaScrollTop = 0;
+    this._areaScrollUpDistance = 0;
     this._selectedView = view;
     if (view === 'home') {
       this._selectedArea = null;
       this._editMode = false;
       this._updateUrlArea(null);
     }
+    this._syncBottomNavAreaContext();
     this._closeMobileNav();
   }
 
   private _selectArea(areaId: string) {
+    this._closeMobileDomainMenu();
+    this._areaHeaderStuck = false;
+    this._areaHeaderRevealed = false;
+    this._lastAreaScrollTop = 0;
+    this._areaScrollUpDistance = 0;
     this._selectedArea = areaId;
     this._selectedView = 'area';
     this._editMode = false;
     this._closeMobileNav();
     this._updateUrlArea(areaId);
+    this._syncBottomNavAreaContext();
   }
+
+  private _handleHomeNavigationKeydown = (event: KeyboardEvent) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+
+    event.preventDefault();
+    this._selectView('home');
+  };
 
   private _toggleHeader() {
     this._headerExpanded = !this._headerExpanded;
@@ -3625,6 +10654,74 @@ export class DwainsLayoutCard extends LitElement {
 
   private _toggleMobileNav() {
     this._mobileNavOpen = !this._mobileNavOpen;
+  }
+
+  private _handleAreaNavToggle = () => {
+    if (!this._isMobile) return;
+    this._toggleMobileNav();
+  };
+
+  private _openMobileAreaSwitcher = () => {
+    if (!this._isMobile) return;
+    this._selectedView = 'home';
+    this._selectedArea = null;
+    this._areaHeaderStuck = false;
+    this._areaHeaderRevealed = false;
+    this._lastAreaScrollTop = 0;
+    this._areaScrollUpDistance = 0;
+    this._editMode = false;
+    this._updateUrlArea(null);
+    this._mobileNavOpen = true;
+  };
+
+  private _openMobileDeviceSwitcher = () => {
+    if (!this._isMobile) return;
+
+    this._navigateToDeviceDomain(null);
+
+    [160, 360, 700].forEach((delay) => {
+      window.setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('dwains-toggle-devices-nav', {
+          detail: { open: true },
+        }));
+      }, delay);
+    });
+  };
+
+  private _openDeviceDomain(domain: string): void {
+    this._navigateToDeviceDomain(domain);
+    const isBinarySensorDeviceClass = domain.startsWith('binary_sensor.');
+    const deviceClass = isBinarySensorDeviceClass ? domain.slice('binary_sensor.'.length) : undefined;
+    const detail = {
+      domain,
+      icon: domain === 'person'
+        ? 'mdi:account-group'
+        : deviceClass
+          ? getDeviceClassIcon('binary_sensor', deviceClass)
+          : getDomainIcon(domain),
+      label: deviceClass ? getDeviceClassName(this.hass, deviceClass) : getDomainName(this.hass, domain),
+    };
+    const dispatchDomainSelection = () => {
+      const url = new URL(window.location.href);
+      if (url.searchParams.get('dd_device') !== domain) return;
+      window.dispatchEvent(new CustomEvent('dwains-select-device-domain', { detail }));
+      window.dispatchEvent(new CustomEvent('dwains-device-context-changed', { detail }));
+    };
+
+    dispatchDomainSelection();
+    [120, 360].forEach((delay) => window.setTimeout(dispatchDomainSelection, delay));
+  }
+
+  private _navigateToDeviceDomain(domain: string | null): void {
+    const segment = window.location.pathname.split('/')[1] || 'lovelace';
+    const url = new URL(window.location.href);
+    url.pathname = `/${segment}/devices`;
+    url.search = '';
+    if (domain) url.searchParams.set('dd_device', domain);
+    window.history.pushState(null, '', `${url.pathname}${url.search}`);
+    const ev = new Event('location-changed', { bubbles: true, composed: true });
+    (ev as any).detail = { replace: false };
+    window.dispatchEvent(ev);
   }
 
   private _renderFavoritesSection() {
@@ -3699,80 +10796,6 @@ export class DwainsLayoutCard extends LitElement {
     });
   }
 
-  private async _renderHomeFavoriteCards(): Promise<void> {
-    if (!this.shadowRoot || !this.hass) return;
-
-    const wrappers = this.shadowRoot?.querySelectorAll('.favorite-card-wrapper');
-    if (!wrappers) return;
-
-    wrappers.forEach((wrapper: Element) => {
-      // Safety check: ensure wrapper exists and is connected
-      if (!wrapper || !wrapper.isConnected) {
-        return;
-      }
-
-      const entityId = (wrapper as HTMLElement).dataset.entity;
-
-      if (!entityId) return;
-
-      // Only create card if it doesn't exist yet
-      if (wrapper.querySelector('hui-tile-card')) {
-        // Card already exists, just update its hass
-        const existingCard = wrapper.querySelector('hui-tile-card') as any;
-        if (existingCard && existingCard.hass !== undefined) {
-          existingCard.hass = this.hass;
-        }
-        return;
-      }
-
-      const state = this.hass?.states[entityId];
-      if (!state) return;
-
-      try {
-        // Create new tile card optimistically
-        const card = document.createElement('hui-tile-card') as any;
-        const friendlyName = state.attributes.friendly_name || entityId;
-        const config = { entity: entityId, name: friendlyName };
-        if ('setConfig' in card) {
-          card.setConfig(config);
-          card.hass = this.hass;
-        } else {
-          customElements.whenDefined('hui-tile-card').then(() => {
-            try {
-              if ('setConfig' in card) {
-                card.setConfig(config);
-                card.hass = this.hass;
-              }
-            } catch (e) {
-              console.warn('Failed to finalize tile-card after upgrade:', e);
-            }
-          });
-        }
-        card.classList.add('favorite-tile');
-
-        // Add click handler for more-info
-        card.addEventListener('click', (e: Event) => {
-          e.stopPropagation();
-          this._showMoreInfo(entityId);
-        });
-
-        // Safety check before DOM manipulation
-        if (wrapper && wrapper.isConnected) {
-          wrapper.appendChild(card);
-
-          // Force update after appending
-          requestAnimationFrame(() => {
-            if (card.requestUpdate) {
-              card.requestUpdate();
-            }
-          });
-        }
-      } catch (err) {
-        console.error(`Error creating home favorite tile card for ${entityId}:`, err);
-      }
-    });
-  }
-
   private _closeMobileNav() {
     this._mobileNavOpen = false;
   }
@@ -3781,16 +10804,210 @@ export class DwainsLayoutCard extends LitElement {
     fireEvent(this, 'hass-more-info', { entityId });
   }
 
+  private _getWelcomeUserPicture(userName: string): string | undefined {
+    const normalizedUserName = userName.trim().toLowerCase();
+    const personEntities = Object.values(this.hass?.states || {}).filter(
+      (entity: any) => entity.entity_id?.startsWith('person.')
+    );
+    const matchingPerson = personEntities.find((entity: any) =>
+      String(entity.attributes?.friendly_name || '').trim().toLowerCase() === normalizedUserName
+    );
+    const fallbackPerson = personEntities.find((entity: any) => entity.attributes?.entity_picture);
+    return (matchingPerson || fallbackPerson)?.attributes?.entity_picture;
+  }
+
+  private _openDashboardSettings = () => {
+    if (!this._canManageDashboard()) return;
+    openDashboardSettings(this.hass, this.config?.settings);
+  };
+
+  private _openProfileSettings = () => {
+    navigateHomeAssistant('/profile/general');
+  };
+
+  private _openNotificationsFromHomeShortcut = (event: Event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    this._closeMobileNav();
+    this._openNotifications();
+  };
+
+  private _openNotifications = () => {
+    this._notificationsOpen = true;
+    void this._loadPersistentNotifications(true);
+    void this._ensurePersistentNotificationsSubscription();
+  };
+
+  private _closeNotifications = () => {
+    this._notificationsOpen = false;
+  };
+
+  private async _loadPersistentNotifications(showError = true): Promise<void> {
+    if (!this.hass) return;
+
+    this._notificationsLoading = true;
+    if (showError) this._notificationsError = '';
+
+    try {
+      const notifications = await this.hass.callWS<PersistentNotification[]>({
+        type: 'persistent_notification/get',
+      });
+      this._persistentNotifications = this._sortPersistentNotifications(
+        this._normalizePersistentNotifications(notifications)
+      );
+      this._notificationsError = '';
+    } catch (err) {
+      if (showError || this._notificationsOpen) {
+        console.error('Failed to load persistent notifications:', err);
+        this._notificationsError = 'Could not load Home Assistant persistent notifications.';
+      }
+    } finally {
+      this._notificationsLoading = false;
+    }
+  }
+
+  private async _ensurePersistentNotificationsSubscription(): Promise<void> {
+    if (this._persistentNotificationsUnsub || !this.hass) return;
+
+    const connection = (this.hass as any).connection;
+    if (!connection?.subscribeMessage) return;
+
+    try {
+      const unsub = await connection.subscribeMessage(
+        (event: any) => this._handlePersistentNotificationEvent(event),
+        { type: 'persistent_notification/subscribe' }
+      );
+      if (typeof unsub === 'function') {
+        this._persistentNotificationsUnsub = () => {
+          void unsub();
+        };
+      }
+    } catch (err) {
+      console.warn('Persistent notification subscription unavailable:', err);
+    }
+  }
+
+  private _handlePersistentNotificationEvent(event: any): void {
+    const type = event?.type;
+    const notifications = this._normalizePersistentNotifications(event?.notifications);
+
+    if (type === 'current') {
+      this._persistentNotifications = this._sortPersistentNotifications(notifications);
+      this._notificationsError = '';
+      return;
+    }
+
+    if (type === 'removed') {
+      const removedIds = new Set(notifications.map((notification) => notification.notification_id));
+      this._persistentNotifications = this._persistentNotifications.filter(
+        (notification) => !removedIds.has(notification.notification_id)
+      );
+      return;
+    }
+
+    if (type === 'added' || type === 'updated') {
+      const next = new Map(
+        this._persistentNotifications.map((notification) => [notification.notification_id, notification])
+      );
+      notifications.forEach((notification) => next.set(notification.notification_id, notification));
+      this._persistentNotifications = this._sortPersistentNotifications([...next.values()]);
+    }
+  }
+
+  private _normalizePersistentNotifications(input: any): PersistentNotification[] {
+    const rawNotifications = Array.isArray(input) ? input : Object.values(input || {});
+    return rawNotifications
+      .map((item: any) => ({
+        notification_id: String(item?.notification_id || ''),
+        title: item?.title || null,
+        message: String(item?.message || ''),
+        created_at: item?.created_at ? String(item.created_at) : undefined,
+      }))
+      .filter((notification) => notification.notification_id);
+  }
+
+  private _sortPersistentNotifications(notifications: PersistentNotification[]): PersistentNotification[] {
+    return [...notifications].sort((a, b) => {
+      const bTime = b.created_at ? Date.parse(b.created_at) : 0;
+      const aTime = a.created_at ? Date.parse(a.created_at) : 0;
+      return bTime - aTime;
+    });
+  }
+
+  private _formatNotificationDate(createdAt: string): string {
+    const timestamp = Date.parse(createdAt);
+    if (!Number.isFinite(timestamp)) return createdAt;
+
+    return new Date(timestamp).toLocaleString(this.hass?.language || undefined, {
+      day: 'numeric',
+      month: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  }
+
+  private _dismissPersistentNotification = async (notificationId: string) => {
+    const previous = this._persistentNotifications;
+    this._persistentNotifications = previous.filter(
+      (notification) => notification.notification_id !== notificationId
+    );
+
+    try {
+      await this.hass.callService('persistent_notification', 'dismiss', {
+        notification_id: notificationId,
+      });
+      this._notificationsError = '';
+    } catch (err) {
+      console.error('Failed to dismiss persistent notification:', err);
+      this._persistentNotifications = previous;
+      this._notificationsError = 'Could not dismiss this notification.';
+    }
+  };
+
+  private _dismissAllPersistentNotifications = async () => {
+    const previous = this._persistentNotifications;
+    this._persistentNotifications = [];
+
+    try {
+      await this.hass.callService('persistent_notification', 'dismiss_all');
+      this._notificationsError = '';
+    } catch (err) {
+      console.error('Failed to dismiss all persistent notifications:', err);
+      this._persistentNotifications = previous;
+      this._notificationsError = 'Could not dismiss all notifications.';
+    }
+  };
+
   private _handleStatusCardClick(domain: DomainCount) {
     if (domain.domain === 'person') {
       this._showPersonEntities();
     } else if (domain.domain === 'wattage') {
       this._showWattageEntities();
-    } else if (domain.deviceClass) {
-      this._showDeviceClassEntities(domain.deviceClass);
     } else {
-      this._showDomainEntities(domain.domain);
+      this._showHouseStatusEntities(domain);
     }
+  }
+
+  private _showHouseStatusEntities(domain: DomainCount) {
+    const entityIds = domain.entities || [];
+    if (!entityIds.length) {
+      this._openDeviceDomain(this._statusDeviceDomainKey(domain));
+      return;
+    }
+
+    showDomainEntitiesDialog(this, {
+      domain: domain.domain,
+      config: this.config,
+      deviceClass: domain.deviceClass,
+      entityIds,
+      customTitle: domain.name,
+      viewAllLabel: 'View all',
+      onViewAll: () => this._openDeviceDomain(this._statusDeviceDomainKey(domain)),
+    });
+  }
+
+  private _statusDeviceDomainKey(domain: DomainCount): string {
+    return domain.deviceClass ? `${domain.domain}.${domain.deviceClass}` : domain.domain;
   }
 
   private _showPersonEntities() {
@@ -3806,14 +11023,6 @@ export class DwainsLayoutCard extends LitElement {
       domain: 'sensor',
       config: this.config,
       filterByUnitOfMeasurement: 'W'
-    });
-  }
-
-  private _showDeviceClassEntities(deviceClass: string) {
-    showDomainEntitiesDialog(this, {
-      domain: 'binary_sensor',
-      config: this.config,
-      deviceClass: deviceClass
     });
   }
 
@@ -3842,19 +11051,15 @@ export class DwainsLayoutCard extends LitElement {
   private _updateEntityCards(_oldHass: HomeAssistant, newHass: HomeAssistant): void {
     if (!this.shadowRoot) return;
 
-    // Update all Home Assistant elements in the shadow DOM
-    this.shadowRoot.querySelectorAll('*').forEach((el: any) => {
-      if (el.hass !== undefined && el.hass !== newHass) {
-        el.hass = newHass;
-      }
-    });
-
-    // Update any hui-card elements specifically
-    this.shadowRoot.querySelectorAll('hui-card, hui-tile-card, hui-entity-card, hui-thermostat-card, hui-picture-entity-card, hui-media-control-card').forEach((card: any) => {
-      if (card.hass !== newHass) {
-        card.hass = newHass;
-      }
-    });
+    this.shadowRoot
+      .querySelectorAll(
+        'dd-card-host, dd-tile-host, hui-card, hui-tile-card, hui-entity-card, hui-thermostat-card, hui-picture-entity-card, hui-media-control-card'
+      )
+      .forEach((card: any) => {
+        if (card.hass !== newHass) {
+          card.hass = newHass;
+        }
+      });
   }
 
   private _clearEntityCardsCache(): void {
@@ -3872,13 +11077,6 @@ export class DwainsLayoutCard extends LitElement {
     this._areaDataCache.clear();
     // Also clear the external area data cache
     clearAreaDataCache();
-  }
-
-  private _showDomainEntities(domain: string) {
-    showDomainEntitiesDialog(this, {
-      domain,
-      config: this.config
-    });
   }
 
   private _showUnavailableEntitiesModal(areaId: string) {
@@ -3903,16 +11101,20 @@ export class DwainsLayoutCard extends LitElement {
     });
   }
 
-  private async _toggleAreaLights(areaId: string) {
-    const confirmed = await this._showConfirmation(
-      'Toggle Lights',
-      'Are you sure you want to toggle all lights in this area?'
-    );
-
-    if (!confirmed) return;
-
+  private async _toggleAreaLights(areaId: string, confirmAction = true) {
     const entities = this._getFilteredAreaEntities(areaId);
     const lights = entities.filter(e => e.entity_id.startsWith('light.'));
+    if (lights.length === 0) return;
+
+    if (confirmAction) {
+      const confirmed = await this._showConfirmation(
+        'Toggle Lights',
+        'Are you sure you want to toggle all lights in this area?'
+      );
+
+      if (!confirmed) return;
+    }
+
     const allOff = this._areAllEntitiesOff(lights, 'light');
 
     const service = allOff ? 'turn_on' : 'turn_off';
@@ -3925,16 +11127,20 @@ export class DwainsLayoutCard extends LitElement {
     this._showToast(`All lights turned ${allOff ? 'on' : 'off'}`);
   }
 
-  private async _toggleAreaSwitches(areaId: string) {
-    const confirmed = await this._showConfirmation(
-      'Toggle Switches',
-      'Are you sure you want to toggle all switches in this area?'
-    );
-
-    if (!confirmed) return;
-
+  private async _toggleAreaSwitches(areaId: string, confirmAction = true) {
     const entities = this._getFilteredAreaEntities(areaId);
     const switches = entities.filter(e => e.entity_id.startsWith('switch.'));
+    if (switches.length === 0) return;
+
+    if (confirmAction) {
+      const confirmed = await this._showConfirmation(
+        'Toggle Switches',
+        'Are you sure you want to toggle all switches in this area?'
+      );
+
+      if (!confirmed) return;
+    }
+
     const allOff = this._areAllEntitiesOff(switches, 'switch');
 
     const service = allOff ? 'turn_on' : 'turn_off';
@@ -3945,6 +11151,39 @@ export class DwainsLayoutCard extends LitElement {
     });
 
     this._showToast(`All switches turned ${allOff ? 'on' : 'off'}`);
+  }
+
+  private _hasOpenCovers(covers: EntityConfig[]): boolean {
+    return covers.some(entity => {
+      const state = this.hass.states[entity.entity_id]?.state;
+      return state === 'open' || state === 'opening';
+    });
+  }
+
+  private async _toggleAreaCovers(areaId: string, confirmAction = false) {
+    const entities = this._getFilteredAreaEntities(areaId);
+    const covers = entities.filter(e => e.entity_id.startsWith('cover.'));
+    if (covers.length === 0) return;
+
+    const hasOpen = this._hasOpenCovers(covers);
+
+    if (confirmAction) {
+      const confirmed = await this._showConfirmation(
+        'Toggle Covers',
+        `Are you sure you want to ${hasOpen ? 'close' : 'open'} all covers in this area?`
+      );
+
+      if (!confirmed) return;
+    }
+
+    const service = hasOpen ? 'close_cover' : 'open_cover';
+    const entityIds = covers.map(e => e.entity_id);
+
+    await this.hass.callService('cover', service, {
+      entity_id: entityIds
+    });
+
+    this._showToast(`All covers ${hasOpen ? 'closed' : 'opened'}`);
   }
 
   private async _showConfirmation(title: string, message: string): Promise<boolean> {
