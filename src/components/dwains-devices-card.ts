@@ -332,6 +332,7 @@ export class DwainsDevicesCard extends LitElement {
     }
 
     this._addPersonData(data);
+    this._hiddenDeviceTypes().forEach((typeKey) => data.delete(typeKey));
 
     return data;
   }
@@ -405,6 +406,13 @@ export class DwainsDevicesCard extends LitElement {
       return 'binary_sensor';
     }
     return domain;
+  }
+
+  private _hiddenDeviceTypes(): Set<string> {
+    return new Set(
+      (this.config?.settings?.hidden_device_types || [])
+        .filter((typeKey): typeKey is string => typeof typeKey === 'string' && typeKey.length > 0)
+    );
   }
 
   // Leesbare naam voor een type-sleutel (domein of binary_sensor.<class>).
@@ -484,7 +492,8 @@ export class DwainsDevicesCard extends LitElement {
 
     const currentData = data ?? this._buildData();
     const canShowNewDevices = showNewDevicesMenu ?? (
-      this._newDevices().length > 0 || hiddenDeviceIds(this.config).size > 0
+      shouldShowRecentDevicesPanel(this.config) &&
+      (this._newDevices().length > 0 || hiddenDeviceIds(this.config).size > 0)
     );
 
     if (domain === NEW_DEVICES_KEY) {
@@ -553,7 +562,7 @@ export class DwainsDevicesCard extends LitElement {
     this._ensureDeviceTracking();
     const newDevices = this._newDevices();
     const hiddenCount = hiddenDeviceIds(this.config).size;
-    const showNewDevicesMenu = newDevices.length > 0 || hiddenCount > 0;
+    const showNewDevicesMenu = shouldShowRecentDevicesPanel(this.config) && (newDevices.length > 0 || hiddenCount > 0);
     this._applyPendingDomainSelection(data, showNewDevicesMenu);
 
     if (domains.length === 0 && !showNewDevicesMenu) {

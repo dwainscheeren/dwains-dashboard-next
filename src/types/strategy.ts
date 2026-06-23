@@ -57,6 +57,7 @@ export interface DwainsDashboardSettings {
   restrict_non_admin_dashboard_settings?: boolean;
   home_sections_order?: HomeSectionKey[];
   home_sections_hidden?: HomeSectionKey[];
+  hidden_device_types?: string[];
 }
 
 // New interfaces for areas configuration like Home Assistant

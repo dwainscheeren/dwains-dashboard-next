@@ -16,6 +16,9 @@ export interface DomainCount {
 // Constants for state checks
 const STATES_OFF = ['closed', 'locked', 'off', 'false', 'not_home', 'idle'];
 const UNAVAILABLE_STATES = ['unavailable', 'unknown'];
+const ACTIVE_MEDIA_PLAYER_STATES = ['playing', 'buffering'];
+const ACTIVE_VACUUM_STATES = ['cleaning', 'returning'];
+const ACTIVE_ALARM_STATES = ['arming', 'pending', 'triggered'];
 
 // Domain configuration with icons and names
 const DOMAIN_CONFIG: Record<string, { icon: string; name: string }> = {
@@ -148,49 +151,52 @@ export function getStatusDomains(hass: HomeAssistant, config: any): DomainCount[
         domainCount.total++;
       }
 
-      const isOn = !STATES_OFF.includes((entityState as any).state) &&
-                   !UNAVAILABLE_STATES.includes((entityState as any).state);
+      const state = String((entityState as any).state || '').toLowerCase();
+      const isOn = !STATES_OFF.includes(state) &&
+                   !UNAVAILABLE_STATES.includes(state);
 
       // Special handling for different domains
       if (domain === 'climate') {
         // Check if climate is actively heating/cooling
         if ((entityState as any).attributes?.hvac_action &&
-            (entityState as any).attributes.hvac_action !== 'idle' &&
-            (entityState as any).attributes.hvac_action !== 'off') {
+            String((entityState as any).attributes.hvac_action).toLowerCase() !== 'idle' &&
+            String((entityState as any).attributes.hvac_action).toLowerCase() !== 'off') {
           if (domainCount) addOn(domainCount, entityId);
-        } else if (!(entityState as any).attributes?.hvac_action && (entityState as any).state !== 'off') {
+        } else if (!(entityState as any).attributes?.hvac_action && state !== 'off') {
           if (domainCount) addOn(domainCount, entityId);
         }
       } else if (domain === 'person') {
         // Count persons who are home
-        if ((entityState as any).state === 'home') {
+        if (state === 'home') {
           if (domainCount) addOn(domainCount, entityId);
         }
       } else if (domain === 'media_player') {
-        // Count active media players (playing, paused)
-        if (['playing', 'paused'].includes((entityState as any).state)) {
+        // Count only actively playing media players. Paused is not considered "on".
+        if (ACTIVE_MEDIA_PLAYER_STATES.includes(state)) {
           if (domainCount) addOn(domainCount, entityId);
         }
       } else if (domain === 'cover') {
         // Count open covers
-        if ((entityState as any).state === 'open' || (entityState as any).state === 'opening') {
+        if (state === 'open' || state === 'opening') {
           if (domainCount) addOn(domainCount, entityId);
         }
       } else if (domain === 'lock') {
         // Count unlocked locks
-        if ((entityState as any).state === 'unlocked') {
+        if (state === 'unlocked') {
           if (domainCount) addOn(domainCount, entityId);
         }
       } else if (domain === 'vacuum') {
-        // Count active vacuums
-        if (['cleaning', 'returning', 'docked'].includes((entityState as any).state)) {
+        // Count only moving/cleaning vacuums. Docked is not considered "on".
+        if (ACTIVE_VACUUM_STATES.includes(state)) {
           if (domainCount) addOn(domainCount, entityId);
         }
       } else if (domain === 'alarm_control_panel') {
-        // Count armed alarms
-        if ((entityState as any).state?.includes('armed')) {
+        // Count only armed/alarming states. "disarmed" must not match.
+        if (state.startsWith('armed') || ACTIVE_ALARM_STATES.includes(state)) {
           if (domainCount) addOn(domainCount, entityId);
         }
+      } else if (domain === 'camera') {
+        // Cameras often report "recording" permanently; keep them in the dedicated Cameras section, not House information.
       } else if (isOn) {
         // For other domains (light, switch, fan, etc.) use simple on/off logic
         if (domainCount) addOn(domainCount, entityId);

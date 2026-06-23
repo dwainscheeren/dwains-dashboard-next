@@ -1326,7 +1326,10 @@ export class DwainsDomainEntitiesDialog extends LitElement {
       const action = state.attributes?.hvac_action;
       return action && action !== 'idle' && action !== 'off';
     }
-    if (domain === 'media_player') return ['playing', 'paused'].includes(value);
+    if (domain === 'media_player') return ['playing', 'buffering'].includes(value);
+    if (domain === 'vacuum') return ['cleaning', 'returning'].includes(value);
+    if (domain === 'alarm_control_panel') return value.startsWith('armed') || ['arming', 'pending', 'triggered'].includes(value);
+    if (domain === 'camera') return false;
     return !['off', 'closed', 'locked', 'not_home', 'idle'].includes(value);
   }
 

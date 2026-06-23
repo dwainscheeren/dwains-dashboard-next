@@ -11,10 +11,47 @@ import {
   type AreaStrategyGroup
 } from "../utils/area-entities";
 import { countReplacementRules } from "../utils/blueprint-replacements";
+import { getDeviceClassName, getDomainName } from "../utils/domain-names";
+import { getDeviceClassIcon, getDomainColor, getDomainIcon } from "../utils/icons";
 import { ddLocalize } from "../utils/localize";
 import { HOME_SECTION_META, normalizeHiddenHomeSections, normalizeHomeSectionsOrder } from "../utils/home-sections";
 
 // We'll create our own entity picker since ha-entity-picker is external
+type SettingsPageKey =
+  | "overview"
+  | "dashboard"
+  | "home"
+  | "header"
+  | "devices"
+  | "people_areas"
+  | "replacements"
+  | "permissions"
+  | "support";
+
+interface SettingsPageItem {
+  page: Exclude<SettingsPageKey, "overview">;
+  group: "general" | "layout" | "advanced";
+  icon: string;
+  color: string;
+  title: string;
+  description: string;
+  summary?: string;
+}
+
+let rememberedSettingsPage: SettingsPageKey = "overview";
+let rememberedSettingsPageAt = 0;
+const SETTINGS_PAGE_RESTORE_MS = 8000;
+
+function restoreSettingsPage(): SettingsPageKey {
+  return Date.now() - rememberedSettingsPageAt < SETTINGS_PAGE_RESTORE_MS
+    ? rememberedSettingsPage
+    : "overview";
+}
+
+function rememberSettingsPage(page: SettingsPageKey): void {
+  rememberedSettingsPage = page;
+  rememberedSettingsPageAt = Date.now();
+}
 
 @customElement("dwains-dashboard-next-strategy-editor")
 export class DwainsDashboardStrategyEditor extends LitElement {
@@ -85,6 +122,9 @@ export class DwainsDashboardStrategyEditor extends LitElement {
 
   @state()
   private _alarmSearchFilter = '';
+
+  @state()
+  private _settingsPage: SettingsPageKey = restoreSettingsPage();
 
   // Dashboard-eigenschappen (naam + sidebar-icoon)
   @state() private _dashboardId?: string;
@@ -260,11 +300,556 @@ export class DwainsDashboardStrategyEditor extends LitElement {
       return nothing;
     }
 
+    return this._settingsPage === "overview"
+      ? this._renderSettingsOverview()
+      : this._renderSettingsDetailPage(this._settingsPage);
+  }
+
+  private _renderSettingsOverview() {
+    const groups: Array<{ key: SettingsPageItem["group"]; title: string }> = [
+      { key: "general", title: "General" },
+      { key: "layout", title: "Dashboard layout" },
+      { key: "advanced", title: "Advanced" },
+    ];
+    const items = this._settingsOverviewItems();
+
+    return html`
+      <div class="editor-container">
+        <div class="settings-overview-hero">
+          <div>
+            <h2>Dwains Dashboard settings</h2>
+            <p>Choose a section to configure. Changes are still saved with the Save button below.</p>
+          </div>
+          <ha-icon icon="mdi:tune-variant"></ha-icon>
+        </div>
+
+        ${groups.map((group) => {
+          const groupItems = items.filter((item) => item.group === group.key);
+          if (!groupItems.length) return nothing;
+
+          return html`
+            <section class="settings-nav-section">
+              <h3>${group.title}</h3>
+              <div class="settings-nav-list">
+                ${groupItems.map((item) => this._renderSettingsNavItem(item))}
+              </div>
+            </section>
+          `;
+        })}
+      </div>
+    `;
+  }
+
+  private _settingsOverviewItems(): SettingsPageItem[] {
+    const areaCount = Object.keys(this.hass?.areas || {}).length;
+    const visibleHomeSections = this._getHomeSectionsOrder()
+      .filter((section) => !this._getHiddenHomeSections().has(section))
+      .length;
+    const deviceTypeCount = this._getDeviceTypeOptions().length;
+    const hiddenDeviceTypeCount = this._getHiddenDeviceTypes().size;
+    const personCount = Object.values(this.hass?.states || {})
+      .filter((state: any) => state.entity_id?.startsWith("person."))
+      .length;
+    const favoriteCount = this._config?.favorites?.length || 0;
+    const replacementCount = this._replacementCount();
+
+    return [
+      {
+        page: "dashboard",
+        group: "general",
+        icon: "mdi:view-dashboard-edit",
+        color: "var(--primary-color)",
+        title: "Dashboard",
+        description: "Name and sidebar icon.",
+        summary: this._dashboardTitle || "Current dashboard",
+      },
+      {
+        page: "home",
+        group: "general",
+        icon: "mdi:home-edit-outline",
+        color: "#0ea5e9",
+        title: "Home page",
+        description: "Section order and favorites.",
+        summary: `${visibleHomeSections} sections · ${favoriteCount} favorites`,
+      },
+      {
+        page: "header",
+        group: "general",
+        icon: "mdi:card-account-details-star-outline",
+        color: "#22a06b",
+        title: "Header & status",
+        description: "Time, weather and alarm chip.",
+        summary: this._config?.settings?.alarm_entity_id ? "Alarm selected" : "No alarm selected",
+      },
+      {
+        page: "people_areas",
+        group: "layout",
+        icon: "mdi:floor-plan",
+        color: "#8b5cf6",
+        title: "People & areas",
+        description: "Visible people, rooms and room entity order.",
+        summary: `${personCount} people · ${areaCount} areas`,
+      },
+      {
+        page: "devices",
+        group: "layout",
+        icon: "mdi:format-list-bulleted-type",
+        color: "#0891b2",
+        title: "Devices page",
+        description: "Entity visibility and device type groups.",
+        summary: `${deviceTypeCount - hiddenDeviceTypeCount}/${deviceTypeCount} types visible`,
+      },
+      {
+        page: "replacements",
+        group: "layout",
+        icon: "mdi:puzzle-edit-outline",
+        color: "#7c3aed",
+        title: "Blueprint replacements",
+        description: "Replace default cards with blueprint cards.",
+        summary: `${replacementCount} active`,
+      },
+      {
+        page: "permissions",
+        group: "advanced",
+        icon: "mdi:shield-account",
+        color: "#ef4444",
+        title: "User permissions",
+        description: "Restrictions for non-admin users.",
+        summary: this._config?.settings?.restrict_non_admin_ha_sidebar || this._config?.settings?.restrict_non_admin_dashboard_settings
+          ? "Restrictions enabled"
+          : "Default access",
+      },
+      {
+        page: "support",
+        group: "advanced",
+        icon: "mdi:heart-outline",
+        color: "#f59e0b",
+        title: "Support",
+        description: "Donation links and SmartHomeShop.io.",
+        summary: "Optional",
+      },
+    ];
+  }
+
+  private _renderSettingsNavItem(item: SettingsPageItem) {
+    return html`
+      <button
+        class="settings-nav-item"
+        type="button"
+        style=${`--settings-item-color: ${item.color};`}
+        @click=${() => this._openSettingsPage(item.page)}
+      >
+        <div class="settings-nav-icon">
+          <ha-icon icon=${item.icon}></ha-icon>
+        </div>
+        <div class="settings-nav-copy">
+          <div class="settings-nav-title">${item.title}</div>
+          <div class="settings-nav-description">${item.description}</div>
+        </div>
+        ${item.summary ? html`<span class="settings-nav-summary">${item.summary}</span>` : nothing}
+        <ha-icon class="settings-nav-chevron" icon="mdi:chevron-right"></ha-icon>
+      </button>
+    `;
+  }
+
+  private _openSettingsPage(page: Exclude<SettingsPageKey, "overview">): void {
+    this._settingsPage = page;
+    rememberSettingsPage(page);
+    this._closeInlinePickers();
+  }
+
+  private _backToSettingsOverview = (): void => {
+    this._settingsPage = "overview";
+    rememberSettingsPage("overview");
+    this._closeInlinePickers();
+  };
+
+  private _closeInlinePickers(): void {
+    this._showEntityPicker = false;
+    this._showWeatherPicker = false;
+    this._showAlarmPicker = false;
+  }
+
+  private _renderSettingsDetailPage(page: SettingsPageKey) {
+    const item = this._settingsOverviewItems().find((candidate) => candidate.page === page);
+    if (!item) return this._renderSettingsOverview();
+
+    return html`
+      <div class="editor-container">
+        <div class="settings-detail-toolbar">
+          <button class="settings-back-button" type="button" @click=${this._backToSettingsOverview}>
+            <ha-icon icon="mdi:arrow-left"></ha-icon>
+          </button>
+          <div class="settings-detail-title">
+            <span>${item.title}</span>
+            <small>${item.description}</small>
+          </div>
+        </div>
+        <div class="settings-detail-content">
+          ${this._renderSettingsPageContent(page)}
+        </div>
+      </div>
+    `;
+  }
+
+  private _renderSettingsPageContent(page: SettingsPageKey) {
+    switch (page) {
+      case "dashboard":
+        return this._renderDashboardSettingsPanel();
+      case "home":
+        return html`
+          ${this._renderHomeLayoutSettingsPanel()}
+          ${this._renderFavoritesSettingsPanel()}
+        `;
+      case "header":
+        return html`
+          ${this._renderTimeSettingsPanel()}
+          ${this._renderWeatherSettingsPanel()}
+          ${this._renderAlarmSettingsPanel()}
+        `;
+      case "devices":
+        return this._renderEntityDisplaySettingsPanel();
+      case "people_areas":
+        return html`
+          ${this._renderPersonsSettingsPanel()}
+          ${this._renderAreasSettingsPanel()}
+        `;
+      case "replacements":
+        return this._renderReplacementsSettingsPanel();
+      case "permissions":
+        return this._renderPermissionsSettingsPanel();
+      case "support":
+        return this._renderSupportSection();
+      default:
+        return nothing;
+    }
+  }
+
+  private _renderSettingsPanel(icon: string, title: string, description: string, content: unknown) {
+    return html`
+      <ha-expansion-panel expanded outlined>
+        <div slot="header">
+          <ha-icon icon=${icon}></ha-icon>
+          ${title}
+        </div>
+        <p class="description">${description}</p>
+        ${content}
+      </ha-expansion-panel>
+    `;
+  }
+
+  private _renderSupportSection() {
+    return html`
+      <div class="sponsoring-section">
+        <div class="sponsoring-header">
+          <ha-icon icon="mdi:heart"></ha-icon>
+          <h3>Support Dwains Dashboard</h3>
+        </div>
+        <p class="sponsoring-text">
+          I built Dwains Dashboard as a free, open-source project in my spare time alongside my job.
+          My main daily venture is <strong>SmartHomeShop.io</strong>, where I develop hardware solutions for Home Assistant and ESPHome.
+        </p>
+
+        <div class="sponsor-label">Please consider a donation</div>
+        <div class="sponsor-chips">
+          <a class="sponsor-chip" href="https://github.com/sponsors/dwainscheeren" target="_blank" rel="noopener noreferrer">
+            <ha-icon icon="mdi:github"></ha-icon><span>GitHub Sponsor</span>
+          </a>
+          <a class="sponsor-chip" href="https://www.paypal.me/dwainscheeren" target="_blank" rel="noopener noreferrer">
+            <ha-icon icon="mdi:cash"></ha-icon><span>PayPal</span>
+          </a>
+          <a class="sponsor-chip" href="https://www.buymeacoffee.com/FAkYvrx" target="_blank" rel="noopener noreferrer">
+            <ha-icon icon="mdi:coffee"></ha-icon><span>Buy me a coffee</span>
+          </a>
+        </div>
+
+        <div class="sponsor-divider"></div>
+
+        <div class="sponsor-label">Or help me by checking out my shop</div>
+        <a class="sponsor-chip primary" href="https://smarthomeshop.io/en" target="_blank" rel="noopener noreferrer">
+          <ha-icon icon="mdi:shopping"></ha-icon><span>Visit SmartHomeShop.io</span>
+        </a>
+      </div>
+    `;
+  }
+
+  private _renderDashboardSettingsPanel() {
+    if (!this._dashboardId) {
+      return this._renderSettingsPanel(
+        "mdi:view-dashboard",
+        "Dashboard",
+        "The default Home Assistant dashboard name cannot be edited here.",
+        html`<div class="empty-settings-card">Open a Dwains Dashboard instance to edit its name and sidebar icon.</div>`
+      );
+    }
+
+    return this._renderSettingsPanel(
+      "mdi:view-dashboard",
+      "Dashboard",
+      this._t('strategy.dashboard_desc'),
+      html`
+        <div class="dashboard-settings">
+          <div class="dd-field">
+            <label>${this._t('strategy.name')}</label>
+            <input
+              class="dd-input"
+              type="text"
+              .value=${this._dashboardTitle}
+              @input=${this._onDashboardTitleChanged}
+              @change=${this._onDashboardTitleCommit}
+            />
+          </div>
+          <ha-icon-picker
+            .label=${this._t('strategy.sidebar_icon')}
+            .value=${this._dashboardIcon}
+            @value-changed=${this._onDashboardIconChanged}
+          ></ha-icon-picker>
+        </div>
+      `
+    );
+  }
+
+  private _renderHomeLayoutSettingsPanel() {
+    return this._renderSettingsPanel(
+      "mdi:home-edit-outline",
+      "Home layout",
+      "Choose the order of the home page sections. Camera cards only appear when an area contains one or more camera entities.",
+      this._renderHomeSectionOrder()
+    );
+  }
+
+  private _renderReplacementsSettingsPanel() {
+    return this._renderSettingsPanel(
+      "mdi:puzzle-edit-outline",
+      "Blueprint replacements",
+      "Replace standard entity cards in area and devices views with replace-card blueprints.",
+      html`
+        <div class="replacement-section">
+          <div class="replacement-summary">
+            <div>
+              <div class="replacement-count">${this._replacementCount()} active replacement${this._replacementCount() === 1 ? '' : 's'}</div>
+              <div class="replacement-help">Domain rules apply to both area and devices views, like DD3.</div>
+            </div>
+            <ha-button appearance="accent" @click=${this._openReplacementManager}>
+              <ha-icon icon="mdi:puzzle-edit-outline"></ha-icon>
+              Manage replacements
+            </ha-button>
+          </div>
+        </div>
+      `
+    );
+  }
+
+  private _renderFavoritesSettingsPanel() {
+    return this._renderSettingsPanel(
+      "mdi:star",
+      "Favorites",
+      "Choose entities that you always want to see on the home page.",
+      html`
+        <div class="favorites-section">
+          <div class="entity-picker">
+            <div class="entity-picker-header">
+              <h4>Selected Entities</h4>
+              <mwc-button @click=${this._addFavoriteEntity} outlined>
+                <svg viewBox="0 0 24 24" width="20" height="20" style="margin-right: 8px;">
+                  <path fill="currentColor" d="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z" />
+                </svg>
+                Add Entity
+              </mwc-button>
+            </div>
+
+            ${this._renderSelectedEntities()}
+
+            ${this._showEntityPicker ? this._renderEntityPicker() : ''}
+          </div>
+        </div>
+      `
+    );
+  }
+
+  private _renderTimeSettingsPanel() {
+    return this._renderSettingsPanel(
+      "mdi:clock-outline",
+      "Time & Date",
+      "Configure the display of time and date in the header.",
+      html`
+        <div class="time-section">
+          <div class="time-toggle">
+            <ha-formfield label="Show time and date in header">
+              <ha-switch
+                .checked=${this._config?.settings?.show_time !== false}
+                @change=${this._toggleTimeDisplay}
+              ></ha-switch>
+            </ha-formfield>
+          </div>
+        </div>
+      `
+    );
+  }
+
+  private _renderWeatherSettingsPanel() {
+    return this._renderSettingsPanel(
+      "mdi:weather-cloudy",
+      "Weather",
+      "Choose which weather entity to display in the header, or disable weather display entirely.",
+      html`
+        <div class="weather-section">
+          <div class="weather-toggle">
+            <ha-formfield label="Show weather in header">
+              <ha-switch
+                .checked=${this._config?.settings?.show_weather !== false}
+                @change=${this._toggleWeatherDisplay}
+              ></ha-switch>
+            </ha-formfield>
+          </div>
+
+          ${this._config?.settings?.show_weather !== false ? html`
+            <div class="weather-picker">
+              <div class="weather-picker-header">
+                <h4>Selected Weather Entity</h4>
+                <mwc-button @click=${this._addWeatherEntity} outlined>
+                  <svg viewBox="0 0 24 24" width="20" height="20" style="margin-right: 8px;">
+                    <path fill="currentColor" d="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z" />
+                  </svg>
+                  Select Weather
+                </mwc-button>
+              </div>
+
+              ${this._renderSelectedWeatherEntity()}
+
+              ${this._showWeatherPicker ? this._renderWeatherPicker() : ''}
+            </div>
+          ` : ''}
+        </div>
+      `
+    );
+  }
+
+  private _renderAlarmSettingsPanel() {
+    return this._renderSettingsPanel(
+      "mdi:shield-home-outline",
+      "Alarm",
+      "Choose which alarm entity to show on the home page. If no alarm is selected, the alarm chip will be hidden.",
+      html`
+        <div class="alarm-section">
+          <div class="alarm-picker">
+            <div class="alarm-picker-header">
+              <h4>Selected Alarm Entity</h4>
+              <mwc-button @click=${this._addAlarmEntity} outlined>
+                <svg viewBox="0 0 24 24" width="20" height="20" style="margin-right: 8px;">
+                  <path fill="currentColor" d="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z" />
+                </svg>
+                Select Alarm
+              </mwc-button>
+            </div>
+
+            ${this._renderSelectedAlarmEntity()}
+
+            ${this._showAlarmPicker ? this._renderAlarmPicker() : ''}
+          </div>
+        </div>
+      `
+    );
+  }
+
+  private _renderEntityDisplaySettingsPanel() {
+    return this._renderSettingsPanel(
+      "mdi:eye-off",
+      "Devices page",
+      "Configure how entities and device type groups are displayed.",
+      html`
+        <div class="entity-display-section">
+          <div class="hide-unavailable-toggle">
+            <ha-formfield label="Hide unavailable/unknown entities">
+              <ha-switch
+                .checked=${this._config?.settings?.hide_unavailable_entities === true}
+                @change=${this._toggleHideUnavailableEntities}
+              ></ha-switch>
+            </ha-formfield>
+            <p class="toggle-description">
+              When enabled, entities with 'unavailable' or 'unknown' states will be hidden from the interface.
+              An info icon will appear next to area names to show hidden entities in a modal.
+            </p>
+          </div>
+          <div class="hide-unavailable-toggle">
+            <ha-formfield label="Show New devices menu">
+              <ha-switch
+                .checked=${this._config?.settings?.show_recent_devices_panel !== false}
+                @change=${this._toggleRecentDevicesPanel}
+              ></ha-switch>
+            </ha-formfield>
+            <p class="toggle-description">
+              Shows devices added to Home Assistant in the last 48 hours, with a quick option to hide complete devices from Dwains Dashboard.
+            </p>
+          </div>
+          ${this._renderDeviceTypeVisibilitySettings()}
+        </div>
+      `
+    );
+  }
+
+  private _renderPermissionsSettingsPanel() {
+    return this._renderSettingsPanel(
+      "mdi:shield-account",
+      "User permissions",
+      "Optional restrictions for Home Assistant users without administrator rights.",
+      html`
+        <div class="entity-display-section">
+          <div class="hide-unavailable-toggle">
+            <ha-formfield label="Restrict Home Assistant menu for non-admin users">
+              <ha-switch
+                .checked=${this._config?.settings?.restrict_non_admin_ha_sidebar === true}
+                @change=${this._toggleRestrictNonAdminHaSidebar}
+              ></ha-switch>
+            </ha-formfield>
+            <p class="toggle-description">
+              When enabled, non-admin users will not see the Home Assistant sidebar/menu from this dashboard. The mobile menu only shows their own profile settings.
+            </p>
+          </div>
+          <div class="hide-unavailable-toggle">
+            <ha-formfield label="Restrict Dwains Dashboard editing for non-admin users">
+              <ha-switch
+                .checked=${this._config?.settings?.restrict_non_admin_dashboard_settings === true}
+                @change=${this._toggleRestrictNonAdminDashboardSettings}
+              ></ha-switch>
+            </ha-formfield>
+            <p class="toggle-description">
+              When enabled, non-admin users cannot open Dwains Dashboard settings or change dashboard content such as custom area cards and blueprint pages.
+            </p>
+          </div>
+        </div>
+      `
+    );
+  }
+
+  private _renderPersonsSettingsPanel() {
+    return this._renderSettingsPanel(
+      "mdi:account-multiple",
+      "People",
+      "Configure which persons are visible in the person cards and dashboard.",
+      html`
+        <div class="persons-section">
+          ${this._renderPersonsConfiguration()}
+        </div>
+      `
+    );
+  }
+
+  private _renderAreasSettingsPanel() {
+    return this._renderSettingsPanel(
+      "mdi:floor-plan",
+      "Areas",
+      "Configure which areas are visible and in what order they are shown.",
+      this._renderAreasConfiguration()
+    );
+  }
+
+  private _renderAreasConfiguration() {
+    if (!this.hass || !this._config) return nothing;
+
     const areas = Object.values(this.hass.areas || {});
     const hiddenAreas = new Set(this._config.areas_display?.hidden || []);
     const areaOrder = this._config.areas_display?.order || [];
-
-    // Sort areas according to order, then alphabetically
     const sortedAreas = [...areas].sort((a, b) => {
       const aIndex = areaOrder.indexOf(a.area_id);
       const bIndex = areaOrder.indexOf(b.area_id);
@@ -275,353 +860,53 @@ export class DwainsDashboardStrategyEditor extends LitElement {
     });
 
     return html`
-      <div class="editor-container">
-        <!-- Sponsoring Section -->
-        <div class="sponsoring-section">
-          <div class="sponsoring-header">
-            <ha-icon icon="mdi:heart"></ha-icon>
-            <h3>Support Dwains Dashboard</h3>
-          </div>
-          <p class="sponsoring-text">
-            I built Dwains Dashboard as a free, open-source project in my spare time alongside my job.
-            My main daily venture is <strong>SmartHomeShop.io</strong>, where I develop hardware solutions for Home Assistant and ESPHome.
-          </p>
+      <div class="sortable-container ${this._draggedAreaId ? 'dragging' : ''}">
+        ${repeat(
+          sortedAreas,
+          (area) => area.area_id,
+          (area, index) => {
+            const isHidden = hiddenAreas.has(area.area_id);
+            const isDragging = this._draggedAreaId === area.area_id;
+            const isDragOver = this._dragOverIndex === index && this._draggedAreaId && this._draggedAreaId !== area.area_id;
 
-          <div class="sponsor-label">Please consider a donation 💛</div>
-          <div class="sponsor-chips">
-            <a class="sponsor-chip" href="https://github.com/sponsors/dwainscheeren" target="_blank" rel="noopener noreferrer">
-              <ha-icon icon="mdi:github"></ha-icon><span>GitHub Sponsor</span>
-            </a>
-            <a class="sponsor-chip" href="https://www.paypal.me/dwainscheeren" target="_blank" rel="noopener noreferrer">
-              <ha-icon icon="mdi:cash"></ha-icon><span>PayPal</span>
-            </a>
-            <a class="sponsor-chip" href="https://www.buymeacoffee.com/FAkYvrx" target="_blank" rel="noopener noreferrer">
-              <ha-icon icon="mdi:coffee"></ha-icon><span>Buy me a coffee</span>
-            </a>
-          </div>
-
-          <div class="sponsor-divider"></div>
-
-          <div class="sponsor-label">Or help me by checking out my shop</div>
-          <a class="sponsor-chip primary" href="https://smarthomeshop.io/en" target="_blank" rel="noopener noreferrer">
-            <ha-icon icon="mdi:shopping"></ha-icon><span>Visit SmartHomeShop.io</span>
-          </a>
-        </div>
-
-        ${this._dashboardId ? html`
-          <ha-expansion-panel expanded outlined>
-            <div slot="header">
-              <ha-icon icon="mdi:view-dashboard"></ha-icon>
-              Dashboard
-            </div>
-            <p class="description">
-              ${this._t('strategy.dashboard_desc')}
-            </p>
-            <div class="dashboard-settings">
-              <div class="dd-field">
-                <label>${this._t('strategy.name')}</label>
-                <input
-                  class="dd-input"
-                  type="text"
-                  .value=${this._dashboardTitle}
-                  @input=${this._onDashboardTitleChanged}
-                  @change=${this._onDashboardTitleCommit}
-                />
-              </div>
-              <ha-icon-picker
-                .label=${this._t('strategy.sidebar_icon')}
-                .value=${this._dashboardIcon}
-                @value-changed=${this._onDashboardIconChanged}
-              ></ha-icon-picker>
-            </div>
-          </ha-expansion-panel>
-        ` : nothing}
-
-        <ha-expansion-panel expanded outlined>
-          <div slot="header">
-            <ha-icon icon="mdi:home-edit-outline"></ha-icon>
-            Home layout
-          </div>
-          <p class="description">
-            Choose the order of the home page sections. Camera cards only appear when an area contains one or more camera entities.
-          </p>
-          ${this._renderHomeSectionOrder()}
-        </ha-expansion-panel>
-
-        <ha-expansion-panel expanded outlined>
-          <div slot="header">
-            <ha-icon icon="mdi:puzzle-edit-outline"></ha-icon>
-            Blueprint replacements
-          </div>
-          <p class="description">
-            Replace standard entity cards in area and devices views with replace-card blueprints.
-          </p>
-          <div class="replacement-section">
-            <div class="replacement-summary">
-              <div>
-                <div class="replacement-count">${this._replacementCount()} active replacement${this._replacementCount() === 1 ? '' : 's'}</div>
-                <div class="replacement-help">Domain rules apply to both area and devices views, like DD3.</div>
-              </div>
-              <ha-button appearance="accent" @click=${this._openReplacementManager}>
-                <ha-icon icon="mdi:puzzle-edit-outline"></ha-icon>
-                Manage replacements
-              </ha-button>
-            </div>
-          </div>
-        </ha-expansion-panel>
-
-        <ha-expansion-panel expanded outlined>
-          <div slot="header">
-            <ha-icon icon="mdi:star"></ha-icon>
-            Favorites
-          </div>
-          <p class="description">
-            Choose entities that you always want to see on the home page.
-          </p>
-          <div class="favorites-section">
-            <div class="entity-picker">
-              <div class="entity-picker-header">
-                <h4>Selected Entities</h4>
-                <mwc-button @click=${this._addFavoriteEntity} outlined>
-                  <svg viewBox="0 0 24 24" width="20" height="20" style="margin-right: 8px;">
-                    <path fill="currentColor" d="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z" />
-                  </svg>
-                  Add Entity
-                </mwc-button>
-              </div>
-
-              ${this._renderSelectedEntities()}
-
-              ${this._showEntityPicker ? this._renderEntityPicker() : ''}
-            </div>
-          </div>
-        </ha-expansion-panel>
-
-        <ha-expansion-panel expanded outlined>
-          <div slot="header">
-            <ha-icon icon="mdi:clock-outline"></ha-icon>
-            Time & Date Settings
-          </div>
-          <p class="description">
-            Configure the display of time and date in the header.
-          </p>
-          <div class="time-section">
-            <div class="time-toggle">
-              <ha-formfield label="Show time and date in header">
-                <ha-switch
-                  .checked=${this._config?.settings?.show_time !== false}
-                  @change=${this._toggleTimeDisplay}
-                ></ha-switch>
-              </ha-formfield>
-            </div>
-          </div>
-        </ha-expansion-panel>
-
-        <ha-expansion-panel expanded outlined>
-          <div slot="header">
-            <ha-icon icon="mdi:weather-cloudy"></ha-icon>
-            Weather Settings
-          </div>
-          <p class="description">
-            Choose which weather entity to display in the header, or disable weather display entirely.
-          </p>
-          <div class="weather-section">
-            <div class="weather-toggle">
-              <ha-formfield label="Show weather in header">
-                <ha-switch
-                  .checked=${this._config?.settings?.show_weather !== false}
-                  @change=${this._toggleWeatherDisplay}
-                ></ha-switch>
-              </ha-formfield>
-            </div>
-
-            ${this._config?.settings?.show_weather !== false ? html`
-              <div class="weather-picker">
-                <div class="weather-picker-header">
-                  <h4>Selected Weather Entity</h4>
-                  <mwc-button @click=${this._addWeatherEntity} outlined>
-                    <svg viewBox="0 0 24 24" width="20" height="20" style="margin-right: 8px;">
-                      <path fill="currentColor" d="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z" />
-                    </svg>
-                    Select Weather
-                  </mwc-button>
-                </div>
-
-                ${this._renderSelectedWeatherEntity()}
-
-                ${this._showWeatherPicker ? this._renderWeatherPicker() : ''}
-              </div>
-            ` : ''}
-          </div>
-        </ha-expansion-panel>
-
-        <ha-expansion-panel expanded outlined>
-          <div slot="header">
-            <ha-icon icon="mdi:shield-home-outline"></ha-icon>
-            Alarm Settings
-          </div>
-          <p class="description">
-            Choose which alarm entity to show on the home page. If no alarm is selected, the alarm chip will be hidden.
-          </p>
-          <div class="alarm-section">
-            <div class="alarm-picker">
-              <div class="alarm-picker-header">
-                <h4>Selected Alarm Entity</h4>
-                <mwc-button @click=${this._addAlarmEntity} outlined>
-                  <svg viewBox="0 0 24 24" width="20" height="20" style="margin-right: 8px;">
-                    <path fill="currentColor" d="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z" />
-                  </svg>
-                  Select Alarm
-                </mwc-button>
-              </div>
-
-              ${this._renderSelectedAlarmEntity()}
-
-              ${this._showAlarmPicker ? this._renderAlarmPicker() : ''}
-            </div>
-          </div>
-        </ha-expansion-panel>
-
-        <ha-expansion-panel expanded outlined>
-          <div slot="header">
-            <ha-icon icon="mdi:eye-off"></ha-icon>
-            Entity Display Settings
-          </div>
-          <p class="description">
-            Configure how entities are displayed and which problematic entities to handle.
-          </p>
-          <div class="entity-display-section">
-            <div class="hide-unavailable-toggle">
-              <ha-formfield label="Hide unavailable/unknown entities">
-                <ha-switch
-                  .checked=${this._config?.settings?.hide_unavailable_entities === true}
-                  @change=${this._toggleHideUnavailableEntities}
-                ></ha-switch>
-              </ha-formfield>
-              <p class="toggle-description">
-                When enabled, entities with 'unavailable' or 'unknown' states will be hidden from the interface.
-                An info icon (ℹ️) will appear next to area names to show hidden entities in a modal.
-              </p>
-            </div>
-            <div class="hide-unavailable-toggle">
-              <ha-formfield label="Show New devices menu">
-                <ha-switch
-                  .checked=${this._config?.settings?.show_recent_devices_panel !== false}
-                  @change=${this._toggleRecentDevicesPanel}
-                ></ha-switch>
-              </ha-formfield>
-              <p class="toggle-description">
-                Shows devices added to Home Assistant in the last 48 hours, with a quick option to hide complete devices from Dwains Dashboard.
-              </p>
-            </div>
-          </div>
-        </ha-expansion-panel>
-
-        <ha-expansion-panel expanded outlined>
-          <div slot="header">
-            <ha-icon icon="mdi:shield-account"></ha-icon>
-            User permissions
-          </div>
-          <p class="description">
-            Optional restrictions for Home Assistant users without administrator rights. By default non-admin users can still use the Home Assistant menu and Dwains Dashboard settings.
-          </p>
-          <div class="entity-display-section">
-            <div class="hide-unavailable-toggle">
-              <ha-formfield label="Restrict Home Assistant menu for non-admin users">
-                <ha-switch
-                  .checked=${this._config?.settings?.restrict_non_admin_ha_sidebar === true}
-                  @change=${this._toggleRestrictNonAdminHaSidebar}
-                ></ha-switch>
-              </ha-formfield>
-              <p class="toggle-description">
-                When enabled, non-admin users will not see the Home Assistant sidebar/menu from this dashboard. The mobile menu only shows their own profile settings.
-              </p>
-            </div>
-            <div class="hide-unavailable-toggle">
-              <ha-formfield label="Restrict Dwains Dashboard editing for non-admin users">
-                <ha-switch
-                  .checked=${this._config?.settings?.restrict_non_admin_dashboard_settings === true}
-                  @change=${this._toggleRestrictNonAdminDashboardSettings}
-                ></ha-switch>
-              </ha-formfield>
-              <p class="toggle-description">
-                When enabled, non-admin users cannot open Dwains Dashboard settings or change dashboard content such as custom area cards and blueprint pages.
-              </p>
-            </div>
-          </div>
-        </ha-expansion-panel>
-
-        <ha-expansion-panel expanded outlined>
-          <div slot="header">
-            <ha-icon icon="mdi:account-multiple"></ha-icon>
-            Configure Persons
-          </div>
-          <p class="description">
-            Configure which persons are visible in the person cards and dashboard.
-          </p>
-          <div class="persons-section">
-            ${this._renderPersonsConfiguration()}
-          </div>
-        </ha-expansion-panel>
-
-        <ha-expansion-panel expanded outlined>
-          <div slot="header">
-            <ha-icon icon="mdi:floor-plan"></ha-icon>
-            Configure Areas
-          </div>
-          <p class="description">
-                          Configure which areas are visible and in what order they are shown.
-          </p>
-          <div class="sortable-container ${this._draggedAreaId ? 'dragging' : ''}">
-            ${repeat(
-              sortedAreas,
-              (area) => area.area_id,
-              (area, index) => {
-                const isHidden = hiddenAreas.has(area.area_id);
-                const isDragging = this._draggedAreaId === area.area_id;
-                const isDragOver = this._dragOverIndex === index && this._draggedAreaId && this._draggedAreaId !== area.area_id;
-
-                return html`
-                  <div
-                    class="sortable-item ${isHidden ? "hidden" : ""} ${isDragging ? "dragging" : ""} ${isDragOver ? "drag-over" : ""}"
-                    data-area-id="${area.area_id}"
-                    data-index="${index}"
-                    draggable="true"
-                    @dragstart=${(e: DragEvent) => this._handleAreaDragStart(e, area.area_id)}
-                    @dragend=${this._handleAreaDragEnd}
-                    @dragover=${(e: DragEvent) => this._handleAreaDragOver(e, index)}
-                    @dragleave=${this._handleAreaDragLeave}
-                    @drop=${(e: DragEvent) => this._handleAreaDrop(e, index)}
-                  >
-                    <div class="area-item">
-                      <div class="handle">
-                        <ha-svg-icon .path=${mdiDrag}></ha-svg-icon>
-                      </div>
-                      ${area.icon ? html`
-                        <ha-icon
-                          .icon=${area.icon}
-                          class="area-icon"
-                        ></ha-icon>
-                      ` : nothing}
-                      <span class="area-name clickable" @click=${() => this._editArea(area.area_id)}>
-                        ${area.name}
-                        <ha-icon icon="mdi:chevron-right" class="chevron"></ha-icon>
-                      </span>
-                      <div class="area-actions">
-                        <ha-icon-button
-                          .label=${isHidden ? "Show" : "Hide"}
-                          .path=${isHidden ? mdiEye : mdiEyeOff}
-                          @click=${() => this._toggleAreaVisibility(area.area_id)}
-                        ></ha-icon-button>
-
-                      </div>
-                    </div>
+            return html`
+              <div
+                class="sortable-item ${isHidden ? "hidden" : ""} ${isDragging ? "dragging" : ""} ${isDragOver ? "drag-over" : ""}"
+                data-area-id="${area.area_id}"
+                data-index="${index}"
+                draggable="true"
+                @dragstart=${(e: DragEvent) => this._handleAreaDragStart(e, area.area_id)}
+                @dragend=${this._handleAreaDragEnd}
+                @dragover=${(e: DragEvent) => this._handleAreaDragOver(e, index)}
+                @dragleave=${this._handleAreaDragLeave}
+                @drop=${(e: DragEvent) => this._handleAreaDrop(e, index)}
+              >
+                <div class="area-item">
+                  <div class="handle">
+                    <ha-svg-icon .path=${mdiDrag}></ha-svg-icon>
                   </div>
-                `;
-              }
-            )}
-          </div>
-        </ha-expansion-panel>
+                  ${area.icon ? html`
+                    <ha-icon
+                      .icon=${area.icon}
+                      class="area-icon"
+                    ></ha-icon>
+                  ` : nothing}
+                  <span class="area-name clickable" @click=${() => this._editArea(area.area_id)}>
+                    ${area.name}
+                    <ha-icon icon="mdi:chevron-right" class="chevron"></ha-icon>
+                  </span>
+                  <div class="area-actions">
+                    <ha-icon-button
+                      .label=${isHidden ? "Show" : "Hide"}
+                      .path=${isHidden ? mdiEye : mdiEyeOff}
+                      @click=${() => this._toggleAreaVisibility(area.area_id)}
+                    ></ha-icon-button>
+                  </div>
+                </div>
+              </div>
+            `;
+          }
+        )}
       </div>
     `;
   }
@@ -932,6 +1217,174 @@ export class DwainsDashboardStrategyEditor extends LitElement {
         </button>
       </div>
     `;
+  }
+
+  private _renderDeviceTypeVisibilitySettings() {
+    const options = this._getDeviceTypeOptions();
+    if (!options.length) return nothing;
+
+    const hidden = this._getHiddenDeviceTypes();
+    const visibleCount = options.filter((option) => !hidden.has(option.key)).length;
+
+    return html`
+      <div class="device-types-visibility">
+        <div class="device-types-header">
+          <div>
+            <h4>Devices page types</h4>
+            <p>Choose which device type groups are shown in the Devices page sidebar.</p>
+          </div>
+          <span>${visibleCount}/${options.length} visible</span>
+        </div>
+        <div class="device-types-grid">
+          ${options.map((option) => {
+            const enabled = !hidden.has(option.key);
+            return html`
+              <div
+                class="device-type-option ${enabled ? 'enabled' : 'disabled'}"
+                style=${`--device-type-color: ${option.color};`}
+              >
+                <div class="device-type-icon">
+                  <ha-icon icon=${option.icon}></ha-icon>
+                </div>
+                <div class="device-type-copy">
+                  <div class="device-type-name">${option.label}</div>
+                  <div class="device-type-count">${option.count === 1 ? '1 entity' : `${option.count} entities`}</div>
+                </div>
+                <ha-switch
+                  .checked=${enabled}
+                  @change=${(event: Event) => this._setDeviceTypeVisible(option.key, (event.target as any).checked)}
+                ></ha-switch>
+              </div>
+            `;
+          })}
+        </div>
+      </div>
+    `;
+  }
+
+  private _getDeviceTypeOptions(): Array<{ key: string; label: string; icon: string; color: string; count: number }> {
+    if (!this.hass || !this._config) return [];
+
+    const counts = new Map<string, number>();
+    const processed = new Set<string>();
+    const hiddenAreas = new Set(this._config.areas_display?.hidden || []);
+    const deviceAreas = new Map((this._config.devices || []).map((device) => [device.device_id, device.area_id]));
+
+    const addEntity = (entityId: string, areaId?: string | null, deviceId?: string | null) => {
+      if (!entityId || processed.has(entityId)) return;
+      const registry = this.hass?.entities?.[entityId];
+      if (registry?.hidden_by || registry?.entity_category === 'diagnostic' || registry?.entity_category === 'config') return;
+
+      const resolvedAreaId = areaId || (deviceId ? deviceAreas.get(deviceId) : undefined) || registry?.area_id;
+      if (!resolvedAreaId || hiddenAreas.has(resolvedAreaId)) return;
+      if (this._isEntityHiddenInAreaOptions(resolvedAreaId, entityId)) return;
+
+      const state = this.hass?.states?.[entityId];
+      if (this._config?.settings?.hide_unavailable_entities === true &&
+          (!state || state.state === 'unavailable' || state.state === 'unknown')) {
+        return;
+      }
+
+      const key = this._deviceTypeKeyForEntityId(entityId);
+      if (!key) return;
+
+      processed.add(entityId);
+      counts.set(key, (counts.get(key) || 0) + 1);
+    };
+
+    (this._config.entities || []).forEach((entity) => addEntity(entity.entity_id, entity.area_id, entity.device_id));
+
+    Object.values(this.hass.states || {}).forEach((state: any) => {
+      addEntity(state.entity_id, state.attributes?.area_id, this.hass?.entities?.[state.entity_id]?.device_id);
+    });
+
+    const hiddenPersons = new Set(this._config.settings?.hidden_persons || []);
+    Object.values(this.hass.states || {}).forEach((state: any) => {
+      const entityId = state.entity_id;
+      if (!entityId?.startsWith('person.') || processed.has(entityId) || hiddenPersons.has(entityId)) return;
+      if (this.hass?.entities?.[entityId]?.hidden_by) return;
+      processed.add(entityId);
+      counts.set('person', (counts.get('person') || 0) + 1);
+    });
+
+    return [...counts.entries()]
+      .map(([key, count]) => ({
+        key,
+        label: this._deviceTypeName(key),
+        icon: this._deviceTypeIcon(key),
+        color: this._deviceTypeColor(key),
+        count,
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }
+
+  private _isEntityHiddenInAreaOptions(areaId: string, entityId: string): boolean {
+    const areaOptions = this._config?.areas_options?.[areaId];
+    if (!areaOptions?.groups_options) return false;
+
+    return Object.values(areaOptions.groups_options).some((groupOptions) =>
+      groupOptions.hidden?.includes(entityId)
+    );
+  }
+
+  private _deviceTypeKeyForEntityId(entityId: string): string | undefined {
+    const domain = entityId.split('.')[0];
+    if (!domain) return undefined;
+    if (domain === 'binary_sensor') {
+      const deviceClass = this.hass?.states?.[entityId]?.attributes?.device_class;
+      return deviceClass ? `binary_sensor.${deviceClass}` : 'binary_sensor';
+    }
+    return domain;
+  }
+
+  private _deviceTypeName(key: string): string {
+    if (key.startsWith('binary_sensor.')) {
+      return getDeviceClassName(this.hass, key.slice('binary_sensor.'.length));
+    }
+    return getDomainName(this.hass, key);
+  }
+
+  private _deviceTypeIcon(key: string): string {
+    if (key === 'person') return 'mdi:account-group';
+    if (key.startsWith('binary_sensor.')) {
+      return getDeviceClassIcon('binary_sensor', key.slice('binary_sensor.'.length));
+    }
+    return getDomainIcon(key);
+  }
+
+  private _deviceTypeColor(key: string): string {
+    if (key.startsWith('binary_sensor.')) {
+      return getDomainColor('binary_sensor', key.slice('binary_sensor.'.length));
+    }
+    return getDomainColor(key);
+  }
+
+  private _getHiddenDeviceTypes(): Set<string> {
+    return new Set(
+      (this._config?.settings?.hidden_device_types || [])
+        .filter((typeKey): typeKey is string => typeof typeKey === 'string' && typeKey.length > 0)
+    );
+  }
+
+  private _setDeviceTypeVisible(typeKey: string, visible: boolean): void {
+    if (!this._config) return;
+
+    const hidden = this._getHiddenDeviceTypes();
+    if (visible) {
+      hidden.delete(typeKey);
+    } else {
+      hidden.add(typeKey);
+    }
+
+    const newConfig: DwainsDashboardConfig = {
+      ...this._config,
+      settings: {
+        ...this._config.settings,
+        hidden_device_types: [...hidden].sort(),
+      },
+    };
+
+    this._fireConfigChanged(newConfig);
   }
 
   private _getGroupTitle(group: string): string {
@@ -1914,6 +2367,8 @@ export class DwainsDashboardStrategyEditor extends LitElement {
   }
 
   private _fireConfigChanged(config: DwainsDashboardConfig): void {
+    rememberSettingsPage(this._settingsPage);
+
     this._config = {
       ...this._config,
       ...config
@@ -1948,6 +2403,215 @@ export class DwainsDashboardStrategyEditor extends LitElement {
         padding: 16px;
       }
 
+      .settings-overview-hero {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 20px;
+        max-width: 720px;
+        margin: 0 auto 18px;
+        padding: 22px 24px;
+        border: 1px solid var(--divider-color);
+        border-radius: 12px;
+        background:
+          radial-gradient(circle at top right, color-mix(in srgb, var(--primary-color) 12%, transparent), transparent 42%),
+          var(--card-background-color);
+        box-shadow: 0 8px 26px rgba(15, 23, 42, 0.06);
+      }
+
+      .settings-overview-hero h2 {
+        margin: 0;
+        color: var(--primary-text-color);
+        font-size: 22px;
+        font-weight: 700;
+        letter-spacing: 0;
+      }
+
+      .settings-overview-hero p {
+        margin: 6px 0 0;
+        color: var(--secondary-text-color);
+        font-size: 13px;
+        line-height: 1.45;
+      }
+
+      .settings-overview-hero > ha-icon {
+        flex: 0 0 auto;
+        width: 48px;
+        height: 48px;
+        border-radius: 999px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--primary-color);
+        background: color-mix(in srgb, var(--primary-color) 12%, transparent);
+        --mdc-icon-size: 26px;
+      }
+
+      .settings-nav-section {
+        max-width: 720px;
+        margin: 0 auto 16px;
+      }
+
+      .settings-nav-section h3 {
+        margin: 0 0 8px;
+        padding: 0 14px;
+        color: var(--secondary-text-color);
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 0;
+      }
+
+      .settings-nav-list {
+        overflow: hidden;
+        border: 1px solid var(--divider-color);
+        border-radius: 12px;
+        background: var(--card-background-color);
+      }
+
+      .settings-nav-item {
+        width: 100%;
+        min-height: 76px;
+        display: grid;
+        grid-template-columns: 44px minmax(0, 1fr) auto 24px;
+        align-items: center;
+        gap: 14px;
+        padding: 12px 16px;
+        border: 0;
+        border-bottom: 1px solid var(--divider-color);
+        color: var(--primary-text-color);
+        background: transparent;
+        text-align: left;
+        cursor: pointer;
+        font: inherit;
+      }
+
+      .settings-nav-item:last-child {
+        border-bottom: 0;
+      }
+
+      .settings-nav-item:hover {
+        background: color-mix(in srgb, var(--settings-item-color) 5%, transparent);
+      }
+
+      .settings-nav-icon {
+        width: 44px;
+        height: 44px;
+        border-radius: 999px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #fff;
+        background: var(--settings-item-color);
+      }
+
+      .settings-nav-icon ha-icon {
+        --mdc-icon-size: 24px;
+      }
+
+      .settings-nav-copy {
+        min-width: 0;
+      }
+
+      .settings-nav-title {
+        color: var(--primary-text-color);
+        font-size: 15px;
+        font-weight: 700;
+        line-height: 1.2;
+      }
+
+      .settings-nav-description {
+        margin-top: 3px;
+        color: var(--secondary-text-color);
+        font-size: 12px;
+        line-height: 1.35;
+      }
+
+      .settings-nav-summary {
+        justify-self: end;
+        max-width: 180px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        padding: 6px 10px;
+        border-radius: 999px;
+        color: var(--settings-item-color);
+        background: color-mix(in srgb, var(--settings-item-color) 10%, transparent);
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .settings-nav-chevron {
+        color: var(--secondary-text-color);
+        --mdc-icon-size: 22px;
+      }
+
+      .settings-detail-toolbar {
+        position: sticky;
+        top: 0;
+        z-index: 2;
+        max-width: 940px;
+        margin: -16px auto 16px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 14px 0;
+        background: var(--primary-background-color);
+        border-bottom: 1px solid var(--divider-color);
+      }
+
+      .settings-back-button {
+        width: 42px;
+        height: 42px;
+        border: 0;
+        border-radius: 999px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--primary-text-color);
+        background: var(--card-background-color);
+        box-shadow: 0 2px 10px rgba(15, 23, 42, 0.08);
+        cursor: pointer;
+      }
+
+      .settings-back-button ha-icon {
+        --mdc-icon-size: 22px;
+      }
+
+      .settings-detail-title {
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .settings-detail-title span {
+        color: var(--primary-text-color);
+        font-size: 20px;
+        font-weight: 700;
+        line-height: 1.2;
+      }
+
+      .settings-detail-title small {
+        margin-top: 2px;
+        color: var(--secondary-text-color);
+        font-size: 12px;
+        line-height: 1.35;
+      }
+
+      .settings-detail-content {
+        max-width: 940px;
+        margin: 0 auto;
+      }
+
+      .empty-settings-card {
+        margin: 0 16px 16px;
+        padding: 18px;
+        border: 1px dashed var(--divider-color);
+        border-radius: 10px;
+        color: var(--secondary-text-color);
+        background: var(--secondary-background-color);
+        text-align: center;
+      }
+
       .dashboard-settings {
         display: flex;
         flex-direction: column;
@@ -1956,6 +2620,55 @@ export class DwainsDashboardStrategyEditor extends LitElement {
       }
       .dashboard-settings ha-icon-picker {
         width: 100%;
+      }
+
+      @media (max-width: 700px) {
+        .settings-overview-hero,
+        .settings-nav-section,
+        .settings-detail-content,
+        .settings-detail-toolbar {
+          max-width: none;
+        }
+
+        .settings-overview-hero {
+          align-items: flex-start;
+          padding: 18px;
+        }
+
+        .settings-overview-hero > ha-icon {
+          width: 40px;
+          height: 40px;
+          --mdc-icon-size: 22px;
+        }
+
+        .settings-nav-item {
+          grid-template-columns: 40px minmax(0, 1fr) 22px;
+          gap: 12px;
+          min-height: 72px;
+          padding: 12px;
+        }
+
+        .settings-nav-icon {
+          width: 40px;
+          height: 40px;
+        }
+
+        .settings-nav-summary {
+          grid-column: 2 / -1;
+          justify-self: start;
+          max-width: 100%;
+          margin-top: -4px;
+        }
+
+        .settings-nav-chevron {
+          grid-column: 3;
+          grid-row: 1;
+        }
+
+        .settings-detail-toolbar {
+          margin: -16px -16px 16px;
+          padding: 10px 16px;
+        }
       }
 
       .home-layout-section {
@@ -2524,6 +3237,118 @@ export class DwainsDashboardStrategyEditor extends LitElement {
         line-height: 1.4;
         padding-left: 16px;
         border-left: 3px solid var(--divider-color);
+      }
+
+      .device-types-visibility {
+        margin-top: 20px;
+        display: grid;
+        gap: 12px;
+      }
+
+      .device-types-header {
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 16px;
+      }
+
+      .device-types-header h4 {
+        margin: 0;
+        color: var(--primary-text-color);
+        font-size: 15px;
+        font-weight: 700;
+      }
+
+      .device-types-header p {
+        margin: 4px 0 0;
+        color: var(--secondary-text-color);
+        font-size: 12px;
+        line-height: 1.35;
+      }
+
+      .device-types-header > span {
+        flex: 0 0 auto;
+        padding: 6px 10px;
+        border-radius: 999px;
+        color: var(--primary-color);
+        background: color-mix(in srgb, var(--primary-color) 10%, transparent);
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      .device-types-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+        gap: 8px;
+      }
+
+      .device-type-option {
+        display: grid;
+        grid-template-columns: 42px minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 10px;
+        padding: 10px;
+        border: 1px solid var(--divider-color);
+        border-radius: 10px;
+        background: var(--card-background-color);
+        transition: opacity 0.16s ease, border-color 0.16s ease, background 0.16s ease;
+      }
+
+      .device-type-option.enabled {
+        border-color: color-mix(in srgb, var(--device-type-color) 24%, var(--divider-color));
+      }
+
+      .device-type-option.disabled {
+        opacity: 0.58;
+        background: color-mix(in srgb, var(--card-background-color) 78%, var(--secondary-background-color));
+      }
+
+      .device-type-icon {
+        width: 42px;
+        height: 42px;
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--device-type-color);
+        background: color-mix(in srgb, var(--device-type-color) 13%, transparent);
+      }
+
+      .device-type-icon ha-icon {
+        --mdc-icon-size: 22px;
+      }
+
+      .device-type-copy {
+        min-width: 0;
+      }
+
+      .device-type-name {
+        color: var(--primary-text-color);
+        font-size: 14px;
+        font-weight: 700;
+        line-height: 1.15;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .device-type-count {
+        margin-top: 3px;
+        color: var(--secondary-text-color);
+        font-size: 12px;
+        line-height: 1;
+      }
+
+      @media (max-width: 600px) {
+        .device-types-header {
+          align-items: flex-start;
+          flex-direction: column;
+          gap: 8px;
+        }
+
+        .device-types-grid {
+          grid-template-columns: 1fr;
+        }
       }
 
       .entity-picker,

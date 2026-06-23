@@ -30,6 +30,12 @@ import { ddLocalize } from '../utils/localize';
 type DomainCount = StatusDomainCount;
 type PictureTextTone = 'light' | 'dark';
 type PictureContrastCacheValue = PictureTextTone | 'pending';
+const SIDEBAR_WIDTH_STORAGE_KEY = 'dd-next-area-sidebar-width';
+const SIDEBAR_COLLAPSED_STORAGE_KEY = 'dd-next-area-sidebar-collapsed';
+const SIDEBAR_DEFAULT_WIDTH = 250;
+const SIDEBAR_MIN_WIDTH = 240;
+const SIDEBAR_MAX_WIDTH = 660;
+const SIDEBAR_COLLAPSE_THRESHOLD = 96;
 
 interface CachedAreaData {
   data: AreaData;
@@ -106,6 +112,9 @@ export class DwainsLayoutCard extends LitElement {
   @state() private _mobileEntityLayout: 'rail' | 'grid' = 'rail';
   @state() private _mobileHomeAreasLayout: 'rail' | 'grid' = 'rail';
   @state() private _mobileHomeDevicesLayout: 'rail' | 'grid' = 'rail';
+  @state() private _areaSidebarWidth = SIDEBAR_DEFAULT_WIDTH;
+  @state() private _areaSidebarCollapsed = false;
+  @state() private _isResizingSidebar = false;
 
   // Performance optimizations
   private _areaEntitiesCache = new Map<string, { entities: EntityConfig[], timestamp: number }>();
@@ -124,6 +133,7 @@ export class DwainsLayoutCard extends LitElement {
   private _lastAreaScrollTop = 0;
   private _areaScrollUpDistance = 0;
   private _pictureContrastCache = new Map<string, PictureContrastCacheValue>();
+  private _sidebarResizePointerId?: number;
 
   // Debounce timers
   private _updateDebounceTimer?: number;
@@ -233,21 +243,157 @@ export class DwainsLayoutCard extends LitElement {
 
     /* Layout Container */
     .layout-container {
+      --area-sidebar-width: 250px;
       display: flex;
       height: 100vh;
       position: relative;
     }
 
+    .layout-container.sidebar-resizing,
+    .layout-container.sidebar-resizing * {
+      cursor: col-resize !important;
+      user-select: none !important;
+      -webkit-user-select: none !important;
+    }
+
+    .layout-container.sidebar-collapsed .sidebar {
+      width: 0;
+      flex-basis: 0;
+      border-right: 0;
+      opacity: 0;
+      pointer-events: none;
+      transform: translateX(-16px);
+    }
+
+    .layout-container.sidebar-collapsed .main-content {
+      min-width: 0;
+    }
+
     /* Sidebar Styles */
     .sidebar {
-      width: 250px;
+      width: var(--area-sidebar-width);
+      flex: 0 0 var(--area-sidebar-width);
       background: var(--card-background-color);
       border-right: 1px solid var(--divider-color);
       display: flex;
       flex-direction: column;
-      transition: transform 0.3s ease;
+      transition: transform 0.3s ease, width 0.16s ease, flex-basis 0.16s ease;
       z-index: 1;
       overflow-y: auto;
+      overflow-x: hidden;
+    }
+
+    .layout-container.sidebar-resizing .sidebar {
+      transition: none;
+    }
+
+    .sidebar-resize-handle {
+      flex: 0 0 10px;
+      width: 10px;
+      align-self: stretch;
+      margin-left: -5px;
+      margin-right: -5px;
+      position: relative;
+      z-index: 4;
+      border: 0;
+      padding: 0;
+      background: transparent;
+      cursor: col-resize;
+      touch-action: none;
+    }
+
+    .sidebar-resize-handle::before {
+      content: '';
+      position: absolute;
+      top: 14px;
+      bottom: 14px;
+      left: 4px;
+      width: 2px;
+      border-radius: 999px;
+      background: transparent;
+      transition: background 0.16s ease, box-shadow 0.16s ease;
+    }
+
+    .sidebar-resize-handle:hover::before,
+    .sidebar-resize-handle:focus-visible::before,
+    .layout-container.sidebar-resizing .sidebar-resize-handle::before {
+      background: var(--primary-color);
+      box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary-color) 12%, transparent);
+    }
+
+    .sidebar-resize-handle:focus-visible {
+      outline: none;
+    }
+
+    .sidebar-collapse-toggle {
+      position: absolute;
+      top: 50%;
+      left: calc(var(--area-sidebar-width) - 17px);
+      z-index: 6;
+      width: 34px;
+      height: 54px;
+      padding: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid color-mix(in srgb, var(--divider-color) 80%, transparent);
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--card-background-color) 96%, transparent);
+      color: var(--primary-text-color);
+      box-shadow:
+        0 10px 24px rgba(15, 23, 42, 0.12),
+        inset 0 1px 0 rgba(255, 255, 255, 0.56);
+      cursor: pointer;
+      transform: translateY(-50%);
+      transition:
+        top 0.16s ease,
+        left 0.16s ease,
+        transform 0.16s ease,
+        background-color 0.16s ease,
+        box-shadow 0.16s ease;
+    }
+
+    .sidebar-collapse-toggle:hover {
+      background: color-mix(in srgb, var(--primary-color) 10%, var(--card-background-color));
+      box-shadow:
+        0 12px 28px rgba(15, 23, 42, 0.16),
+        inset 0 1px 0 rgba(255, 255, 255, 0.62);
+    }
+
+    .sidebar-collapse-toggle:focus-visible {
+      outline: 2px solid var(--primary-color);
+      outline-offset: 3px;
+    }
+
+    .sidebar-collapse-toggle ha-icon {
+      --mdc-icon-size: 18px;
+    }
+
+    .sidebar-collapse-toggle.is-collapsed {
+      left: 0;
+      top: 50%;
+      width: 34px;
+      min-width: 34px;
+      height: 54px;
+      padding: 0;
+      border-left: 0;
+      border-radius: 0 999px 999px 0;
+      background: color-mix(in srgb, var(--card-background-color) 98%, transparent);
+      transform: translateY(-50%);
+      box-shadow:
+        0 12px 28px rgba(15, 23, 42, 0.14),
+        inset 0 1px 0 rgba(255, 255, 255, 0.56);
+    }
+
+    .sidebar-collapse-label {
+      display: none;
+      font-size: 13px;
+      font-weight: 850;
+      line-height: 1;
+    }
+
+    .sidebar-collapse-toggle.is-collapsed .sidebar-collapse-label {
+      display: inline;
     }
 
     /* Main Content */
@@ -519,8 +665,9 @@ export class DwainsLayoutCard extends LitElement {
     }
 
     .floor-areas {
-      display: flex;
-      flex-direction: column;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(178px, 1fr));
+      gap: 8px;
     }
 
     .area-button {
@@ -529,7 +676,7 @@ export class DwainsLayoutCard extends LitElement {
       align-items: center;
       gap: 12px;
       padding: 16px;
-      margin-bottom: 8px;
+      margin-bottom: 0;
       border-radius: 16px;
       cursor: pointer;
       transition: all 0.3s ease;
@@ -1420,6 +1567,194 @@ export class DwainsLayoutCard extends LitElement {
     .mobile-home-section,
     .mobile-section-heading {
       display: none;
+    }
+
+    .layout-container.sidebar-collapsed .mobile-home-section.mobile-home-areas {
+      display: block;
+      margin: 0 0 36px;
+    }
+
+    .layout-container.sidebar-collapsed .mobile-home-areas .mobile-section-heading {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      padding: 0;
+      margin-bottom: 14px;
+    }
+
+    .layout-container.sidebar-collapsed .mobile-home-areas .mobile-section-action {
+      display: none;
+    }
+
+    .layout-container.sidebar-collapsed .mobile-area-rail {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+      gap: 16px;
+      padding: 0;
+      overflow: visible;
+      scroll-snap-type: none;
+    }
+
+    .layout-container.sidebar-collapsed .mobile-area-card {
+      appearance: none;
+      position: relative;
+      box-sizing: border-box;
+      min-width: 0;
+      min-height: 156px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      justify-content: space-between;
+      overflow: hidden;
+      border: 1px solid color-mix(in srgb, var(--primary-text-color) 8%, transparent);
+      border-radius: 8px;
+      background: color-mix(in srgb, var(--card-background-color) 96%, var(--primary-background-color));
+      color: var(--primary-text-color);
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+      box-shadow: 0 14px 30px color-mix(in srgb, var(--primary-text-color) 8%, transparent);
+      transition:
+        transform 0.18s ease,
+        border-color 0.18s ease,
+        box-shadow 0.18s ease;
+    }
+
+    .layout-container.sidebar-collapsed .mobile-area-card:hover {
+      transform: translateY(-2px);
+      border-color: color-mix(in srgb, var(--primary-color) 22%, transparent);
+      box-shadow: 0 18px 38px color-mix(in srgb, var(--primary-text-color) 11%, transparent);
+    }
+
+    .layout-container.sidebar-collapsed .mobile-area-card.has-picture {
+      min-height: 176px;
+      color: var(--mobile-area-picture-text-color, #ffffff);
+      border-color: rgba(255, 255, 255, 0.16);
+      background: #182044;
+      --mobile-area-picture-text-color: #ffffff;
+      --mobile-area-picture-muted-text-color: rgba(255, 255, 255, 0.76);
+      --mobile-area-picture-text-shadow: 0 2px 10px rgba(0, 0, 0, 0.62);
+      --mobile-area-picture-overlay:
+        linear-gradient(180deg, rgba(12, 18, 32, 0.02) 0%, rgba(12, 18, 32, 0.18) 42%, rgba(12, 18, 32, 0.84) 100%),
+        linear-gradient(90deg, rgba(12, 18, 32, 0.18), rgba(12, 18, 32, 0.04));
+    }
+
+    .layout-container.sidebar-collapsed .mobile-area-picture {
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      background-size: cover;
+      background-position: center;
+      transform: scale(1.02);
+    }
+
+    .layout-container.sidebar-collapsed .mobile-area-card.has-picture::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      background: var(--mobile-area-picture-overlay);
+      pointer-events: none;
+    }
+
+    .layout-container.sidebar-collapsed .mobile-area-top,
+    .layout-container.sidebar-collapsed .mobile-area-copy {
+      position: relative;
+      z-index: 2;
+    }
+
+    .layout-container.sidebar-collapsed .mobile-area-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .layout-container.sidebar-collapsed .mobile-area-icon {
+      width: 44px;
+      height: 44px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex: 0 0 auto;
+      border-radius: 8px;
+      color: var(--primary-color);
+      background: color-mix(in srgb, var(--primary-color) 13%, transparent);
+    }
+
+    .layout-container.sidebar-collapsed .mobile-area-icon ha-icon {
+      --mdc-icon-size: 23px;
+    }
+
+    .layout-container.sidebar-collapsed .mobile-area-card.has-picture .mobile-area-icon {
+      color: var(--mobile-area-picture-text-color, #ffffff);
+      background: rgba(255, 255, 255, 0.18);
+      backdrop-filter: blur(12px);
+    }
+
+    .layout-container.sidebar-collapsed .mobile-area-badges {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 5px;
+      min-width: 0;
+    }
+
+    .layout-container.sidebar-collapsed .mobile-area-badge {
+      min-width: 25px;
+      height: 25px;
+      padding: 0 8px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      border-radius: 999px;
+      color: var(--area-badge-color, var(--primary-color));
+      background: color-mix(in srgb, var(--area-badge-color, var(--primary-color)) 12%, transparent);
+      font-size: 11px;
+      font-weight: 850;
+    }
+
+    .layout-container.sidebar-collapsed .mobile-area-badge ha-icon {
+      --mdc-icon-size: 14px;
+    }
+
+    .layout-container.sidebar-collapsed .mobile-area-card.has-picture .mobile-area-badge {
+      background: color-mix(in srgb, var(--area-badge-color, var(--primary-color)) 18%, rgba(255, 255, 255, 0.88));
+      backdrop-filter: blur(12px);
+      box-shadow: 0 4px 12px rgba(15, 23, 42, 0.16);
+    }
+
+    .layout-container.sidebar-collapsed .mobile-area-name {
+      font-size: 16px;
+      font-weight: 850;
+      line-height: 1.1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .layout-container.sidebar-collapsed .mobile-area-meta {
+      margin-top: 5px;
+      color: color-mix(in srgb, var(--primary-text-color) 56%, transparent);
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1.2;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .layout-container.sidebar-collapsed .mobile-area-card.has-picture .mobile-area-name,
+    .layout-container.sidebar-collapsed .mobile-area-card.has-picture .mobile-area-meta {
+      color: var(--mobile-area-picture-text-color, #ffffff);
+      text-shadow: var(--mobile-area-picture-text-shadow);
+    }
+
+    .layout-container.sidebar-collapsed .mobile-area-card.has-picture .mobile-area-meta {
+      color: var(--mobile-area-picture-muted-text-color, rgba(255, 255, 255, 0.72));
     }
 
     /* Person Cards Section */
@@ -2724,10 +3059,29 @@ export class DwainsLayoutCard extends LitElement {
         right: 0;
         top: 0;
         width: 280px;
+        flex-basis: auto;
         height: 100%;
         transform: translateX(100%);
         z-index: 121;
         box-shadow: -4px 0 12px rgba(0, 0, 0, 0.15);
+      }
+
+      .sidebar-resize-handle {
+        display: none;
+      }
+
+      .sidebar-collapse-toggle {
+        display: none;
+      }
+
+      .floor-areas {
+        display: flex;
+        flex-direction: column;
+        gap: 0;
+      }
+
+      .area-button {
+        margin-bottom: 8px;
       }
 
       .sidebar.open {
@@ -4831,6 +5185,47 @@ export class DwainsLayoutCard extends LitElement {
 
     .area-mobile-toolbar {
       display: none;
+    }
+
+    .area-desktop-back {
+      display: none;
+      width: 42px;
+      height: 42px;
+      padding: 0;
+      align-items: center;
+      justify-content: center;
+      flex: 0 0 auto;
+      border: 0;
+      border-radius: 999px;
+      background: #182044;
+      color: #ffffff;
+      cursor: pointer;
+      box-shadow:
+        0 12px 26px rgba(15, 23, 42, 0.2),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+      transition:
+        transform 0.18s ease,
+        box-shadow 0.18s ease;
+    }
+
+    .area-desktop-back:hover {
+      transform: translateY(-1px);
+      box-shadow:
+        0 14px 30px rgba(15, 23, 42, 0.24),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+    }
+
+    .area-desktop-back:focus-visible {
+      outline: 2px solid var(--primary-color);
+      outline-offset: 3px;
+    }
+
+    .area-desktop-back ha-icon {
+      --mdc-icon-size: 22px;
+    }
+
+    .layout-container.sidebar-collapsed .area-desktop-back {
+      display: inline-flex;
     }
 
     .area-title-copy {
@@ -7121,6 +7516,8 @@ export class DwainsLayoutCard extends LitElement {
   connectedCallback() {
     super.connectedCallback();
     this._loadMobileEntityLayoutPreference();
+    this._loadAreaSidebarWidthPreference();
+    this._loadAreaSidebarCollapsedPreference();
     this._checkMobile();
     this._setupEventListeners();
     window.addEventListener('dwains-dashboard-next-toggle-area-nav', this._handleAreaNavToggle);
@@ -7158,6 +7555,9 @@ export class DwainsLayoutCard extends LitElement {
   disconnectedCallback() {
     super.disconnectedCallback();
     window.removeEventListener('dwains-dashboard-next-toggle-area-nav', this._handleAreaNavToggle);
+    window.removeEventListener('pointermove', this._handleSidebarResizeMove);
+    window.removeEventListener('pointerup', this._handleSidebarResizeEnd);
+    window.removeEventListener('pointercancel', this._handleSidebarResizeEnd);
     this._persistentNotificationsUnsub?.();
     this._persistentNotificationsUnsub = undefined;
     this._removeMobileDomainMenuPortal();
@@ -7185,8 +7585,18 @@ export class DwainsLayoutCard extends LitElement {
   private _handleResize = () => {
     this._closeMobileDomainMenu();
     this._checkMobile();
+    if (!this._isMobile) {
+      const clampedWidth = this._clampAreaSidebarWidth(this._areaSidebarWidth);
+      if (clampedWidth !== this._areaSidebarWidth) {
+        this._areaSidebarWidth = clampedWidth;
+      }
+    }
     this._updateAreaHeaderScrollState();
   };
+
+  private _isDesktopAreaSidebarCollapsed(): boolean {
+    return this._areaSidebarCollapsed && !this._isMobile;
+  }
 
   private _handleContentScroll = (event: Event) => {
     if (!this._isMobile || this._selectedView !== 'area') {
@@ -7323,6 +7733,131 @@ export class DwainsLayoutCard extends LitElement {
       // localStorage can be unavailable in private or restricted contexts.
     }
   }
+
+  private _loadAreaSidebarWidthPreference(): void {
+    try {
+      const rawWidth = window.localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY);
+      if (!rawWidth) return;
+
+      const width = Number(rawWidth);
+      if (Number.isFinite(width)) {
+        this._areaSidebarWidth = this._clampAreaSidebarWidth(width);
+      }
+    } catch {
+      // Preference persistence is best-effort only.
+    }
+  }
+
+  private _saveAreaSidebarWidthPreference(width: number): void {
+    try {
+      window.localStorage.setItem(SIDEBAR_WIDTH_STORAGE_KEY, String(Math.round(width)));
+    } catch {
+      // Preference persistence is best-effort only.
+    }
+  }
+
+  private _loadAreaSidebarCollapsedPreference(): void {
+    try {
+      this._areaSidebarCollapsed = window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === 'true';
+    } catch {
+      // Preference persistence is best-effort only.
+    }
+  }
+
+  private _saveAreaSidebarCollapsedPreference(collapsed: boolean): void {
+    try {
+      window.localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, collapsed ? 'true' : 'false');
+    } catch {
+      // Preference persistence is best-effort only.
+    }
+  }
+
+  private _clampAreaSidebarWidth(width: number): number {
+    const viewportMax = Math.max(SIDEBAR_MIN_WIDTH, Math.min(SIDEBAR_MAX_WIDTH, Math.floor(window.innerWidth * 0.46)));
+    return Math.round(Math.max(SIDEBAR_MIN_WIDTH, Math.min(viewportMax, width)));
+  }
+
+  private _startSidebarResize = (event: PointerEvent): void => {
+    if (this._isMobile || event.button !== 0) return;
+
+    event.preventDefault();
+    this._sidebarResizePointerId = event.pointerId;
+    this._isResizingSidebar = true;
+    (event.currentTarget as HTMLElement | null)?.setPointerCapture?.(event.pointerId);
+    window.addEventListener('pointermove', this._handleSidebarResizeMove);
+    window.addEventListener('pointerup', this._handleSidebarResizeEnd);
+    window.addEventListener('pointercancel', this._handleSidebarResizeEnd);
+  };
+
+  private _handleSidebarResizeMove = (event: PointerEvent): void => {
+    if (!this._isResizingSidebar || this._isMobile) return;
+    if (this._sidebarResizePointerId !== undefined && event.pointerId !== this._sidebarResizePointerId) return;
+
+    const container = this.renderRoot?.querySelector('.layout-container') as HTMLElement | null;
+    const left = container?.getBoundingClientRect().left ?? 0;
+    const rawWidth = event.clientX - left;
+    if (rawWidth <= SIDEBAR_COLLAPSE_THRESHOLD) {
+      this._areaSidebarCollapsed = true;
+      return;
+    }
+
+    if (this._areaSidebarCollapsed) {
+      this._areaSidebarCollapsed = false;
+    }
+    this._areaSidebarWidth = this._clampAreaSidebarWidth(rawWidth);
+  };
+
+  private _handleSidebarResizeEnd = (event?: PointerEvent): void => {
+    if (!this._isResizingSidebar) return;
+    if (
+      event &&
+      this._sidebarResizePointerId !== undefined &&
+      event.pointerId !== this._sidebarResizePointerId
+    ) {
+      return;
+    }
+
+    this._isResizingSidebar = false;
+    this._sidebarResizePointerId = undefined;
+    this._saveAreaSidebarWidthPreference(this._areaSidebarWidth);
+    this._saveAreaSidebarCollapsedPreference(this._areaSidebarCollapsed);
+    window.removeEventListener('pointermove', this._handleSidebarResizeMove);
+    window.removeEventListener('pointerup', this._handleSidebarResizeEnd);
+    window.removeEventListener('pointercancel', this._handleSidebarResizeEnd);
+  };
+
+  private _toggleAreaSidebarCollapsed = (event?: Event): void => {
+    event?.stopPropagation();
+    if (this._isMobile) return;
+
+    this._areaSidebarCollapsed = !this._areaSidebarCollapsed;
+    this._saveAreaSidebarCollapsedPreference(this._areaSidebarCollapsed);
+    if (!this._areaSidebarCollapsed) {
+      this._areaSidebarWidth = this._clampAreaSidebarWidth(this._areaSidebarWidth || SIDEBAR_DEFAULT_WIDTH);
+      this._saveAreaSidebarWidthPreference(this._areaSidebarWidth);
+    }
+  };
+
+  private _handleSidebarResizeKeydown = (event: KeyboardEvent): void => {
+    if (this._isMobile) return;
+
+    let nextWidth = this._areaSidebarWidth;
+    if (event.key === 'ArrowLeft') {
+      nextWidth -= event.shiftKey ? 40 : 20;
+    } else if (event.key === 'ArrowRight') {
+      nextWidth += event.shiftKey ? 40 : 20;
+    } else if (event.key === 'Home') {
+      nextWidth = SIDEBAR_MIN_WIDTH;
+    } else if (event.key === 'End') {
+      nextWidth = SIDEBAR_MAX_WIDTH;
+    } else {
+      return;
+    }
+
+    event.preventDefault();
+    this._areaSidebarWidth = this._clampAreaSidebarWidth(nextWidth);
+    this._saveAreaSidebarWidthPreference(this._areaSidebarWidth);
+  };
 
   private _toggleMobileEntityLayout = (event?: Event): void => {
     event?.stopPropagation();
@@ -7515,10 +8050,20 @@ export class DwainsLayoutCard extends LitElement {
       return html`<div class="loading">Loading...</div>`;
     }
 
+    const layoutClasses = {
+      'layout-container': true,
+      'sidebar-resizing': this._isResizingSidebar,
+      'sidebar-collapsed': this._isDesktopAreaSidebarCollapsed(),
+    };
+
     return html`
-      <div class="layout-container">
+      <div
+        class=${classMap(layoutClasses)}
+        style=${`--area-sidebar-width: ${this._areaSidebarWidth}px;`}
+      >
         ${this._renderMobileOverlay()}
         ${this._renderSidebar()}
+        ${!this._isMobile ? this._renderSidebarResizeHandle() : nothing}
         <div class="main-content">
           ${this._selectedView !== 'home' && !this._isMobile ? this._renderGlobalHeader() : nothing}
           <div
@@ -7536,6 +8081,37 @@ export class DwainsLayoutCard extends LitElement {
       ${this._renderToast()}
       ${this._renderConfirmationDialog()}
       ${this._renderNotificationsPanel()}
+    `;
+  }
+
+  private _renderSidebarResizeHandle() {
+    const collapsed = this._isDesktopAreaSidebarCollapsed();
+
+    return html`
+      <button
+        class="sidebar-collapse-toggle ${collapsed ? 'is-collapsed' : ''}"
+        type="button"
+        title=${collapsed ? 'Show area sidebar' : 'Collapse area sidebar'}
+        aria-label=${collapsed ? 'Show area sidebar' : 'Collapse area sidebar'}
+        @click=${this._toggleAreaSidebarCollapsed}
+      >
+        <ha-icon icon=${collapsed ? 'mdi:chevron-right' : 'mdi:chevron-left'}></ha-icon>
+      </button>
+      ${collapsed ? nothing : html`
+      <button
+        class="sidebar-resize-handle"
+        type="button"
+        role="separator"
+        aria-label="Resize area sidebar"
+        aria-orientation="vertical"
+        aria-valuemin=${SIDEBAR_MIN_WIDTH}
+        aria-valuemax=${SIDEBAR_MAX_WIDTH}
+        aria-valuenow=${this._areaSidebarWidth}
+        title="Drag to resize area sidebar"
+        @pointerdown=${this._startSidebarResize}
+        @keydown=${this._handleSidebarResizeKeydown}
+      ></button>
+      `}
     `;
   }
 
@@ -8034,7 +8610,8 @@ export class DwainsLayoutCard extends LitElement {
 
   private _getVisibleHomeSections(): HomeSectionKey[] {
     const hidden = new Set(normalizeHiddenHomeSections(this.config?.settings?.home_sections_hidden));
-    return this._getHomeSectionsOrder().filter(section => !hidden.has(section));
+    const forceAreas = this._isDesktopAreaSidebarCollapsed();
+    return this._getHomeSectionsOrder().filter(section => !hidden.has(section) || (forceAreas && section === 'areas'));
   }
 
   private _renderHomeSection(section: HomeSectionKey) {
@@ -8130,7 +8707,11 @@ export class DwainsLayoutCard extends LitElement {
 
   private _renderHomeStatusCards() {
     const domains = this._getStatusDomains();
-    const visibleDomains = domains.filter(d => d.domain !== 'person' && d.domain !== 'wattage');
+    const visibleDomains = domains.filter(d =>
+      d.domain !== 'person' &&
+      d.domain !== 'wattage' &&
+      d.domain !== 'camera'
+    );
     const gridMode = this._mobileHomeDevicesLayout === 'grid';
 
     return html`
@@ -8270,15 +8851,14 @@ export class DwainsLayoutCard extends LitElement {
     this._getVisibleSortedAreas().forEach(area => {
       const cameraEntities = this._getFilteredAreaEntities(area.area_id)
         .filter(entity => entity.entity_id.startsWith('camera.'))
-        .filter(entity => Boolean(this.hass?.states?.[entity.entity_id]));
+        .filter(entity => {
+          const state = this.hass?.states?.[entity.entity_id]?.state;
+          return Boolean(state && state !== 'unavailable' && state !== 'unknown');
+        });
 
       if (!cameraEntities.length) return;
 
-      const firstAvailable = cameraEntities.find(entity => {
-        const state = this.hass.states[entity.entity_id]?.state;
-        return state && state !== 'unavailable' && state !== 'unknown';
-      });
-      const cameraEntity = firstAvailable || cameraEntities[0]!;
+      const cameraEntity = cameraEntities[0]!;
       const stateObj = this.hass.states[cameraEntity.entity_id];
       const name = stateObj?.attributes?.friendly_name || cameraEntity.entity_id;
       const state = stateObj ? this.hass.formatEntityState(stateObj) : 'Unknown';
@@ -8608,31 +9188,41 @@ export class DwainsLayoutCard extends LitElement {
   private _renderMobileHomeAreas() {
     const areas = this._getVisibleSortedAreas();
     if (!areas.length) return nothing;
-    const gridMode = this._mobileHomeAreasLayout === 'grid';
+    const desktopCollapsed = this._isDesktopAreaSidebarCollapsed();
+    const layout = desktopCollapsed ? 'grid' : this._mobileHomeAreasLayout;
+    const gridMode = layout === 'grid';
 
     return html`
-      <section class="mobile-home-section mobile-home-areas layout-${this._mobileHomeAreasLayout}">
+      <section class="mobile-home-section mobile-home-areas layout-${layout}">
         <div class="mobile-section-heading">
           <div class="mobile-section-title">
-            <button
-              class="mobile-layout-toggle ${gridMode ? 'active' : ''}"
-              type="button"
-              title=${gridMode ? 'Swipe areas' : 'Show all areas'}
-              aria-label=${gridMode ? 'Switch areas to swipe cards' : 'Show all areas'}
-              @click=${this._toggleMobileHomeAreasLayout}
-            >
-              <ha-icon icon=${gridMode ? 'mdi:view-carousel-outline' : 'mdi:view-grid-outline'}></ha-icon>
-            </button>
+            ${desktopCollapsed ? html`
+              <span class="mobile-layout-toggle active" aria-hidden="true">
+                <ha-icon icon="mdi:view-grid-outline"></ha-icon>
+              </span>
+            ` : html`
+              <button
+                class="mobile-layout-toggle ${gridMode ? 'active' : ''}"
+                type="button"
+                title=${gridMode ? 'Swipe areas' : 'Show all areas'}
+                aria-label=${gridMode ? 'Switch areas to swipe cards' : 'Show all areas'}
+                @click=${this._toggleMobileHomeAreasLayout}
+              >
+                <ha-icon icon=${gridMode ? 'mdi:view-carousel-outline' : 'mdi:view-grid-outline'}></ha-icon>
+              </button>
+            `}
             <span class="mobile-section-title-label">Areas</span>
           </div>
-          <button
-            class="mobile-section-action"
-            type="button"
-            @click=${this._openMobileAreaSwitcher}
-          >
-            <span>See all</span>
-            <ha-icon icon="mdi:chevron-right"></ha-icon>
-          </button>
+          ${desktopCollapsed ? nothing : html`
+            <button
+              class="mobile-section-action"
+              type="button"
+              @click=${this._openMobileAreaSwitcher}
+            >
+              <span>See all</span>
+              <ha-icon icon="mdi:chevron-right"></ha-icon>
+            </button>
+          `}
         </div>
         <div class="mobile-area-rail">
           ${repeat(
@@ -8969,6 +9559,17 @@ export class DwainsLayoutCard extends LitElement {
             </div>
           </div>
           <div class="area-header-content">
+            ${this._isDesktopAreaSidebarCollapsed() ? html`
+              <button
+                class="area-desktop-back"
+                type="button"
+                title="Back to home"
+                aria-label="Back to home"
+                @click=${() => this._selectView('home')}
+              >
+                <ha-icon icon="mdi:arrow-left"></ha-icon>
+              </button>
+            ` : nothing}
             <div class="area-title-group">
               <div class="area-header-icon">
                 <ha-icon icon=${getAreaIcon(area)}></ha-icon>
@@ -9419,7 +10020,11 @@ export class DwainsLayoutCard extends LitElement {
   }
 
   private _renderAreaMobileCameraAction(entities: EntityConfig[]) {
-    const camera = entities.find(entity => entity.entity_id.startsWith('camera.'));
+    const camera = entities.find(entity => {
+      if (!entity.entity_id.startsWith('camera.')) return false;
+      const state = this.hass?.states?.[entity.entity_id]?.state;
+      return Boolean(state && state !== 'unavailable' && state !== 'unknown');
+    });
     if (!camera) return nothing;
 
     return html`
@@ -10080,7 +10685,10 @@ export class DwainsLayoutCard extends LitElement {
       const action = state.attributes?.hvac_action;
       return action && action !== 'idle' && action !== 'off';
     }
-    if (domain === 'media_player') return ['playing', 'paused'].includes(value);
+    if (domain === 'media_player') return ['playing', 'buffering'].includes(value);
+    if (domain === 'vacuum') return ['cleaning', 'returning'].includes(value);
+    if (domain === 'alarm_control_panel') return value.startsWith('armed') || ['arming', 'pending', 'triggered'].includes(value);
+    if (domain === 'camera') return false;
     return !['off', 'closed', 'locked', 'not_home', 'idle'].includes(value);
   }
 

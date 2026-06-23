@@ -6,13 +6,23 @@
 
 Dwains Dashboard Next is the next generation of Dwains Dashboard for Home Assistant.
 
-It installs as a Home Assistant dashboard through HACS. It does not require a custom integration, Python files, YAML setup, or manual file uploads.
+It installs as a Home Assistant dashboard through HACS. On a normal HACS setup it does not require a custom integration, Python files, YAML setup, or manual file uploads.
 
 See this as Dwains Dashboard v4: totally rebuilt from scratch, with a completely new design and new features.
 
 ## Status
 
-Current release: `1.1.2`
+Current release: `1.1.3`
+
+## What's New In 1.1.3
+
+- Redesigned the dashboard settings screen into clear sections for dashboard, home, header, devices, people, areas, replacements, permissions and support.
+- Added device type visibility settings for the Devices page.
+- Added a resizable and collapsible desktop area sidebar with saved preferences.
+- Improved the mobile Home Assistant shell handling so drawer/header changes only apply inside Dwains Dashboard Next and reset when leaving the dashboard.
+- Improved active status counting for media players, vacuums, alarms and cameras.
+- Only shows available camera entities in camera shortcuts and camera sections.
+- Added troubleshooting notes for Home Assistant setups that use YAML-managed Lovelace resources.
 
 ## What's New In 1.1.2
 
@@ -63,6 +73,21 @@ Current release: `1.1.2`
 5. Reload Home Assistant frontend resources if Home Assistant asks for it.
 6. Go to Settings, Dashboards, Add dashboard.
 7. Select `Dwains Dashboard Next` from Community dashboards.
+
+## HACS Resource Troubleshooting
+
+HACS normally adds the Dwains Dashboard Next JavaScript resource automatically. If your Home Assistant setup uses YAML-managed Lovelace resources, HACS cannot update those resources automatically. In that case the dashboard file is installed, but `Dwains Dashboard Next` will not appear in the Add dashboard dialog until you add the resource yourself.
+
+Add this to the existing `lovelace:` section in `configuration.yaml`:
+
+```yaml
+lovelace:
+  resources:
+    - url: /hacsfiles/dwains-dashboard-next/dwains-dashboard-next.js
+      type: module
+```
+
+Do not create a second `lovelace:` section if one already exists. Merge the `resources:` entry into the existing one, then restart Home Assistant or reload Lovelace resources and hard-refresh the browser.
 
 ## What It Does
 

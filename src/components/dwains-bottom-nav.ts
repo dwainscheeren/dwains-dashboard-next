@@ -37,6 +37,8 @@ interface DeviceContext {
 
 const MENU_PATH = '__ha_menu__';
 const PAGES_PATH = '__dd_pages__';
+const MOBILE_NAV_QUERY = '(max-width: 768px)';
+const MOBILE_NAV_ACTIVE_CLASS = 'dd-next-mobile-nav-active';
 
 /**
  * dwains-dashboard-next-bottom-nav — vaste navigatiebalk onderaan op mobiel (smart-home-app
@@ -66,6 +68,8 @@ export class DwainsBottomNav extends LitElement {
     const first = !this._hass;
     this._hass = hass;
     _applyHaSidebarRestriction(this._hass, this._settings, this.dashSegment);
+    _syncHaShellForBottomNav(this.dashSegment);
+    _injectSidebarSection(this._hass, this._settings, this.dashSegment);
     if (first) this._loadItems();
   }
   get hass() {
@@ -76,6 +80,8 @@ export class DwainsBottomNav extends LitElement {
     this._settings = settings;
     if (!this._isHaMenuRestricted()) this._restrictedMenuOpen = false;
     _applyHaSidebarRestriction(this._hass, this._settings, this.dashSegment);
+    _syncHaShellForBottomNav(this.dashSegment);
+    _injectSidebarSection(this._hass, this._settings, this.dashSegment);
     this.requestUpdate();
   }
 
@@ -101,6 +107,8 @@ export class DwainsBottomNav extends LitElement {
     // Zichtbaar zolang we op ons eigen dashboard zitten.
     this._visible = !this.dashSegment || this._segment() === this.dashSegment;
     _applyHaSidebarRestriction(this._hass, this._settings, this.dashSegment);
+    _syncHaShellForBottomNav(this.dashSegment);
+    _injectSidebarSection(this._hass, this._settings, this.dashSegment);
     if (!this._visible) {
       this._pagesOpen = false;
       this._restrictedMenuOpen = false;
@@ -259,8 +267,7 @@ export class DwainsBottomNav extends LitElement {
     // hass-toggle-menu wordt afgehandeld door <home-assistant-main>, dat in de
     // shadow-DOM van <home-assistant> zit. Het event moet dus DAAR (of dieper)
     // afgevuurd worden — van buitenaf bubblet het er niet in.
-    // Zorg dat het zijmenu aan de rechterkant staat vóór we het openen.
-    _forceDrawerRight();
+    _setDrawerPlacement(_isMobileNavActive(this.dashSegment) ? 'end' : 'start');
     const makeEv = () =>
       new CustomEvent('hass-toggle-menu', { bubbles: true, composed: true });
     const main = _deepFind('home-assistant-main');
@@ -902,17 +909,15 @@ export function ensureBottomNav(hass: any, settings?: DwainsDashboardSettings): 
   if (!el) {
     el = document.createElement('dwains-dashboard-next-bottom-nav') as DwainsBottomNav;
     document.body.appendChild(el);
-    _injectSidebarSection(hass, settings);
   }
-  _hideNativeHeaderOnMobile();
-  // Zet HA's mobiele zijmenu (wa-drawer) op de rechterkant.
-  _forceDrawerRight();
   // Onthoud het dashboard-segment waarop wij draaien (voor de zichtbaarheid).
   const seg = window.location.pathname.split('/')[1];
   el.dashSegment = seg && seg !== 'lovelace' ? seg : 'lovelace';
+  _hideNativeHeaderOnMobile();
+  _syncHaShellForBottomNav(el.dashSegment);
   el.dashboardSettings = settings;
   el.hass = hass;
-  _injectSidebarSection(hass, settings);
+  _injectSidebarSection(hass, settings, el.dashSegment);
 }
 
 /**
@@ -932,16 +937,16 @@ function _hideNativeHeaderOnMobile(attempt = 0): void {
     }
     style.textContent = `
       @media (max-width: 768px) {
-        .header,
-        .toolbar,
-        app-toolbar,
-        ha-menu-button,
-        ha-icon-button,
-        ha-tabs,
-        ha-tab-group,
-        [role="tablist"],
-        .view-header,
-        .header-toolbar {
+        :host-context(.dd-next-mobile-nav-active) .header,
+        :host-context(.dd-next-mobile-nav-active) .toolbar,
+        :host-context(.dd-next-mobile-nav-active) app-toolbar,
+        :host-context(.dd-next-mobile-nav-active) ha-menu-button,
+        :host-context(.dd-next-mobile-nav-active) ha-icon-button,
+        :host-context(.dd-next-mobile-nav-active) ha-tabs,
+        :host-context(.dd-next-mobile-nav-active) ha-tab-group,
+        :host-context(.dd-next-mobile-nav-active) [role="tablist"],
+        :host-context(.dd-next-mobile-nav-active) .view-header,
+        :host-context(.dd-next-mobile-nav-active) .header-toolbar {
           display: none !important;
           visibility: hidden !important;
           height: 0 !important;
@@ -952,7 +957,11 @@ function _hideNativeHeaderOnMobile(attempt = 0): void {
           margin: 0 !important;
           border: 0 !important;
         }
-        #view, .view, hui-view, hui-sections-view, hui-masonry-view {
+        :host-context(.dd-next-mobile-nav-active) #view,
+        :host-context(.dd-next-mobile-nav-active) .view,
+        :host-context(.dd-next-mobile-nav-active) hui-view,
+        :host-context(.dd-next-mobile-nav-active) hui-sections-view,
+        :host-context(.dd-next-mobile-nav-active) hui-masonry-view {
           padding-top: 0 !important;
           margin-top: 0 !important;
         }
@@ -967,15 +976,14 @@ function _hideNativeHeaderOnMobile(attempt = 0): void {
 
 /**
  * HA's mobiele zijmenu is een Web Awesome <wa-drawer placement="start"> (links).
- * Door placement op "end" te zetten schuift het van rechts open. Het attribuut
- * staat statisch in HA's template en wordt bij re-renders niet teruggezet, maar
- * we passen het bij elke ensureBottomNav opnieuw toe voor het geval het element
- * opnieuw is aangemaakt (bv. na resize). Bestaat het (nog) niet, dan no-op.
+ * Binnen DD met de mobiele bottom-nav zetten we hem tijdelijk rechts. Buiten die
+ * context herstellen we expliciet naar links, omdat HA het attribuut zelf niet
+ * altijd terugzet bij dashboardwissels.
  */
-function _forceDrawerRight(): void {
+function _setDrawerPlacement(placement: 'start' | 'end'): void {
   const wa = _deepFind('wa-drawer');
-  if (wa && wa.getAttribute('placement') !== 'end') {
-    wa.setAttribute('placement', 'end');
+  if (wa && wa.getAttribute('placement') !== placement) {
+    wa.setAttribute('placement', placement);
   }
 }
 
@@ -983,6 +991,9 @@ function _forceDrawerRight(): void {
 
 let _sidebarObserver: MutationObserver | undefined;
 let _sidebarSettings: DwainsDashboardSettings | undefined;
+let _sidebarHass: any;
+let _sidebarDashSegment: string | undefined;
+let _sidebarMediaListenerAttached = false;
 
 /** Navigeer (soft) naar een view-pad binnen het huidige dashboard. */
 function _navigate(path: string): void {
@@ -1003,21 +1014,51 @@ function _closeSidebar(): void {
   (_deepFind('home-assistant-main') || document.querySelector('home-assistant'))?.dispatchEvent(ev);
 }
 
+function _currentDashboardSegment(): string {
+  const segment = window.location.pathname.split('/')[1];
+  return segment && segment !== 'lovelace' ? segment : 'lovelace';
+}
+
+function _isOnDashboard(dashSegment?: string): boolean {
+  return Boolean(dashSegment && _currentDashboardSegment() === dashSegment);
+}
+
 function _isMobileViewport(): boolean {
-  return window.matchMedia('(max-width: 768px)').matches;
+  return window.matchMedia(MOBILE_NAV_QUERY).matches;
+}
+
+function _isMobileNavActive(dashSegment?: string): boolean {
+  return _isOnDashboard(dashSegment) && _isMobileViewport();
+}
+
+function _syncHaShellForBottomNav(dashSegment?: string): void {
+  const active = _isMobileNavActive(dashSegment);
+  document.documentElement.classList.toggle(MOBILE_NAV_ACTIVE_CLASS, active);
+  document.body?.classList.toggle(MOBILE_NAV_ACTIVE_CLASS, active);
+  _setDrawerPlacement(active ? 'end' : 'start');
+  if (!active) {
+    _removeSidebarSection();
+  }
+}
+
+function _removeSidebarSection(): void {
+  const sidebar = _deepFind('ha-sidebar');
+  sidebar?.shadowRoot?.querySelector('#dd-sidebar-section')?.remove();
 }
 
 /** (Her)bouw de DD-sectie en zet hem bovenaan de sidebar-shadow (alleen mobiel). */
 function _buildSidebarSection(
   sidebar: Element,
   hass: any,
-  settings?: DwainsDashboardSettings
+  settings?: DwainsDashboardSettings,
+  dashSegment?: string
 ): void {
   const sr = sidebar.shadowRoot;
   if (!sr) return;
   const existing = sr.querySelector('#dd-sidebar-section');
-  // Op desktop willen we de DD-sectie NIET (daar zijn de toptabs zichtbaar).
-  if (!_isMobileViewport()) {
+  // Alleen wanneer de DD mobiele/tablet bottom-nav actief is. Op andere dashboards
+  // en op desktop moet HA's sidebar volledig standaard blijven.
+  if (!_isMobileNavActive(dashSegment)) {
     existing?.remove();
     return;
   }
@@ -1238,28 +1279,40 @@ function _applyHaSidebarRestriction(
 function _injectSidebarSection(
   hass: any,
   settings?: DwainsDashboardSettings,
+  dashSegment?: string,
   attempt = 0
 ): void {
+  _sidebarHass = hass;
   _sidebarSettings = settings;
-  const sidebar = _deepFind('ha-sidebar');
-  if (!sidebar || !sidebar.shadowRoot) {
-    if (attempt < 25) setTimeout(() => _injectSidebarSection(hass, settings, attempt + 1), 300);
+  _sidebarDashSegment = dashSegment;
+  if (!_isMobileNavActive(dashSegment)) {
+    _removeSidebarSection();
     return;
   }
-  _buildSidebarSection(sidebar, hass, settings);
+
+  const sidebar = _deepFind('ha-sidebar');
+  if (!sidebar || !sidebar.shadowRoot) {
+    if (attempt < 25) setTimeout(() => _injectSidebarSection(hass, settings, dashSegment, attempt + 1), 300);
+    return;
+  }
+  _buildSidebarSection(sidebar, hass, settings, dashSegment);
   if (!_sidebarObserver) {
     _sidebarObserver = new MutationObserver(() => {
       const sb = _deepFind('ha-sidebar');
       if (sb?.shadowRoot && !sb.shadowRoot.querySelector('#dd-sidebar-section')) {
-        _buildSidebarSection(sb, hass, _sidebarSettings);
+        _buildSidebarSection(sb, _sidebarHass, _sidebarSettings, _sidebarDashSegment);
       }
     });
     _sidebarObserver.observe(sidebar.shadowRoot, { childList: true });
+  }
 
+  if (!_sidebarMediaListenerAttached) {
+    _sidebarMediaListenerAttached = true;
     // Bij wisselen mobiel/desktop opnieuw evalueren (toevoegen of verwijderen).
-    window.matchMedia('(max-width: 768px)').addEventListener('change', () => {
+    window.matchMedia(MOBILE_NAV_QUERY).addEventListener('change', () => {
+      _syncHaShellForBottomNav(_sidebarDashSegment);
       const sb = _deepFind('ha-sidebar');
-      if (sb) _buildSidebarSection(sb, hass, _sidebarSettings);
+      if (sb) _buildSidebarSection(sb, _sidebarHass, _sidebarSettings, _sidebarDashSegment);
     });
   }
 }
