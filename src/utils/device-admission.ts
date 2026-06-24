@@ -129,6 +129,10 @@ export function buildRecentDeviceSummaries(
 
   return config.devices
     .map((device) => {
+      const entities = entitiesByDevice.get(device.device_id) || [];
+      const areaName = areaNameFor(config, deviceAreaId(hass, device, entities));
+      if (!areaName) return null;
+
       const createdAtMs =
         deviceCreatedAtMs(hass, device) ||
         entityCreatedAtByDevice.get(device.device_id) ||
@@ -137,7 +141,6 @@ export function buildRecentDeviceSummaries(
       if (!createdAtMs || createdAtMs < cutoff || createdAtMs > now + 60_000) {
         return null;
       }
-      const entities = entitiesByDevice.get(device.device_id) || [];
       const domains = Array.from(
         new Set(
           entities
@@ -147,7 +150,7 @@ export function buildRecentDeviceSummaries(
       ).sort();
       return {
         device,
-        areaName: areaNameFor(config, device.area_id || ''),
+        areaName,
         domains,
         entityCount: entities.length,
         createdAt: device.created_at || hass?.devices?.[device.device_id]?.created_at || '',
@@ -192,5 +195,22 @@ function timestampMs(value: string | null | undefined): number | null {
 
 function areaNameFor(config: DwainsDashboardConfig, areaId: string): string {
   if (!areaId) return '';
-  return config.areas?.find((area) => area.area_id === areaId)?.name || areaId;
+  if ((config.areas_display?.hidden || []).includes(areaId)) return '';
+  return config.areas?.find((area) => area.area_id === areaId)?.name || '';
+}
+
+function deviceAreaId(
+  hass: HomeAssistant | any,
+  device: DeviceConfig,
+  entities: EntityConfig[]
+): string {
+  const fromDevice = device.area_id || hass?.devices?.[device.device_id]?.area_id;
+  if (fromDevice) return fromDevice;
+
+  for (const entity of entities) {
+    const areaId = entity.area_id || hass?.entities?.[entity.entity_id]?.area_id;
+    if (areaId) return areaId;
+  }
+
+  return '';
 }

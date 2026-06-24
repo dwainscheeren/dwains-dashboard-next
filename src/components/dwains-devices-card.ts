@@ -13,11 +13,9 @@ import { sortAreas } from '../utils/area-entities';
 import { getDomainIcon, getDeviceClassIcon, getDomainColor } from '../utils/icons';
 import { getDomainName, getDeviceClassName } from '../utils/domain-names';
 import { resolveEntityCardConfig } from '../utils/blueprint-replacements';
-import { restrictNonAdminDashboardSettings } from '../utils/security';
 import {
   NEW_DEVICE_WINDOW_HOURS,
   buildRecentDeviceSummaries,
-  deviceAdmission,
   ensureDeviceFirstSeenTracking,
   filterHiddenDeviceEntities,
   hiddenDeviceIds,
@@ -26,11 +24,13 @@ import {
 } from '../utils/device-admission';
 import { ensureBottomNav } from './dwains-bottom-nav';
 import { fireEvent } from './utils/fire-event';
+import { buildHousePowerUsage, type PowerAreaSummary, type PowerEntitySummary } from '../utils/power-usage';
 import './utils/dd-card-host';
 
 const NEW_DEVICES_KEY = '__new_devices__';
 const MAINTENANCE_KEY = '__maintenance__';
 const MAINTENANCE_AREA_KEY = '__maintenance_no_area__';
+const ENERGY_KEY = 'energy';
 const LOW_BATTERY_THRESHOLD = 20;
 const PERSON_DOMAIN = 'person';
 const PERSON_AREA_KEY = '__people__';
@@ -76,8 +76,6 @@ export class DwainsDevicesCard extends LitElement {
   @state() private _selectedDomain: string | null = null;
   @state() private _isMobile = false;
   @state() private _mobileNavOpen = false;
-  @state() private _devicesEditMode = false;
-  @state() private _selectedEntityIds = new Set<string>();
   private _pendingDomainSelection: string | null = null;
 
   private _resizeHandler = () => this._checkMobile();
@@ -124,10 +122,13 @@ export class DwainsDevicesCard extends LitElement {
       const data = this._buildData();
       const maintenance = this._buildMaintenanceData();
       const showMaintenanceMenu = this._maintenanceSummary(maintenance).totalCount > 0;
+      const showEnergyMenu = this._showEnergyMenu();
       if (urlDomain === NEW_DEVICES_KEY) {
         this._selectedDomain = NEW_DEVICES_KEY;
       } else if (urlDomain === MAINTENANCE_KEY && showMaintenanceMenu) {
         this._selectedDomain = MAINTENANCE_KEY;
+      } else if (urlDomain === ENERGY_KEY && showEnergyMenu) {
+        this._selectedDomain = ENERGY_KEY;
       } else if (urlDomain && data.has(urlDomain)) {
         this._selectedDomain = urlDomain;
       } else {
@@ -308,8 +309,9 @@ export class DwainsDevicesCard extends LitElement {
       }
     }
 
-    // Verberg onbeschikbare/onbekende entiteiten indien geconfigureerd.
-    if (this.config?.settings?.hide_unavailable_entities === true) {
+    // Verberg onbeschikbare/onbekende entiteiten standaard in de normale devices-view.
+    // De Maintenance-view blijft ze wel tonen.
+    if (this.config?.settings?.hide_unavailable_entities_on_devices !== false) {
       filteredEntities = filteredEntities.filter((entity) => {
         const state = this._hass.states[entity.entity_id];
         return state && state.state !== 'unavailable' && state.state !== 'unknown';
@@ -385,6 +387,7 @@ export class DwainsDevicesCard extends LitElement {
       if (!kind) return;
 
       const area = this._maintenanceAreaForEntity(entityId, state, registry);
+      if (!area) return;
       let bucket = buckets.get(area.area_id);
       if (!bucket) {
         bucket = { area, items: [] };
@@ -450,6 +453,14 @@ export class DwainsDevicesCard extends LitElement {
     return parts.length ? parts.join(', ') : 'Everything looks good';
   }
 
+  private _showEnergyMenu(): boolean {
+    return true;
+  }
+
+  private _energySummary() {
+    return buildHousePowerUsage(this._hass, this.config);
+  }
+
   private _maintenanceKind(entityId: string, state: any): MaintenanceItem['kind'] | undefined {
     if (state.state === 'unavailable') return 'unavailable';
     if (this._isLowBatteryEntity(entityId, state)) return 'battery';
@@ -473,24 +484,24 @@ export class DwainsDevicesCard extends LitElement {
     return registry?.device_id || this.config?.entities?.find((entity) => entity.entity_id === entityId)?.device_id;
   }
 
-  private _maintenanceAreaForEntity(entityId: string, state: any, registry?: any): AreaConfig {
+  private _maintenanceAreaForEntity(entityId: string, state: any, registry?: any): AreaConfig | undefined {
     const configEntity = this.config?.entities?.find((entity) => entity.entity_id === entityId);
     const deviceId = this._deviceIdForEntity(entityId, registry);
     const device = deviceId ? this.config?.devices?.find((item) => item.device_id === deviceId) : undefined;
+    const hassDevice = deviceId ? this._hass?.devices?.[deviceId] : undefined;
     const areaId =
       registry?.area_id ||
       configEntity?.area_id ||
       state.attributes?.area_id ||
-      device?.area_id;
+      device?.area_id ||
+      hassDevice?.area_id;
+
+    if (!areaId || (this.config?.areas_display?.hidden || []).includes(areaId)) return undefined;
 
     const area = areaId ? this.config?.areas?.find((item) => item.area_id === areaId) : undefined;
     if (area) return area;
 
-    return {
-      area_id: MAINTENANCE_AREA_KEY,
-      name: 'No area',
-      icon: 'mdi:home-question',
-    };
+    return undefined;
   }
 
   private _maintenanceIcon(entityId: string, state: any, kind: MaintenanceItem['kind']): string {
@@ -589,6 +600,7 @@ export class DwainsDevicesCard extends LitElement {
   // Leesbare naam voor een type-sleutel (domein of binary_sensor.<class>).
   private _typeName(key: string): string {
     if (key === MAINTENANCE_KEY) return 'Maintenance';
+    if (key === ENERGY_KEY) return 'Energy';
     if (key.startsWith('binary_sensor.')) {
       return getDeviceClassName(this._hass, key.slice('binary_sensor.'.length));
     }
@@ -598,6 +610,7 @@ export class DwainsDevicesCard extends LitElement {
   // Icoon voor een type-sleutel.
   private _typeIcon(key: string): string {
     if (key === MAINTENANCE_KEY) return 'mdi:wrench';
+    if (key === ENERGY_KEY) return 'mdi:flash';
     if (key === PERSON_DOMAIN) return 'mdi:account-group';
     if (key.startsWith('binary_sensor.')) {
       return getDeviceClassIcon('binary_sensor', key.slice('binary_sensor.'.length));
@@ -607,6 +620,7 @@ export class DwainsDevicesCard extends LitElement {
 
   private _typeColor(key: string): string {
     if (key === MAINTENANCE_KEY) return 'var(--warning-color, #ff9800)';
+    if (key === ENERGY_KEY) return '#d88e20';
     if (key.startsWith('binary_sensor.')) {
       return getDomainColor('binary_sensor', key.slice('binary_sensor.'.length));
     }
@@ -622,6 +636,8 @@ export class DwainsDevicesCard extends LitElement {
           ? 'mdi:new-box'
           : domain === MAINTENANCE_KEY
             ? 'mdi:wrench'
+          : domain === ENERGY_KEY
+            ? 'mdi:flash'
           : domain
             ? this._typeIcon(domain)
             : 'mdi:format-list-bulleted-type',
@@ -629,6 +645,8 @@ export class DwainsDevicesCard extends LitElement {
           ? 'New devices'
           : domain === MAINTENANCE_KEY
             ? 'Maintenance'
+          : domain === ENERGY_KEY
+            ? 'Energy'
           : domain
             ? this._typeName(domain)
             : this._t('devices.title'),
@@ -662,7 +680,8 @@ export class DwainsDevicesCard extends LitElement {
   private _applyPendingDomainSelection(
     data?: Map<string, Map<string, { area: AreaConfig; entities: EntityConfig[] }>>,
     showNewDevicesMenu?: boolean,
-    showMaintenanceMenu?: boolean
+    showMaintenanceMenu?: boolean,
+    showEnergyMenu?: boolean
   ): boolean {
     if (!this._hass || !this.config) return false;
 
@@ -672,23 +691,25 @@ export class DwainsDevicesCard extends LitElement {
     const currentData = data ?? this._buildData();
     const canShowNewDevices = showNewDevicesMenu ?? (
       shouldShowRecentDevicesPanel(this.config) &&
-      (this._newDevices().length > 0 || hiddenDeviceIds(this.config).size > 0)
+      this._newDevices().length > 0
     );
     const canShowMaintenance = showMaintenanceMenu ?? (
       this._maintenanceSummary(this._buildMaintenanceData()).totalCount > 0
     );
+    const canShowEnergy = showEnergyMenu ?? this._showEnergyMenu();
 
     if (domain === NEW_DEVICES_KEY) {
       if (!canShowNewDevices) return false;
     } else if (domain === MAINTENANCE_KEY) {
       if (!canShowMaintenance) return false;
+    } else if (domain === ENERGY_KEY) {
+      if (!canShowEnergy) return false;
     } else if (!currentData.has(domain)) {
       return false;
     }
 
     this._pendingDomainSelection = null;
     if (this._selectedDomain !== domain) {
-      this._resetDevicesEditMode();
       this._selectedDomain = domain;
       this._syncBottomNavDeviceContext();
     }
@@ -708,9 +729,6 @@ export class DwainsDevicesCard extends LitElement {
 
   private _selectDomain(domain: string) {
     this._pendingDomainSelection = null;
-    if (this._selectedDomain !== domain) {
-      this._resetDevicesEditMode();
-    }
     this._selectedDomain = domain;
     this._updateUrlDomain(domain);
     this._syncBottomNavDeviceContext();
@@ -749,9 +767,10 @@ export class DwainsDevicesCard extends LitElement {
     const showNewDevicesMenu = shouldShowRecentDevicesPanel(this.config) && (newDevices.length > 0 || hiddenCount > 0);
     const maintenance = this._buildMaintenanceData();
     const showMaintenanceMenu = this._maintenanceSummary(maintenance).totalCount > 0;
-    this._applyPendingDomainSelection(data, showNewDevicesMenu, showMaintenanceMenu);
+    const showEnergyMenu = this._showEnergyMenu();
+    this._applyPendingDomainSelection(data, showNewDevicesMenu, showMaintenanceMenu, showEnergyMenu);
 
-    if (domains.length === 0 && !showNewDevicesMenu && !showMaintenanceMenu) {
+    if (domains.length === 0 && !showNewDevicesMenu && !showMaintenanceMenu && !showEnergyMenu) {
       return html`
         <div class="layout-container">
           ${this._renderMobileOverlay()}
@@ -775,20 +794,26 @@ export class DwainsDevicesCard extends LitElement {
       if (!showMaintenanceMenu) {
         this._selectedDomain = domains[0] ?? (showNewDevicesMenu ? NEW_DEVICES_KEY : null);
       }
+    } else if (this._selectedDomain === ENERGY_KEY) {
+      if (!showEnergyMenu) {
+        this._selectedDomain = domains[0] ?? (showMaintenanceMenu ? MAINTENANCE_KEY : showNewDevicesMenu ? NEW_DEVICES_KEY : null);
+      }
     } else if (!this._selectedDomain || !data.has(this._selectedDomain)) {
-      this._selectedDomain = domains[0] ?? (showMaintenanceMenu ? MAINTENANCE_KEY : showNewDevicesMenu ? NEW_DEVICES_KEY : null);
+      this._selectedDomain = domains[0] ?? (showEnergyMenu ? ENERGY_KEY : showMaintenanceMenu ? MAINTENANCE_KEY : showNewDevicesMenu ? NEW_DEVICES_KEY : null);
     }
 
     return html`
       <div class="layout-container">
         ${this._renderMobileOverlay()}
-        ${this._renderSidebar(data, domains, newDevices, showNewDevicesMenu, maintenance, showMaintenanceMenu)}
+        ${this._renderSidebar(data, domains, newDevices, showNewDevicesMenu, maintenance, showMaintenanceMenu, showEnergyMenu)}
         <div class="main-content">
           <div class="content-area">
             ${this._selectedDomain === NEW_DEVICES_KEY
               ? this._renderNewDevicesView(newDevices)
               : this._selectedDomain === MAINTENANCE_KEY
                 ? this._renderMaintenanceView(maintenance)
+              : this._selectedDomain === ENERGY_KEY
+                ? this._renderEnergyView()
               : this._renderDeviceView(data)}
           </div>
         </div>
@@ -812,12 +837,14 @@ export class DwainsDevicesCard extends LitElement {
     newDevices: RecentDeviceSummary[],
     showNewDevicesMenu: boolean,
     maintenance: Map<string, MaintenanceBucket>,
-    showMaintenanceMenu: boolean
+    showMaintenanceMenu: boolean,
+    showEnergyMenu: boolean
   ) {
     const classes = {
       sidebar: true,
       open: this._isMobile && this._mobileNavOpen,
     };
+    const energySummary = this._energySummary();
 
     return html`
       <nav class=${classMap(classes)}>
@@ -862,6 +889,29 @@ export class DwainsDevicesCard extends LitElement {
                 </button>
               `
             : nothing}
+          ${showEnergyMenu
+            ? html`
+                <button
+                  class="area-button energy ${this._selectedDomain === ENERGY_KEY ? 'selected' : ''}"
+                  style=${`--domain-color: ${this._typeColor(ENERGY_KEY)};`}
+                  @click=${() => this._selectDomain(ENERGY_KEY)}
+                >
+                  <div class="area-icon">
+                    <ha-icon icon="mdi:flash"></ha-icon>
+                  </div>
+                  <div class="area-info">
+                    <div class="area-name">Energy</div>
+                    <div class="device-menu-subtitle">
+                      ${energySummary.sensorCount === 1
+                        ? '1 live power sensor'
+                        : `${energySummary.sensorCount} live power sensors`}
+                    </div>
+                  </div>
+                  <span class="domain-count">${energySummary.sensorCount}</span>
+                  <ha-icon class="device-menu-chevron" icon="mdi:chevron-right"></ha-icon>
+                </button>
+              `
+            : nothing}
           ${domains.map((domain) => {
             const byArea = data.get(domain)!;
             const count = this._domainCount(byArea);
@@ -902,9 +952,6 @@ export class DwainsDevicesCard extends LitElement {
     const orderedAreas = domain === PERSON_DOMAIN
       ? [...byArea.values()].map((bucket) => bucket.area)
       : this._getVisibleSortedAreas().filter((a) => byArea.has(a.area_id));
-    const canEdit = this._canManageDashboard() && domain !== NEW_DEVICES_KEY;
-    const allEntityIds = this._entityIdsForDomain(byArea);
-    const selectedCount = this._selectedCount(allEntityIds);
 
     return html`
       <div class="device-view">
@@ -913,25 +960,10 @@ export class DwainsDevicesCard extends LitElement {
             <ha-icon icon=${this._typeIcon(domain)}></ha-icon>
             <h1 class="device-title">${this._typeName(domain)}</h1>
           </div>
-          ${canEdit ? html`
-            <button
-              class="device-edit-toggle ${this._devicesEditMode ? 'active' : ''}"
-              type="button"
-              title=${this._devicesEditMode ? 'Done editing' : 'Edit visible entities'}
-              aria-label=${this._devicesEditMode ? 'Done editing' : 'Edit visible entities'}
-              @click=${this._toggleDevicesEditMode}
-            >
-              <ha-icon icon=${this._devicesEditMode ? 'mdi:check' : 'mdi:pencil'}></ha-icon>
-            </button>
-          ` : nothing}
         </div>
-
-        ${this._devicesEditMode ? this._renderDeviceEditToolbar(allEntityIds, selectedCount) : nothing}
 
         ${orderedAreas.map((area) => {
           const bucket = byArea.get(area.area_id)!;
-          const areaEntityIds = bucket.entities.map(entity => entity.entity_id);
-          const areaSelectedCount = this._selectedCount(areaEntityIds);
           return html`
             <div class="domain-group">
               <div class="domain-header">
@@ -939,23 +971,6 @@ export class DwainsDevicesCard extends LitElement {
                   <ha-icon icon="mdi:floor-plan"></ha-icon>
                   <span>${area.name}</span>
                 </div>
-                ${this._devicesEditMode ? html`
-                  <div class="domain-edit-actions">
-                    <span>${areaSelectedCount}/${areaEntityIds.length}</span>
-                    <button
-                      type="button"
-                      @click=${() => this._selectAreaEntities(areaEntityIds)}
-                    >
-                      Select area
-                    </button>
-                    <button
-                      type="button"
-                      @click=${() => this._deselectAreaEntities(areaEntityIds)}
-                    >
-                      Deselect
-                    </button>
-                  </div>
-                ` : nothing}
               </div>
               <div class=${this._entitiesGridClass(domain)}>
                 ${repeat(
@@ -969,6 +984,198 @@ export class DwainsDevicesCard extends LitElement {
         })}
       </div>
     `;
+  }
+
+  private _renderEnergyView() {
+    const summary = this._energySummary();
+    const topArea = summary.areas[0];
+    const wholeHouseTrend = summary.areas.map((area) => area.totalWatts);
+
+    return html`
+      <div class="device-view energy-view">
+        <div class="device-header energy-header" style=${`--domain-color: ${this._typeColor(ENERGY_KEY)};`}>
+          <div class="device-title-wrap">
+            <ha-icon icon="mdi:flash"></ha-icon>
+            <div>
+              <h1 class="device-title">Energy</h1>
+              <div class="energy-header-subtitle">Live power usage by area</div>
+            </div>
+          </div>
+          <div class="energy-header-total">
+            <span>${summary.formattedTotal}</span>
+            <small>${summary.sensorCount === 1 ? '1 live power sensor' : `${summary.sensorCount} live power sensors`}</small>
+          </div>
+        </div>
+
+        ${summary.sensorCount
+          ? html`
+              <div class="energy-overview-grid">
+                <section class="energy-overview-card total">
+                  <div class="energy-overview-head">
+                    <span class="energy-overview-icon">
+                      <ha-icon icon="mdi:home-lightning-bolt-outline"></ha-icon>
+                    </span>
+                    <div>
+                      <h2>Whole house</h2>
+                      <p>${summary.sensorCount === 1 ? '1 live power sensor' : `${summary.sensorCount} live power sensors`}</p>
+                    </div>
+                    <strong>${summary.formattedTotal}</strong>
+                  </div>
+                  ${this._renderEnergySparkline(wholeHouseTrend, 'House power distribution')}
+                </section>
+
+                ${topArea ? html`
+                  <section class="energy-overview-card top-area">
+                    <div class="energy-overview-head">
+                      <span class="energy-overview-icon">
+                        <ha-icon icon=${topArea.icon}></ha-icon>
+                      </span>
+                      <div>
+                        <h2>Top area</h2>
+                        <p>${topArea.name}</p>
+                      </div>
+                      <strong>${topArea.formattedTotal}</strong>
+                    </div>
+                    <div class="energy-top-entities">
+                      ${topArea.entities.slice(0, 3).map((entity) => this._renderEnergyEntityMini(entity, topArea.totalWatts))}
+                    </div>
+                  </section>
+                ` : nothing}
+              </div>
+
+              <div class="energy-areas-grid">
+                ${repeat(
+                  summary.areas,
+                  (area) => area.areaId,
+                  (area) => this._renderEnergyAreaCard(area)
+                )}
+              </div>
+            `
+          : html`
+              <div class="energy-empty">
+                <ha-icon icon="mdi:flash-off-outline"></ha-icon>
+                <h2>No live power sensors found</h2>
+                <p>Energy will appear here when Home Assistant has visible power sensors with W, kW or MW units.</p>
+              </div>
+            `}
+      </div>
+    `;
+  }
+
+  private _renderEnergyAreaCard(area: PowerAreaSummary) {
+    const canNavigate = !area.areaId.startsWith('__');
+    return html`
+      <section class="energy-area-card">
+        <header class="energy-area-head">
+          <button
+            class="energy-area-title"
+            type="button"
+            @click=${() => canNavigate ? this._navigateToArea(area.areaId) : undefined}
+            ?disabled=${!canNavigate}
+          >
+            <span class="energy-area-icon">
+              <ha-icon icon=${area.icon}></ha-icon>
+            </span>
+            <span>
+              <strong>${area.name}</strong>
+              <small>${area.entities.length === 1 ? '1 power entity' : `${area.entities.length} power entities`}</small>
+            </span>
+          </button>
+          <div class="energy-area-total">
+            <span>${area.formattedTotal}</span>
+            <small>Total now</small>
+          </div>
+        </header>
+
+        ${this._renderEnergySparkline(area.trend, `${area.name} power distribution`)}
+
+        <div class="energy-entity-list">
+          ${repeat(
+            area.entities,
+            (entity) => entity.entityId,
+            (entity) => this._renderEnergyEntityRow(entity, area.totalWatts)
+          )}
+        </div>
+      </section>
+    `;
+  }
+
+  private _renderEnergyEntityMini(entity: PowerEntitySummary, areaTotalWatts: number) {
+    const percentage = this._energyEntityPercentage(entity, areaTotalWatts);
+    return html`
+      <button
+        class="energy-entity-mini"
+        type="button"
+        style=${`--power-width: ${percentage}%`}
+        @click=${() => this._showMoreInfo(entity.entityId)}
+      >
+        <span>${entity.name}</span>
+        <strong>${entity.formatted}</strong>
+      </button>
+    `;
+  }
+
+  private _renderEnergyEntityRow(entity: PowerEntitySummary, areaTotalWatts: number) {
+    const percentage = this._energyEntityPercentage(entity, areaTotalWatts);
+    return html`
+      <button
+        class="energy-entity-row"
+        type="button"
+        style=${`--power-width: ${percentage}%`}
+        @click=${() => this._showMoreInfo(entity.entityId)}
+      >
+        <span class="energy-entity-icon">
+          <ha-icon icon=${entity.icon}></ha-icon>
+        </span>
+        <span class="energy-entity-copy">
+          <strong>${entity.name}</strong>
+          <small>${entity.areaName}</small>
+          <span class="energy-entity-bar" aria-hidden="true"><span></span></span>
+        </span>
+        <span class="energy-entity-value">${entity.formatted}</span>
+      </button>
+    `;
+  }
+
+  private _energyEntityPercentage(entity: PowerEntitySummary, areaTotalWatts: number): number {
+    if (areaTotalWatts <= 0) return 0;
+    return Math.max(4, Math.min(100, Math.round((entity.watts / areaTotalWatts) * 100)));
+  }
+
+  private _renderEnergySparkline(values: number[], label: string) {
+    const path = this._sparklinePath(values, 220, 72);
+    const areaPath = this._sparklineAreaPath(values, 220, 72);
+    return html`
+      <svg class="energy-sparkline" viewBox="0 0 220 72" role="img" aria-label=${label} preserveAspectRatio="none">
+        <path class="energy-sparkline-fill" d=${areaPath}></path>
+        <path class="energy-sparkline-line" d=${path}></path>
+      </svg>
+    `;
+  }
+
+  private _sparklinePath(values: number[], width: number, height: number): string {
+    const points = this._sparklinePoints(values, width, height);
+    return points.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`).join(' ');
+  }
+
+  private _sparklineAreaPath(values: number[], width: number, height: number): string {
+    const line = this._sparklinePath(values, width, height);
+    return `${line} L ${width} ${height} L 0 ${height} Z`;
+  }
+
+  private _sparklinePoints(values: number[], width: number, height: number): Array<{ x: number; y: number }> {
+    const safeValues = values.length ? values : [0];
+    const max = Math.max(...safeValues, 1);
+    const min = Math.min(...safeValues, 0);
+    const range = Math.max(1, max - min);
+    const lastIndex = Math.max(1, safeValues.length - 1);
+    const padding = 8;
+
+    return safeValues.map((value, index) => {
+      const x = Math.round((index / lastIndex) * width * 10) / 10;
+      const y = Math.round((height - padding - ((value - min) / range) * (height - padding * 2)) * 10) / 10;
+      return { x, y };
+    });
   }
 
   private _renderMaintenanceView(maintenance: Map<string, MaintenanceBucket>) {
@@ -1077,65 +1284,16 @@ export class DwainsDevicesCard extends LitElement {
     window.dispatchEvent(ev);
   }
 
-  private _renderDeviceEditToolbar(allEntityIds: string[], selectedCount: number) {
-    return html`
-      <div class="device-edit-toolbar">
-        <div class="device-edit-summary">
-          <ha-icon icon="mdi:eye-off-outline"></ha-icon>
-          <span>${selectedCount}/${allEntityIds.length} selected</span>
-        </div>
-        <div class="device-edit-actions">
-          <button
-            type="button"
-            ?disabled=${allEntityIds.length === 0 || selectedCount === allEntityIds.length}
-            @click=${() => this._selectAllEntities(allEntityIds)}
-          >
-            Select all
-          </button>
-          <button
-            type="button"
-            ?disabled=${selectedCount === 0}
-            @click=${this._deselectAllEntities}
-          >
-            Deselect all
-          </button>
-          <button
-            class="danger"
-            type="button"
-            ?disabled=${selectedCount === 0}
-            @click=${() => this._hideSelectedEntities()}
-          >
-            <ha-icon icon="mdi:eye-off-outline"></ha-icon>
-            <span>Hide in DD</span>
-          </button>
-        </div>
-      </div>
-    `;
-  }
-
   private _renderEntityCard(entity: EntityConfig) {
     const state = this._hass.states[entity.entity_id];
     if (!state) return nothing;
-    const selected = this._selectedEntityIds.has(entity.entity_id);
 
     return html`
-      <div class="${this._entityWrapperClass(entity.entity_id)} ${this._devicesEditMode ? 'editing' : ''} ${selected ? 'selected' : ''}">
+      <div class="${this._entityWrapperClass(entity.entity_id)}">
         <dwains-dashboard-next-card-host
           .hass=${this._hass}
           .config=${this._entityCardConfig(entity.entity_id)}
         ></dwains-dashboard-next-card-host>
-        ${this._devicesEditMode ? html`
-          <button
-            class="entity-select-overlay"
-            type="button"
-            aria-label=${selected ? `Deselect ${state.attributes?.friendly_name || entity.entity_id}` : `Select ${state.attributes?.friendly_name || entity.entity_id}`}
-            @click=${() => this._toggleEntitySelection(entity.entity_id)}
-          >
-            <span class="entity-select-check">
-              <ha-icon icon=${selected ? 'mdi:check' : 'mdi:plus'}></ha-icon>
-            </span>
-          </button>
-        ` : nothing}
       </div>
     `;
   }
@@ -1162,122 +1320,7 @@ export class DwainsDevicesCard extends LitElement {
     ].filter(Boolean).join(' ');
   }
 
-  private _canManageDashboard(): boolean {
-    return !restrictNonAdminDashboardSettings(this._hass, this.config?.settings);
-  }
-
-  private _resetDevicesEditMode(): void {
-    this._devicesEditMode = false;
-    this._selectedEntityIds = new Set();
-  }
-
-  private _toggleDevicesEditMode = (): void => {
-    if (!this._canManageDashboard()) return;
-    this._devicesEditMode = !this._devicesEditMode;
-    this._selectedEntityIds = new Set();
-  };
-
-  private _entityIdsForDomain(
-    byArea: Map<string, { area: AreaConfig; entities: EntityConfig[] }>
-  ): string[] {
-    return [...byArea.values()].flatMap(bucket => bucket.entities.map(entity => entity.entity_id));
-  }
-
-  private _selectedCount(entityIds: string[]): number {
-    return entityIds.filter(entityId => this._selectedEntityIds.has(entityId)).length;
-  }
-
-  private _selectAllEntities(entityIds: string[]): void {
-    this._selectedEntityIds = new Set(entityIds);
-  }
-
-  private _deselectAllEntities(): void {
-    this._selectedEntityIds = new Set();
-  }
-
-  private _selectAreaEntities(entityIds: string[]): void {
-    this._selectedEntityIds = new Set([...this._selectedEntityIds, ...entityIds]);
-  }
-
-  private _deselectAreaEntities(entityIds: string[]): void {
-    const remove = new Set(entityIds);
-    this._selectedEntityIds = new Set([...this._selectedEntityIds].filter(entityId => !remove.has(entityId)));
-  }
-
-  private _toggleEntitySelection(entityId: string): void {
-    const next = new Set(this._selectedEntityIds);
-    if (next.has(entityId)) {
-      next.delete(entityId);
-    } else {
-      next.add(entityId);
-    }
-    this._selectedEntityIds = next;
-  }
-
-  private _areaStrategyGroupForEntity(entityId: string): string {
-    const domain = entityId.split('.')[0];
-    const deviceClass = this._hass.states?.[entityId]?.attributes?.device_class;
-
-    if (domain === 'light') return 'lights';
-    if (domain === 'climate' || domain === 'humidifier' || domain === 'water_heater' || domain === 'fan') return 'climate';
-    if (domain === 'cover') return 'covers';
-    if (domain === 'binary_sensor' && ['door', 'garage_door', 'window'].includes(String(deviceClass))) return 'covers';
-    if (domain === 'media_player') return 'media_players';
-    if (domain === 'alarm_control_panel' || domain === 'lock' || domain === 'camera') return 'security';
-    if (domain === 'binary_sensor' && ['motion', 'occupancy', 'presence'].includes(String(deviceClass))) return 'motion';
-    if (domain === 'script' || domain === 'scene' || domain === 'automation') return 'actions';
-    return 'others';
-  }
-
-  private async _hideSelectedEntities(): Promise<void> {
-    if (!this.config || this._selectedEntityIds.size === 0 || !this._selectedDomain) return;
-
-    const data = this._buildData();
-    const byArea = data.get(this._selectedDomain);
-    if (!byArea) return;
-
-    const selected = new Set(this._selectedEntityIds);
-    const nextAreasOptions = { ...(this.config.areas_options || {}) };
-    const nextHiddenPersons = new Set(this.config.settings?.hidden_persons || []);
-
-    byArea.forEach((bucket, areaId) => {
-      bucket.entities.forEach(entity => {
-        if (!selected.has(entity.entity_id)) return;
-
-        if (entity.entity_id.startsWith('person.')) {
-          nextHiddenPersons.add(entity.entity_id);
-          return;
-        }
-
-        const group = this._areaStrategyGroupForEntity(entity.entity_id);
-        const areaOptions = { ...(nextAreasOptions[areaId] || {}) };
-        const groupsOptions = { ...(areaOptions.groups_options || {}) };
-        const groupOptions = { ...(groupsOptions[group] || {}) };
-        const hidden = new Set(groupOptions.hidden || []);
-        hidden.add(entity.entity_id);
-
-        groupsOptions[group] = {
-          ...groupOptions,
-          hidden: Array.from(hidden),
-        };
-        nextAreasOptions[areaId] = {
-          ...areaOptions,
-          groups_options: groupsOptions,
-        };
-      });
-    });
-
-    const nextSettings = {
-      ...(this.config.settings || {}),
-      hidden_persons: Array.from(nextHiddenPersons),
-    };
-
-    await this._saveEntityVisibility(nextAreasOptions, nextSettings);
-    this._resetDevicesEditMode();
-  }
-
   private _renderNewDevicesView(devices: RecentDeviceSummary[]) {
-    const hiddenCount = hiddenDeviceIds(this.config).size;
     return html`
       <div class="device-view">
         <section class="recent-devices new-devices-view">
@@ -1292,13 +1335,6 @@ export class DwainsDevicesCard extends LitElement {
                 Devices added to Home Assistant in the last ${NEW_DEVICE_WINDOW_HOURS} hours.
               </div>
             </div>
-            ${hiddenCount
-              ? html`
-                  <button class="text-action" @click=${this._showAllHiddenDevices}>
-                    Show ${hiddenCount} hidden
-                  </button>
-                `
-              : nothing}
           </div>
           <div class="recent-grid">
             ${devices.length
@@ -1330,7 +1366,6 @@ export class DwainsDevicesCard extends LitElement {
   }
 
   private _renderRecentDevice(summary: RecentDeviceSummary) {
-    const area = summary.areaName || 'No area';
     return html`
       <div class="recent-device ${summary.hidden ? 'is-hidden' : ''}">
         <div class="recent-device-main">
@@ -1340,7 +1375,7 @@ export class DwainsDevicesCard extends LitElement {
           <div class="recent-device-copy">
             <div class="recent-device-name">${summary.device.name}</div>
             <div class="recent-device-meta">
-              <span>${area}</span>
+              <span>${summary.areaName}</span>
               <span>${summary.entityCount} entities</span>
               <span>${this._formatAddedAge(summary.createdAtMs)}</span>
             </div>
@@ -1351,16 +1386,6 @@ export class DwainsDevicesCard extends LitElement {
             </div>
           </div>
         </div>
-        <button
-          class=${summary.hidden ? 'device-action show' : 'device-action'}
-          @click=${() =>
-            summary.hidden
-              ? this._showDeviceInDD(summary.device.device_id)
-              : this._hideDeviceInDD(summary.device.device_id)}
-        >
-          <ha-icon icon=${summary.hidden ? 'mdi:eye-outline' : 'mdi:eye-off-outline'}></ha-icon>
-          <span>${summary.hidden ? 'Show in DD' : 'Hide in DD'}</span>
-        </button>
       </div>
     `;
   }
@@ -1378,22 +1403,6 @@ export class DwainsDevicesCard extends LitElement {
     if (hours < 24) return `Added ${hours}h ago`;
     return `Added ${Math.floor(hours / 24)}d ago`;
   }
-
-  private _hideDeviceInDD(deviceId: string): void {
-    const hidden = new Set(deviceAdmission(this.config).hidden_devices || []);
-    hidden.add(deviceId);
-    void this._saveDeviceAdmission({ ...deviceAdmission(this.config), hidden_devices: Array.from(hidden) });
-  }
-
-  private _showDeviceInDD(deviceId: string): void {
-    const hidden = new Set(deviceAdmission(this.config).hidden_devices || []);
-    hidden.delete(deviceId);
-    void this._saveDeviceAdmission({ ...deviceAdmission(this.config), hidden_devices: Array.from(hidden) });
-  }
-
-  private _showAllHiddenDevices = (): void => {
-    void this._saveDeviceAdmission({ ...deviceAdmission(this.config), hidden_devices: [] });
-  };
 
   private async _saveDeviceAdmission(nextAdmission: DeviceAdmission, silent = false): Promise<void> {
     this.config = {
@@ -1426,43 +1435,6 @@ export class DwainsDevicesCard extends LitElement {
     }
   }
 
-  private async _saveEntityVisibility(
-    nextAreasOptions: NonNullable<DwainsDashboardConfig['areas_options']>,
-    nextSettings: NonNullable<DwainsDashboardConfig['settings']>
-  ): Promise<void> {
-    this.config = {
-      ...this.config,
-      areas_options: nextAreasOptions,
-      settings: nextSettings,
-    };
-    this.requestUpdate();
-
-    try {
-      const urlPath = this._getDashboardUrlPath();
-      const base = urlPath ? { url_path: urlPath } : {};
-      const lovelaceConfig: any = await this._hass.callWS({ type: 'lovelace/config', ...base });
-      const strat = lovelaceConfig?.strategy || {};
-      await this._hass.callWS({
-        type: 'lovelace/config/save',
-        ...base,
-        config: {
-          ...lovelaceConfig,
-          strategy: {
-            ...strat,
-            areas_options: nextAreasOptions,
-            settings: {
-              ...(strat.settings || {}),
-              ...nextSettings,
-            },
-          },
-        },
-      });
-    } catch (e) {
-      console.error('❌ Entity visibility save failed:', e);
-      alert(`Could not save entity visibility:\n${String(e)}`);
-    }
-  }
-
   static override styles = css`
     :host {
       display: block;
@@ -1472,7 +1444,6 @@ export class DwainsDevicesCard extends LitElement {
     button,
     .area-button,
     .recent-device,
-    .device-action,
     .restore-button {
       user-select: none;
       -webkit-user-select: none;
@@ -1663,20 +1634,9 @@ export class DwainsDevicesCard extends LitElement {
         padding-bottom: calc(104px + env(safe-area-inset-bottom, 0px));
       }
 
-      .device-edit-toolbar,
       .domain-header {
         align-items: flex-start;
         flex-direction: column;
-      }
-
-      .device-edit-actions,
-      .domain-edit-actions {
-        width: 100%;
-        flex-wrap: wrap;
-      }
-
-      .domain-edit-actions {
-        margin-left: 0;
       }
     }
 
@@ -1709,99 +1669,6 @@ export class DwainsDevicesCard extends LitElement {
       margin: 0;
       font-size: 24px;
       font-weight: 600;
-    }
-
-    .device-edit-toggle {
-      width: 44px;
-      height: 44px;
-      border: 0;
-      border-radius: 50%;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      background: var(--secondary-background-color);
-      color: var(--primary-text-color);
-      cursor: pointer;
-      box-shadow: 0 8px 22px rgba(15, 23, 42, 0.08);
-      transition: transform 0.18s ease, background 0.18s ease, color 0.18s ease;
-    }
-
-    .device-edit-toggle:hover {
-      transform: translateY(-1px);
-      background: color-mix(in srgb, var(--domain-color) 12%, var(--secondary-background-color));
-      color: var(--domain-color);
-    }
-
-    .device-edit-toggle.active {
-      background: var(--domain-color);
-      color: var(--text-primary-color);
-    }
-
-    .device-edit-toggle ha-icon {
-      --mdc-icon-size: 22px;
-      color: currentColor;
-    }
-
-    .device-edit-toolbar {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      margin: 0 0 16px;
-      padding: 12px;
-      border-radius: 14px;
-      background: color-mix(in srgb, var(--domain-color) 8%, var(--card-background-color));
-      border: 1px solid color-mix(in srgb, var(--domain-color) 18%, var(--divider-color));
-    }
-
-    .device-edit-summary,
-    .device-edit-actions {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .device-edit-summary {
-      color: var(--primary-text-color);
-      font-size: 13px;
-      font-weight: 750;
-    }
-
-    .device-edit-summary ha-icon {
-      --mdc-icon-size: 18px;
-      color: var(--domain-color);
-    }
-
-    .device-edit-actions button,
-    .domain-edit-actions button {
-      min-height: 34px;
-      border: 0;
-      border-radius: 999px;
-      padding: 0 12px;
-      background: var(--card-background-color);
-      color: var(--primary-text-color);
-      cursor: pointer;
-      font: inherit;
-      font-size: 12px;
-      font-weight: 800;
-      box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.06);
-    }
-
-    .device-edit-actions button.danger {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      background: rgba(var(--rgb-warning-color, 255, 152, 0), 0.14);
-      color: var(--warning-color, #f57c00);
-    }
-
-    .device-edit-actions button:disabled {
-      opacity: 0.45;
-      cursor: not-allowed;
-    }
-
-    .device-edit-actions button ha-icon {
-      --mdc-icon-size: 16px;
     }
 
     .recent-devices {
@@ -1952,41 +1819,6 @@ export class DwainsDevicesCard extends LitElement {
       background: var(--secondary-background-color);
       color: var(--secondary-text-color);
       font-size: 11px;
-    }
-
-    .device-action,
-    .text-action {
-      border: 0;
-      border-radius: 999px;
-      cursor: pointer;
-      font: inherit;
-      font-size: 12px;
-      font-weight: 700;
-      white-space: nowrap;
-    }
-
-    .device-action {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 8px 11px;
-      background: rgba(var(--rgb-warning-color, 255, 152, 0), 0.12);
-      color: var(--warning-color, #f57c00);
-    }
-
-    .device-action.show {
-      background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.12);
-      color: var(--primary-color);
-    }
-
-    .device-action ha-icon {
-      --mdc-icon-size: 16px;
-    }
-
-    .text-action {
-      padding: 8px 10px;
-      background: var(--secondary-background-color);
-      color: var(--primary-color);
     }
 
     .maintenance-view {
@@ -2192,6 +2024,374 @@ export class DwainsDevicesCard extends LitElement {
       color: var(--success-color, #4caf50);
     }
 
+    .area-button.energy {
+      --domain-color: #d88e20;
+    }
+
+    .energy-view {
+      --domain-color: #d88e20;
+      max-width: 1320px;
+    }
+
+    .energy-header {
+      align-items: flex-start;
+      margin-bottom: 18px;
+    }
+
+    .energy-header-subtitle {
+      margin-top: 3px;
+      color: var(--secondary-text-color);
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .energy-header-total {
+      min-width: 150px;
+      padding: 9px 12px;
+      border-radius: 12px;
+      display: grid;
+      justify-items: end;
+      background: color-mix(in srgb, var(--domain-color) 10%, var(--card-background-color));
+      box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--domain-color) 14%, transparent);
+    }
+
+    .energy-header-total span {
+      color: var(--primary-text-color);
+      font-size: 24px;
+      font-weight: 950;
+      line-height: 1;
+    }
+
+    .energy-header-total small,
+    .energy-overview-head p,
+    .energy-area-title small,
+    .energy-area-total small,
+    .energy-entity-copy small {
+      color: var(--secondary-text-color);
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1.2;
+    }
+
+    .energy-overview-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(260px, 1fr));
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
+    .energy-overview-card,
+    .energy-area-card {
+      border: 1px solid var(--divider-color);
+      border-radius: 12px;
+      background: var(--card-background-color);
+      box-shadow: 0 14px 30px rgba(15, 23, 42, 0.05);
+    }
+
+    .energy-overview-card {
+      padding: 14px;
+      overflow: hidden;
+    }
+
+    .energy-overview-head {
+      display: grid;
+      grid-template-columns: 42px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .energy-overview-icon,
+    .energy-area-icon,
+    .energy-entity-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex: 0 0 auto;
+      background: color-mix(in srgb, var(--domain-color) 12%, transparent);
+      color: var(--domain-color);
+    }
+
+    .energy-overview-icon {
+      width: 42px;
+      height: 42px;
+      border-radius: 12px;
+    }
+
+    .energy-overview-icon ha-icon {
+      --mdc-icon-size: 24px;
+    }
+
+    .energy-overview-head h2 {
+      margin: 0;
+      color: var(--primary-text-color);
+      font-size: 15px;
+      font-weight: 850;
+      line-height: 1.1;
+    }
+
+    .energy-overview-head p {
+      margin: 4px 0 0;
+    }
+
+    .energy-overview-head strong {
+      color: var(--primary-text-color);
+      font-size: 22px;
+      font-weight: 950;
+      white-space: nowrap;
+    }
+
+    .energy-sparkline {
+      width: 100%;
+      height: 72px;
+      margin-top: 12px;
+      display: block;
+      overflow: visible;
+    }
+
+    .energy-sparkline-fill {
+      fill: color-mix(in srgb, var(--domain-color) 13%, transparent);
+    }
+
+    .energy-sparkline-line {
+      fill: none;
+      stroke: var(--domain-color);
+      stroke-width: 3;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      filter: drop-shadow(0 8px 10px color-mix(in srgb, var(--domain-color) 18%, transparent));
+    }
+
+    .energy-top-entities {
+      margin-top: 12px;
+      display: grid;
+      gap: 7px;
+    }
+
+    .energy-entity-mini {
+      min-height: 30px;
+      padding: 0 9px;
+      border: 0;
+      border-radius: 9px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 8px;
+      background:
+        linear-gradient(90deg,
+          color-mix(in srgb, var(--domain-color) 16%, transparent) 0 var(--power-width),
+          var(--secondary-background-color) var(--power-width) 100%);
+      color: var(--primary-text-color);
+      cursor: pointer;
+      text-align: left;
+      font: inherit;
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .energy-entity-mini span {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .energy-entity-mini strong {
+      font-size: 12px;
+      font-weight: 900;
+      white-space: nowrap;
+    }
+
+    .energy-areas-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+      gap: 12px;
+    }
+
+    .energy-area-card {
+      padding: 14px;
+      overflow: hidden;
+    }
+
+    .energy-area-head {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .energy-area-title {
+      min-width: 0;
+      padding: 0;
+      border: 0;
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      background: transparent;
+      color: var(--primary-text-color);
+      cursor: pointer;
+      text-align: left;
+      font: inherit;
+    }
+
+    .energy-area-title:disabled {
+      cursor: default;
+    }
+
+    .energy-area-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 12px;
+    }
+
+    .energy-area-icon ha-icon {
+      --mdc-icon-size: 22px;
+    }
+
+    .energy-area-title strong {
+      display: block;
+      overflow: hidden;
+      color: var(--primary-text-color);
+      font-size: 16px;
+      font-weight: 900;
+      line-height: 1.12;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .energy-area-title small {
+      display: block;
+      margin-top: 3px;
+    }
+
+    .energy-area-total {
+      display: grid;
+      justify-items: end;
+      gap: 2px;
+    }
+
+    .energy-area-total span {
+      color: var(--primary-text-color);
+      font-size: 20px;
+      font-weight: 950;
+      line-height: 1;
+      white-space: nowrap;
+    }
+
+    .energy-entity-list {
+      display: grid;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .energy-entity-row {
+      min-height: 58px;
+      padding: 9px 10px;
+      border: 1px solid var(--divider-color);
+      border-radius: 10px;
+      display: grid;
+      grid-template-columns: 36px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 10px;
+      background: var(--primary-background-color);
+      color: var(--primary-text-color);
+      cursor: pointer;
+      text-align: left;
+      font: inherit;
+      transition:
+        border-color 0.16s ease,
+        transform 0.16s ease,
+        box-shadow 0.16s ease;
+    }
+
+    .energy-entity-row:hover {
+      border-color: color-mix(in srgb, var(--domain-color) 26%, var(--divider-color));
+      box-shadow: 0 12px 22px rgba(15, 23, 42, 0.08);
+      transform: translateY(-1px);
+    }
+
+    .energy-entity-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+    }
+
+    .energy-entity-icon ha-icon {
+      --mdc-icon-size: 20px;
+    }
+
+    .energy-entity-copy {
+      min-width: 0;
+      display: grid;
+      gap: 3px;
+    }
+
+    .energy-entity-copy strong {
+      overflow: hidden;
+      color: var(--primary-text-color);
+      font-size: 13px;
+      font-weight: 850;
+      line-height: 1.1;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .energy-entity-bar {
+      position: relative;
+      height: 5px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--domain-color) 10%, var(--secondary-background-color));
+    }
+
+    .energy-entity-bar span {
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: var(--power-width, 0%);
+      min-width: 4px;
+      border-radius: inherit;
+      background: linear-gradient(90deg, var(--domain-color), #f5c85b);
+    }
+
+    .energy-entity-value {
+      color: var(--primary-text-color);
+      font-size: 13px;
+      font-weight: 900;
+      white-space: nowrap;
+    }
+
+    .energy-empty {
+      min-height: 280px;
+      padding: 32px;
+      border: 1px dashed var(--divider-color);
+      border-radius: 12px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      background: var(--card-background-color);
+      color: var(--secondary-text-color);
+      text-align: center;
+    }
+
+    .energy-empty ha-icon {
+      --mdc-icon-size: 34px;
+      color: var(--domain-color);
+    }
+
+    .energy-empty h2 {
+      margin: 4px 0 0;
+      color: var(--primary-text-color);
+      font-size: 18px;
+      font-weight: 850;
+    }
+
+    .energy-empty p {
+      max-width: 430px;
+      margin: 0;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
     /* Domain (per area) groups */
     .domain-group {
       background: var(--card-background-color);
@@ -2220,17 +2420,6 @@ export class DwainsDevicesCard extends LitElement {
     .domain-header ha-icon {
       --mdc-icon-size: 20px;
       opacity: 0.8;
-    }
-
-    .domain-edit-actions {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      margin-left: auto;
-      color: var(--secondary-text-color);
-      font-size: 12px;
-      font-weight: 750;
-      white-space: nowrap;
     }
 
     .entities-grid {
@@ -2262,57 +2451,6 @@ export class DwainsDevicesCard extends LitElement {
     .entity-card-wrapper {
       min-height: 60px;
       position: relative;
-    }
-
-    .entity-card-wrapper.editing {
-      border-radius: 12px;
-    }
-
-    .entity-card-wrapper.editing dwains-dashboard-next-card-host {
-      display: block;
-      pointer-events: none;
-    }
-
-    .entity-card-wrapper.selected {
-      outline: 2px solid var(--domain-color, var(--primary-color));
-      outline-offset: 2px;
-    }
-
-    .entity-select-overlay {
-      position: absolute;
-      inset: 0;
-      z-index: 3;
-      border: 0;
-      border-radius: 12px;
-      padding: 8px;
-      background: transparent;
-      cursor: pointer;
-      display: flex;
-      align-items: flex-start;
-      justify-content: flex-end;
-    }
-
-    .entity-select-check {
-      width: 30px;
-      height: 30px;
-      border-radius: 999px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      color: var(--secondary-text-color);
-      background: color-mix(in srgb, var(--card-background-color) 92%, transparent);
-      box-shadow:
-        0 8px 18px rgba(15, 23, 42, 0.14),
-        inset 0 0 0 1px rgba(15, 23, 42, 0.08);
-    }
-
-    .entity-card-wrapper.selected .entity-select-check {
-      background: var(--domain-color, var(--primary-color));
-      color: var(--text-primary-color);
-    }
-
-    .entity-select-check ha-icon {
-      --mdc-icon-size: 18px;
     }
 
     .cover-entity-card {
@@ -2602,10 +2740,6 @@ export class DwainsDevicesCard extends LitElement {
         flex-direction: column;
       }
 
-      .device-action {
-        justify-content: center;
-      }
-
       .maintenance-header {
         gap: 12px;
       }
@@ -2620,6 +2754,47 @@ export class DwainsDevicesCard extends LitElement {
 
       .maintenance-card {
         min-height: 62px;
+      }
+
+      .energy-header {
+        align-items: stretch;
+        flex-direction: column;
+      }
+
+      .energy-header-total {
+        justify-items: start;
+      }
+
+      .energy-overview-grid,
+      .energy-areas-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .energy-overview-head,
+      .energy-area-head {
+        grid-template-columns: 40px minmax(0, 1fr);
+      }
+
+      .energy-overview-head strong,
+      .energy-area-total {
+        grid-column: 1 / -1;
+        justify-self: stretch;
+        justify-items: start;
+        margin-top: 4px;
+      }
+
+      .energy-area-card,
+      .energy-overview-card {
+        border-radius: 10px;
+      }
+
+      .energy-entity-row {
+        grid-template-columns: 36px minmax(0, 1fr);
+      }
+
+      .energy-entity-value {
+        grid-column: 2;
+        justify-self: start;
       }
     }
   `;

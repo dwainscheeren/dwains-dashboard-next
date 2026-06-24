@@ -1,11 +1,11 @@
 import type { HomeSectionKey } from '../types/strategy';
 
 export const DEFAULT_HOME_SECTIONS_ORDER: HomeSectionKey[] = [
-  'summaries',
   'cameras',
   'areas',
   'devices',
   'favorites',
+  'summaries',
 ];
 
 export const HOME_SECTION_META: Record<HomeSectionKey, { label: string; icon: string; description: string }> = {

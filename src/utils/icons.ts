@@ -3,6 +3,7 @@ export const getDomainIcon = (domain: string): string => {
     light: 'mdi:lightbulb',
     switch: 'mdi:flash',
     sensor: 'mdi:eye',
+    energy: 'mdi:flash',
     binary_sensor: 'mdi:radiobox-blank',
     cover: 'mdi:window-shutter',
     climate: 'mdi:thermostat',

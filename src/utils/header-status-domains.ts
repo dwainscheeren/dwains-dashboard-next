@@ -2,6 +2,7 @@ import type { HomeAssistant } from '../types/home-assistant';
 import { prettifyDomain } from './domain-names';
 import { isEntityFromHiddenDevice } from './device-admission';
 import { getDeviceClassIcon, getDomainIcon } from './icons';
+import { buildHousePowerUsage } from './power-usage';
 
 export interface DomainCount {
   domain: string;
@@ -54,6 +55,8 @@ const BINARY_SENSOR_CONFIG: Record<string, { icon: string; name: string }> = {
 export function getStatusDomains(hass: HomeAssistant, config: any): DomainCount[] {
   if (!hass?.states) return [];
 
+  const configuredAreaIds = new Set((config?.areas || []).map((area: any) => area.area_id).filter(Boolean));
+
   // Use EXACTLY the same filtering logic as the working dialog
   const allEntities = Object.values(hass.states).filter((entityState) => {
     // If config is not loaded yet, skip filtering
@@ -82,6 +85,10 @@ export function getStatusDomains(hass: HomeAssistant, config: any): DomainCount[
 
     // Skip entities without area
     if (!entityAreaId) {
+      return false;
+    }
+
+    if (!configuredAreaIds.has(entityAreaId)) {
       return false;
     }
 
@@ -291,54 +298,8 @@ export function getStatusDomains(hass: HomeAssistant, config: any): DomainCount[
 }
 
 export function getTotalWattage(hass: HomeAssistant, config?: any): string | undefined {
-  if (!hass?.states) return undefined;
-
-  let totalWattage = 0;
-  let hasWattageEntities = false;
-
-  Object.values(hass.states).forEach(entity => {
-    const entityId = (entity as any).entity_id;
-    if (!entityId?.startsWith('sensor.')) return;
-
-    const registry = hass.entities?.[entityId];
-    if (registry?.hidden_by || registry?.entity_category === 'diagnostic' || registry?.entity_category === 'config') {
-      return;
-    }
-
-    if ((entity as any).state === 'unavailable' || (entity as any).state === 'unknown') return;
-    if ((entity as any).attributes?.unit_of_measurement !== 'W') return;
-
-    const entityReg = config?.entities?.find((entry: any) => entry.entity_id === entityId);
-    if (isEntityFromHiddenDevice(hass, config, entityReg || entityId)) return;
-
-    const deviceReg = entityReg?.device_id
-      ? config?.devices?.find((device: any) => device.device_id === entityReg.device_id)
-      : null;
-    const areaId = entityReg?.area_id || deviceReg?.area_id || registry?.area_id;
-
-    if (areaId) {
-      const hiddenAreas = config?.areas_display?.hidden || [];
-      if (hiddenAreas.includes(areaId)) return;
-
-      const areaOptions = config?.areas_options?.[areaId];
-      if (areaOptions?.groups_options) {
-        for (const groupOptions of Object.values(areaOptions.groups_options)) {
-          if ((groupOptions as any).hidden?.includes(entityId)) return;
-        }
-      }
-    }
-
-    const state = parseFloat((entity as any).state);
-    if (!Number.isFinite(state)) return;
-
-    totalWattage += state;
-    hasWattageEntities = true;
-  });
-
-  if (!hasWattageEntities) return undefined;
-  return totalWattage >= 1000
-    ? `${(totalWattage / 1000).toFixed(1)} kW`
-    : `${Math.round(totalWattage)} W`;
+  const summary = buildHousePowerUsage(hass, config);
+  return summary.sensorCount ? summary.formattedTotal : undefined;
 }
 
 export function getDomainTitle(domain: string): string {

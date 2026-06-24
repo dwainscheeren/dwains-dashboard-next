@@ -40,6 +40,8 @@ const PAGES_PATH = '__dd_pages__';
 const MOBILE_NAV_QUERY = '(max-width: 768px)';
 const MOBILE_NAV_ACTIVE_CLASS = 'dd-next-mobile-nav-active';
 const HIDE_NATIVE_HEADER_STYLE_ID = 'dd-hide-header';
+const HIDDEN_NATIVE_HEADER_ATTR = 'data-dd-next-native-header-hidden';
+const HIDDEN_NATIVE_HEADER_OLD_STYLE_ATTR = 'data-dd-next-native-header-old-style';
 
 /**
  * dwains-dashboard-next-bottom-nav — vaste navigatiebalk onderaan op mobiel (smart-home-app
@@ -104,7 +106,7 @@ export class DwainsBottomNav extends LitElement {
   }
 
   private _sync = () => {
-    this._active = this._currentPath();
+    this._active = this._normalizeActivePath(this._currentPath());
     // Zichtbaar zolang we op ons eigen dashboard zitten.
     this._visible = !this.dashSegment || this._segment() === this.dashSegment;
     _applyHaSidebarRestriction(this._hass, this._settings, this.dashSegment);
@@ -128,10 +130,16 @@ export class DwainsBottomNav extends LitElement {
 
   private _handleAreaContext = (event: CustomEvent<AreaContext>) => {
     this._areaContext = event.detail || { areaId: null, view: 'home' };
+    if (this._isHomeRoute(this._currentPath())) {
+      this._active = 'home';
+    }
   };
 
   private _handleDeviceContext = (event: CustomEvent<DeviceContext>) => {
     this._deviceContext = event.detail || { domain: null };
+    if (this._currentPath() === 'devices') {
+      this._active = 'devices';
+    }
   };
 
   private async _loadItems(): Promise<void> {
@@ -176,6 +184,7 @@ export class DwainsBottomNav extends LitElement {
       ...pageNavItems,
       { path: MENU_PATH, icon: 'mdi:menu', label: 'Menu', action: 'menu' },
     ];
+    this._sync();
   }
 
   private _onItem(item: NavItem): void {
@@ -387,6 +396,15 @@ export class DwainsBottomNav extends LitElement {
     return this._active === item.path;
   }
 
+  private _isHomeRoute(path: string): boolean {
+    return !path || path === 'home' || path === '0' || path === 'overview';
+  }
+
+  private _normalizeActivePath(path: string): string {
+    if (this._isHomeRoute(path)) return 'home';
+    return path;
+  }
+
   private _activePage(): PageItem | undefined {
     return this._pages.find((page) => page.path === this._active);
   }
@@ -442,7 +460,7 @@ export class DwainsBottomNav extends LitElement {
         position: fixed;
         left: 16px;
         right: 16px;
-        bottom: calc(25px + env(safe-area-inset-bottom, 0px));
+        bottom: calc(8px + env(safe-area-inset-bottom, 0px));
         z-index: 140;
         pointer-events: none;
       }
@@ -914,7 +932,6 @@ export function ensureBottomNav(hass: any, settings?: DwainsDashboardSettings): 
   // Onthoud het dashboard-segment waarop wij draaien (voor de zichtbaarheid).
   const seg = window.location.pathname.split('/')[1];
   el.dashSegment = seg && seg !== 'lovelace' ? seg : 'lovelace';
-  _hideNativeHeaderOnMobile();
   _syncHaShellForBottomNav(el.dashSegment);
   el.dashboardSettings = settings;
   el.hass = hass;
@@ -928,6 +945,13 @@ export function ensureBottomNav(hass: any, settings?: DwainsDashboardSettings): 
  */
 function _hideNativeHeaderOnMobile(attempt = 0): void {
   const roots = _nativeHeaderStyleRoots();
+  const stillActive = document.documentElement.classList.contains(MOBILE_NAV_ACTIVE_CLASS) ||
+    Boolean(document.body?.classList.contains(MOBILE_NAV_ACTIVE_CLASS));
+  if (!stillActive) {
+    _setNativeHeaderElementsHidden(false);
+    return;
+  }
+
   const css = `
     @media (max-width: 768px) {
       :host-context(.${MOBILE_NAV_ACTIVE_CLASS}) app-header,
@@ -977,8 +1001,9 @@ function _hideNativeHeaderOnMobile(attempt = 0): void {
     }
     style.textContent = css;
   });
-  if (roots.length <= 1 && attempt < 25) {
-    setTimeout(() => _hideNativeHeaderOnMobile(attempt + 1), 300);
+  _setNativeHeaderElementsHidden(true);
+  if (attempt < 14) {
+    setTimeout(() => _hideNativeHeaderOnMobile(attempt + 1), attempt < 4 ? 80 : 250);
   }
 }
 
@@ -997,6 +1022,62 @@ function _nativeHeaderStyleRoots(): (Document | ShadowRoot)[] {
     });
   });
   return Array.from(roots);
+}
+
+function _nativeHeaderElementSelectors(): string {
+  return [
+    'app-header',
+    'app-toolbar',
+    'ha-menu-button',
+    'ha-tabs',
+    'ha-tab-group',
+    '[role="tablist"]',
+    '.header',
+    '.toolbar',
+    '.main-toolbar',
+    '.header-toolbar',
+    '.view-header',
+    '.toolbar-items',
+    '.action-items',
+    '#toolbar',
+    '#tabs',
+  ].join(',');
+}
+
+function _setNativeHeaderElementsHidden(active: boolean): void {
+  const selector = _nativeHeaderElementSelectors();
+  const roots = _nativeHeaderStyleRoots();
+  roots.forEach((root) => {
+    root.querySelectorAll(selector).forEach((el) => {
+      const element = el as HTMLElement;
+      if (active) {
+        if (!element.hasAttribute(HIDDEN_NATIVE_HEADER_ATTR)) {
+          element.setAttribute(HIDDEN_NATIVE_HEADER_OLD_STYLE_ATTR, element.getAttribute('style') || '');
+          element.setAttribute(HIDDEN_NATIVE_HEADER_ATTR, 'true');
+        }
+        element.style.setProperty('display', 'none', 'important');
+        element.style.setProperty('visibility', 'hidden', 'important');
+        element.style.setProperty('height', '0', 'important');
+        element.style.setProperty('min-height', '0', 'important');
+        element.style.setProperty('max-height', '0', 'important');
+        element.style.setProperty('padding', '0', 'important');
+        element.style.setProperty('margin', '0', 'important');
+        element.style.setProperty('border', '0', 'important');
+        element.style.setProperty('overflow', 'hidden', 'important');
+        return;
+      }
+
+      if (!element.hasAttribute(HIDDEN_NATIVE_HEADER_ATTR)) return;
+      const previousStyle = element.getAttribute(HIDDEN_NATIVE_HEADER_OLD_STYLE_ATTR) || '';
+      if (previousStyle) {
+        element.setAttribute('style', previousStyle);
+      } else {
+        element.removeAttribute('style');
+      }
+      element.removeAttribute(HIDDEN_NATIVE_HEADER_ATTR);
+      element.removeAttribute(HIDDEN_NATIVE_HEADER_OLD_STYLE_ATTR);
+    });
+  });
 }
 
 /**
@@ -1063,6 +1144,8 @@ function _syncHaShellForBottomNav(dashSegment?: string): void {
   document.body?.classList.toggle(MOBILE_NAV_ACTIVE_CLASS, active);
   if (active) {
     _hideNativeHeaderOnMobile();
+  } else {
+    _setNativeHeaderElementsHidden(false);
   }
   _setDrawerPlacement(active ? 'end' : 'start');
   if (!active) {

@@ -11,11 +11,12 @@ import { getAreaIcon, getDeviceClassIcon, getDomainColor, getDomainIcon } from '
 import { getStatusDomains, getTotalWattage, type DomainCount as StatusDomainCount } from '../utils/header-status-domains';
 import { getDeviceClassName, getDomainName } from '../utils/domain-names';
 import { resolveEntityCardConfig } from '../utils/blueprint-replacements';
-import { filterHiddenDeviceEntities, isEntityFromHiddenDevice } from '../utils/device-admission';
+import { filterHiddenDeviceEntities } from '../utils/device-admission';
 import { restrictNonAdminDashboardSettings } from '../utils/security';
 import { sortAreas } from '../utils/area-entities';
 import { navigateHomeAssistant } from '../utils/navigation';
 import { normalizeHiddenHomeSections, normalizeHomeSectionsOrder } from '../utils/home-sections';
+import { buildHousePowerUsage } from '../utils/power-usage';
 import { showDomainEntitiesDialog } from './utils/show-domain-entities-dialog';
 import { showCardEditorDialog } from './utils/show-card-editor-dialog';
 import { ensureBottomNav } from './dwains-bottom-nav';
@@ -323,7 +324,9 @@ export class DwainsLayoutCard extends LitElement {
   static override styles = css`
     :host {
       display: block;
-      height: 100vh;
+      height: 100%;
+      max-height: 100%;
+      min-height: 0;
       /*background: var(--primary-background-color);*/
       color: var(--primary-text-color);
       overflow: hidden;
@@ -361,8 +364,11 @@ export class DwainsLayoutCard extends LitElement {
     .layout-container {
       --area-sidebar-width: 250px;
       display: flex;
-      height: 100vh;
+      height: 100%;
+      max-height: 100%;
+      min-height: 0;
       position: relative;
+      overflow: hidden;
     }
 
     .layout-container.sidebar-resizing,
@@ -395,6 +401,7 @@ export class DwainsLayoutCard extends LitElement {
       flex-direction: column;
       transition: transform 0.3s ease, width 0.16s ease, flex-basis 0.16s ease;
       z-index: 1;
+      min-height: 0;
       overflow-y: auto;
       overflow-x: hidden;
     }
@@ -515,6 +522,8 @@ export class DwainsLayoutCard extends LitElement {
     /* Main Content */
     .main-content {
       flex: 1;
+      min-width: 0;
+      min-height: 0;
       display: flex;
       flex-direction: column;
       overflow: hidden;
@@ -1024,6 +1033,7 @@ export class DwainsLayoutCard extends LitElement {
     /* Content Area */
     .content-area {
       flex: 1;
+      min-height: 0;
       overflow-y: auto;
       overflow-x: hidden;
       padding: 16px;
@@ -1548,10 +1558,10 @@ export class DwainsLayoutCard extends LitElement {
     }
 
     .home-summary-list {
-      width: min(100%, 620px);
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
+      width: min(100%, 980px);
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
     }
 
     .home-summary-card {
@@ -4444,7 +4454,7 @@ export class DwainsLayoutCard extends LitElement {
     .house-power-head {
       width: 100%;
       display: grid;
-      grid-template-columns: auto minmax(0, 1fr) auto;
+      grid-template-columns: auto minmax(0, 1fr) auto auto;
       align-items: center;
       gap: 10px;
     }
@@ -4455,6 +4465,29 @@ export class DwainsLayoutCard extends LitElement {
       font-weight: 950;
       line-height: 1;
       white-space: nowrap;
+    }
+
+    .house-power-see-all {
+      grid-column: 3 / -1;
+      justify-self: end;
+      min-height: 30px;
+      padding: 0 10px;
+      border: 0;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      background: color-mix(in srgb, var(--status-color) 10%, var(--secondary-background-color));
+      color: var(--status-color);
+      cursor: pointer;
+      font: inherit;
+      font-size: 12px;
+      font-weight: 850;
+      white-space: nowrap;
+    }
+
+    .house-power-see-all ha-icon {
+      --mdc-icon-size: 15px;
     }
 
     .house-power-list {
@@ -4735,6 +4768,8 @@ export class DwainsLayoutCard extends LitElement {
 
       .home-summary-list {
         width: auto;
+        display: flex;
+        flex-direction: column;
         padding: 2px 18px 16px;
         gap: 8px;
       }
@@ -9368,7 +9403,7 @@ export class DwainsLayoutCard extends LitElement {
     return html`
       <div
         class="home-status-card house-power-card wattage ${powerUsage.sensorCount ? 'has-power' : 'is-empty'}"
-        @click=${() => this._showWattageEntities()}
+        @click=${() => this._openDeviceDomain('energy')}
         @keydown=${this._handleHousePowerKeydown}
         data-domain="wattage"
         role="button"
@@ -9384,6 +9419,14 @@ export class DwainsLayoutCard extends LitElement {
             <div class="house-power-subtitle">${subtitle}</div>
           </div>
           <div class="house-power-total">${powerUsage.formattedTotal}</div>
+          <button
+            class="house-power-see-all"
+            type="button"
+            @click=${this._handleHousePowerSeeAll}
+          >
+            <span>See all</span>
+            <ha-icon icon="mdi:chevron-right"></ha-icon>
+          </button>
         </div>
         ${powerUsage.rooms.length ? html`
           <div class="house-power-list" aria-label="Top rooms by power usage">
@@ -9422,7 +9465,12 @@ export class DwainsLayoutCard extends LitElement {
   private _handleHousePowerKeydown = (event: KeyboardEvent): void => {
     if (event.key !== 'Enter' && event.key !== ' ') return;
     event.preventDefault();
-    this._showWattageEntities();
+    this._openDeviceDomain('energy');
+  };
+
+  private _handleHousePowerSeeAll = (event: Event): void => {
+    event.stopPropagation();
+    this._openDeviceDomain('energy');
   };
 
   private _renderHousePersonsStatusCard() {
@@ -9523,124 +9571,22 @@ export class DwainsLayoutCard extends LitElement {
   }
 
   private _getHousePowerUsage(): HousePowerUsage {
-    const total = this._getTotalLivePowerWatts();
-    const rooms = this._getVisibleSortedAreas()
-      .map(area => {
-        const roomPower = this._getAreaLivePowerWatts(area.area_id);
-        return {
-          areaId: area.area_id,
-          name: area.name,
-          icon: getAreaIcon(area),
-          watts: roomPower.watts,
-          formatted: this._formatPowerWatts(roomPower.watts),
-          percentage: 0,
-        };
-      })
-      .filter(room => room.watts > 0)
-      .sort((a, b) => b.watts - a.watts)
-      .slice(0, 4);
-
-    const maxReference = Math.max(...rooms.map(room => room.watts), 0);
-    const roomsWithPercent = rooms.map(room => ({
-      ...room,
-      percentage: maxReference > 0
-        ? Math.max(6, Math.min(100, Math.round((room.watts / maxReference) * 100)))
-        : 0,
+    const powerUsage = buildHousePowerUsage(this.hass, this.config);
+    const rooms = powerUsage.areas.slice(0, 4).map(area => ({
+      areaId: area.areaId,
+      name: area.name,
+      icon: area.icon,
+      watts: area.totalWatts,
+      formatted: area.formattedTotal,
+      percentage: area.percentage,
     }));
 
     return {
-      totalWatts: total.watts,
-      formattedTotal: total.sensorCount ? this._formatPowerWatts(total.watts) : 'No data',
-      sensorCount: total.sensorCount,
-      rooms: roomsWithPercent,
+      totalWatts: powerUsage.totalWatts,
+      formattedTotal: powerUsage.formattedTotal,
+      sensorCount: powerUsage.sensorCount,
+      rooms,
     };
-  }
-
-  private _getAreaLivePowerWatts(areaId: string): { watts: number; sensorCount: number } {
-    let watts = 0;
-    let sensorCount = 0;
-
-    for (const entity of this._getFilteredAreaEntities(areaId)) {
-      const value = this._getLivePowerValue(entity.entity_id, entity);
-      if (value === null) continue;
-      watts += value;
-      sensorCount++;
-    }
-
-    return { watts, sensorCount };
-  }
-
-  private _getTotalLivePowerWatts(): { watts: number; sensorCount: number } {
-    let watts = 0;
-    let sensorCount = 0;
-    const entityConfigById = new Map(
-      (this.config?.entities || []).map(entity => [entity.entity_id, entity])
-    );
-
-    for (const state of Object.values(this.hass?.states || {})) {
-      const entityId = state.entity_id;
-      const entityConfig = entityConfigById.get(entityId);
-      const value = this._getLivePowerValue(entityId, entityConfig || entityId);
-      if (value === null) continue;
-      watts += value;
-      sensorCount++;
-    }
-
-    return { watts, sensorCount };
-  }
-
-  private _getLivePowerValue(entityId: string, entity: EntityConfig | string): number | null {
-    if (!entityId.startsWith('sensor.')) return null;
-
-    const state = this.hass?.states?.[entityId];
-    if (!state || state.state === 'unavailable' || state.state === 'unknown') return null;
-    if (state.attributes?.unit_of_measurement !== 'W') return null;
-
-    const registry = this.hass.entities?.[entityId];
-    if (registry?.hidden_by || registry?.entity_category === 'diagnostic' || registry?.entity_category === 'config') {
-      return null;
-    }
-
-    if (isEntityFromHiddenDevice(this.hass, this.config, entity)) return null;
-
-    const areaId = this._resolvePowerEntityAreaId(entityId, typeof entity === 'string' ? undefined : entity);
-    if (areaId) {
-      const hiddenAreas = this.config?.areas_display?.hidden || [];
-      if (hiddenAreas.includes(areaId)) return null;
-
-      const areaOptions = this.config?.areas_options?.[areaId];
-      if (areaOptions?.groups_options) {
-        for (const groupOptions of Object.values(areaOptions.groups_options)) {
-          if (groupOptions.hidden?.includes(entityId)) return null;
-        }
-      }
-    }
-
-    const value = Number.parseFloat(state.state);
-    if (!Number.isFinite(value)) return null;
-
-    return Math.max(0, value);
-  }
-
-  private _resolvePowerEntityAreaId(entityId: string, entityConfig?: EntityConfig): string | null {
-    if (entityConfig?.area_id) return entityConfig.area_id;
-
-    const deviceId = entityConfig?.device_id || this.hass.entities?.[entityId]?.device_id;
-    if (deviceId) {
-      const device = this.config?.devices?.find(device => device.device_id === deviceId);
-      if (device?.area_id) return device.area_id;
-    }
-
-    return (
-      this.hass.entities?.[entityId]?.area_id ||
-      this.hass.states?.[entityId]?.attributes?.area_id ||
-      null
-    );
-  }
-
-  private _formatPowerWatts(watts: number): string {
-    if (watts >= 1000) return `${(watts / 1000).toFixed(1)} kW`;
-    return `${Math.round(watts)} W`;
   }
 
   private _renderMobileHomeAreas() {

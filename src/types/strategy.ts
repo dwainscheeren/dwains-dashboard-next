@@ -54,6 +54,7 @@ export interface DwainsDashboardSettings {
   show_suggested_favorites?: boolean;
   hidden_persons?: string[];
   hide_unavailable_entities?: boolean;
+  hide_unavailable_entities_on_devices?: boolean;
   show_recent_devices_panel?: boolean;
   restrict_non_admin_ha_sidebar?: boolean;
   restrict_non_admin_dashboard_settings?: boolean;
@@ -160,7 +161,7 @@ export interface DwainsDashboardConfig {
   pages?: BlueprintPage[];
   // Replace-card blueprints voor standaard entity-kaarten in area/devices views.
   blueprint_replacements?: BlueprintReplacements;
-  // Testfeature: devices in DD snel volledig verbergen/terugzetten.
+  // Device visibility and first-seen tracking for DD.
   device_admission?: DeviceAdmission;
 }
 

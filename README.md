@@ -12,7 +12,19 @@ See this as Dwains Dashboard v4: totally rebuilt from scratch, with a completely
 
 ## Status
 
-Current release: `1.1.4`
+Current release: `1.2.0`
+
+## What's New In 1.2.0
+
+- Added a House power usage card with total live power usage and the top consuming rooms.
+- Added an Energy view on the Devices page with area totals, live power entities and usage distribution.
+- Moved full device visibility management into Dashboard settings, grouped by device type and area.
+- Added stricter area-based filtering: devices and entities without a Dwains Dashboard area are not shown in DD.
+- Added settings to control which device types are visible on the Devices page.
+- Improved unavailable and unknown entity handling on the Devices page, with Maintenance still showing issues separately.
+- Improved House information active-state counting for media players, vacuums, alarms and cameras.
+- Improved mobile navigation context, bottom-sheet behavior and Home Assistant header handling.
+- Added release policy documentation for consistent future versioning.
 
 ## What's New In 1.1.4
 
