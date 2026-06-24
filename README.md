@@ -12,7 +12,16 @@ See this as Dwains Dashboard v4: totally rebuilt from scratch, with a completely
 
 ## Status
 
-Current release: `1.2.0`
+Current release: `1.3.0`
+
+## What's New In 1.3.0
+
+- Added an Indoor climate card to House information with average temperature and humidity from visible room sensors.
+- Added settings to show or hide individual House information cards: People, Indoor climate, House power usage and Device groups.
+- Replaced the static "Welcome Back" header text with a live home snapshot for people, notifications, attention items and weather.
+- Improved House power usage so the card is hidden when no live power data is available.
+- Improved the Energy view with Home Assistant statistics graph cards for whole-house and area power history.
+- Removed redundant "See all" action from the House power usage card because the card itself opens the Energy view.
 
 ## What's New In 1.2.0
 

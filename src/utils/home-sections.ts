@@ -1,4 +1,4 @@
-import type { HomeSectionKey } from '../types/strategy';
+import type { HomeInformationCardKey, HomeSectionKey } from '../types/strategy';
 
 export const DEFAULT_HOME_SECTIONS_ORDER: HomeSectionKey[] = [
   'cameras',
@@ -27,12 +27,42 @@ export const HOME_SECTION_META: Record<HomeSectionKey, { label: string; icon: st
   devices: {
     label: 'House information',
     icon: 'mdi:view-dashboard-outline',
-    description: 'People, power usage and device groups.',
+    description: 'People, indoor climate, power usage and device groups.',
   },
   favorites: {
     label: 'Favorites',
     icon: 'mdi:star',
     description: 'Pinned entities selected by you.',
+  },
+};
+
+export const DEFAULT_HOME_INFORMATION_CARDS: HomeInformationCardKey[] = [
+  'people',
+  'climate',
+  'power',
+  'device_groups',
+];
+
+export const HOME_INFORMATION_CARD_META: Record<HomeInformationCardKey, { label: string; icon: string; description: string }> = {
+  people: {
+    label: 'People',
+    icon: 'mdi:account-group',
+    description: 'Presence cards for the people in this home.',
+  },
+  climate: {
+    label: 'Indoor climate',
+    icon: 'mdi:home-thermometer-outline',
+    description: 'Average temperature and humidity from room sensors.',
+  },
+  power: {
+    label: 'House power usage',
+    icon: 'mdi:flash',
+    description: 'Current whole-house power usage and top rooms.',
+  },
+  device_groups: {
+    label: 'Device groups',
+    icon: 'mdi:view-grid-outline',
+    description: 'Status cards such as lights, switches, covers and motion.',
   },
 };
 
@@ -68,4 +98,13 @@ export function normalizeHiddenHomeSections(hidden?: readonly unknown[]): HomeSe
   );
 
   return normalized.filter((section, index, all) => all.indexOf(section) === index);
+}
+
+export function normalizeHiddenHomeInformationCards(hidden?: readonly unknown[]): HomeInformationCardKey[] {
+  const validCards = new Set<HomeInformationCardKey>(DEFAULT_HOME_INFORMATION_CARDS);
+  const normalized = (hidden || []).filter((card): card is HomeInformationCardKey =>
+    typeof card === 'string' && validCards.has(card as HomeInformationCardKey)
+  );
+
+  return normalized.filter((card, index, all) => all.indexOf(card) === index);
 }

@@ -3,7 +3,7 @@ import { css, html, LitElement, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { repeat } from "lit/directives/repeat.js";
 import type { HomeAssistant } from "../types/home-assistant";
-import type { DeviceConfig, DwainsDashboardConfig, HomeSectionKey } from "../types/strategy";
+import type { DeviceConfig, DwainsDashboardConfig, HomeInformationCardKey, HomeSectionKey } from "../types/strategy";
 import { openReplacementManager } from "./dwains-replacement-manager-dialog";
 import {
   AREA_STRATEGY_GROUPS,
@@ -14,7 +14,14 @@ import { countReplacementRules } from "../utils/blueprint-replacements";
 import { getDeviceClassName, getDomainName } from "../utils/domain-names";
 import { getDeviceClassIcon, getDomainColor, getDomainIcon } from "../utils/icons";
 import { ddLocalize } from "../utils/localize";
-import { HOME_SECTION_META, normalizeHiddenHomeSections, normalizeHomeSectionsOrder } from "../utils/home-sections";
+import {
+  DEFAULT_HOME_INFORMATION_CARDS,
+  HOME_INFORMATION_CARD_META,
+  HOME_SECTION_META,
+  normalizeHiddenHomeInformationCards,
+  normalizeHiddenHomeSections,
+  normalizeHomeSectionsOrder,
+} from "../utils/home-sections";
 
 // We'll create our own entity picker since ha-entity-picker is external
 type SettingsPageKey =
@@ -369,6 +376,9 @@ export class DwainsDashboardStrategyEditor extends LitElement {
     const visibleHomeSections = this._getHomeSectionsOrder()
       .filter((section) => !this._getHiddenHomeSections().has(section))
       .length;
+    const visibleHouseInfoCards = DEFAULT_HOME_INFORMATION_CARDS
+      .filter((card) => !this._getHiddenHomeInformationCards().has(card))
+      .length;
     const deviceTypeCount = this._getDeviceTypeOptions().length;
     const hiddenDeviceTypeCount = this._getHiddenDeviceTypes().size;
     const personCount = Object.values(this.hass?.states || {})
@@ -397,8 +407,8 @@ export class DwainsDashboardStrategyEditor extends LitElement {
         icon: "mdi:home-edit-outline",
         color: "#0ea5e9",
         title: "Home page",
-        description: "Section order and favorites.",
-        summary: `${visibleHomeSections} sections · ${favoriteCount} favorites · ${this._config?.settings?.show_suggested_favorites === false ? "Suggestions off" : "Suggestions on"}`,
+        description: "Section order, house information and favorites.",
+        summary: `${visibleHomeSections} sections · ${visibleHouseInfoCards}/${DEFAULT_HOME_INFORMATION_CARDS.length} house cards · ${favoriteCount} favorites`,
       },
       {
         page: "header",
@@ -643,7 +653,10 @@ export class DwainsDashboardStrategyEditor extends LitElement {
       "mdi:home-edit-outline",
       "Home layout",
       "Choose the order of the home page sections. Summaries show active Home Assistant repairs, updates and discovered devices.",
-      this._renderHomeSectionOrder()
+      html`
+        ${this._renderHomeSectionOrder()}
+        ${this._renderHomeInformationCardSettings()}
+      `
     );
   }
 
@@ -1141,6 +1154,10 @@ export class DwainsDashboardStrategyEditor extends LitElement {
     return new Set(normalizeHiddenHomeSections(this._config?.settings?.home_sections_hidden));
   }
 
+  private _getHiddenHomeInformationCards(): Set<HomeInformationCardKey> {
+    return new Set(normalizeHiddenHomeInformationCards(this._config?.settings?.home_information_cards_hidden));
+  }
+
   private _setHomeSectionsOrder(order: HomeSectionKey[]): void {
     if (!this._config) return;
 
@@ -1202,6 +1219,27 @@ export class DwainsDashboardStrategyEditor extends LitElement {
 
     this._fireConfigChanged(newConfig);
   };
+
+  private _toggleHomeInformationCardEnabled(card: HomeInformationCardKey): void {
+    if (!this._config) return;
+
+    const hidden = new Set(this._getHiddenHomeInformationCards());
+    if (hidden.has(card)) {
+      hidden.delete(card);
+    } else {
+      hidden.add(card);
+    }
+
+    const newConfig: DwainsDashboardConfig = {
+      ...this._config,
+      settings: {
+        ...this._config.settings,
+        home_information_cards_hidden: normalizeHiddenHomeInformationCards([...hidden]),
+      },
+    };
+
+    this._fireConfigChanged(newConfig);
+  }
 
   private _renderHomeSectionOrder() {
     const order = this._getHomeSectionsOrder();
@@ -1275,6 +1313,45 @@ export class DwainsDashboardStrategyEditor extends LitElement {
         <button class="home-layout-reset" type="button" @click=${this._resetHomeSectionsOrder}>
           Reset default layout
         </button>
+      </div>
+    `;
+  }
+
+  private _renderHomeInformationCardSettings() {
+    const hiddenCards = this._getHiddenHomeInformationCards();
+    const visibleCount = DEFAULT_HOME_INFORMATION_CARDS.filter(card => !hiddenCards.has(card)).length;
+
+    return html`
+      <div class="home-info-card-section">
+        <div class="home-info-card-header">
+          <div>
+            <h4>House information cards</h4>
+            <p>Choose which cards are shown inside the House information section on Home.</p>
+          </div>
+          <span>${visibleCount}/${DEFAULT_HOME_INFORMATION_CARDS.length} visible</span>
+        </div>
+        <div class="home-info-card-list">
+          ${DEFAULT_HOME_INFORMATION_CARDS.map(card => {
+            const meta = HOME_INFORMATION_CARD_META[card];
+            const enabled = !hiddenCards.has(card);
+
+            return html`
+              <div class="home-info-card-item ${enabled ? 'enabled' : 'disabled'}">
+                <div class="home-section-icon">
+                  <ha-icon icon=${meta.icon}></ha-icon>
+                </div>
+                <div class="home-section-copy">
+                  <div class="home-section-title">${meta.label}</div>
+                  <div class="home-section-description">${meta.description}</div>
+                </div>
+                <ha-switch
+                  .checked=${enabled}
+                  @change=${() => this._toggleHomeInformationCardEnabled(card)}
+                ></ha-switch>
+              </div>
+            `;
+          })}
+        </div>
       </div>
     `;
   }
@@ -3109,16 +3186,18 @@ export class DwainsDashboardStrategyEditor extends LitElement {
 
       .home-layout-section {
         display: grid;
-        gap: 12px;
+        gap: 18px;
         padding: 0 16px 16px;
       }
 
-      .home-section-list {
+      .home-section-list,
+      .home-info-card-list {
         display: grid;
         gap: 8px;
       }
 
-      .home-section-item {
+      .home-section-item,
+      .home-info-card-item {
         display: grid;
         grid-template-columns: 32px 42px minmax(0, 1fr) auto;
         align-items: center;
@@ -3129,6 +3208,47 @@ export class DwainsDashboardStrategyEditor extends LitElement {
         background: var(--card-background-color);
         box-shadow: 0 4px 12px rgba(15, 23, 42, 0.04);
         transition: border-color 0.16s ease, box-shadow 0.16s ease, opacity 0.16s ease, transform 0.16s ease;
+      }
+
+      .home-info-card-item {
+        grid-template-columns: 42px minmax(0, 1fr) auto;
+      }
+
+      .home-info-card-section {
+        display: grid;
+        gap: 10px;
+      }
+
+      .home-info-card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: end;
+        gap: 16px;
+        padding: 0 2px;
+      }
+
+      .home-info-card-header h4 {
+        margin: 0;
+        font-size: 15px;
+        font-weight: 800;
+        color: var(--primary-text-color);
+      }
+
+      .home-info-card-header p {
+        margin: 4px 0 0;
+        font-size: 13px;
+        line-height: 1.35;
+        color: var(--secondary-text-color);
+      }
+
+      .home-info-card-header span {
+        flex: 0 0 auto;
+        font-size: 12px;
+        font-weight: 800;
+        color: var(--primary-color);
+        background: color-mix(in srgb, var(--primary-color) 10%, transparent);
+        border-radius: 999px;
+        padding: 6px 10px;
       }
 
       .home-section-item.dragging {
@@ -3143,7 +3263,8 @@ export class DwainsDashboardStrategyEditor extends LitElement {
           0 8px 18px rgba(15, 23, 42, 0.08);
       }
 
-      .home-section-item.disabled {
+      .home-section-item.disabled,
+      .home-info-card-item.disabled {
         opacity: 0.58;
         background: color-mix(in srgb, var(--card-background-color) 78%, var(--secondary-background-color));
       }
@@ -3173,7 +3294,8 @@ export class DwainsDashboardStrategyEditor extends LitElement {
         --mdc-icon-size: 22px;
       }
 
-      .home-section-item.disabled .home-section-icon {
+      .home-section-item.disabled .home-section-icon,
+      .home-info-card-item.disabled .home-section-icon {
         color: var(--secondary-text-color);
         background: var(--secondary-background-color);
       }
@@ -3238,6 +3360,10 @@ export class DwainsDashboardStrategyEditor extends LitElement {
           grid-template-columns: 28px 36px minmax(0, 1fr);
         }
 
+        .home-info-card-item {
+          grid-template-columns: 36px minmax(0, 1fr) auto;
+        }
+
         .home-section-icon {
           width: 36px;
           height: 36px;
@@ -3246,6 +3372,12 @@ export class DwainsDashboardStrategyEditor extends LitElement {
         .home-section-actions {
           grid-column: 2 / -1;
           justify-self: start;
+        }
+
+        .home-info-card-header {
+          align-items: start;
+          flex-direction: column;
+          gap: 8px;
         }
       }
 

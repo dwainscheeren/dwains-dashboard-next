@@ -1,6 +1,7 @@
 import type { DwainsDashboardConfig, EntityConfig } from '../types/strategy';
 import type { HassEntity, HomeAssistant } from '../types/home-assistant';
 import { isEntityFromHiddenDevice } from './device-admission';
+import { getAreaIcon } from './icons';
 
 export interface PowerEntitySummary {
   entityId: string;
@@ -11,6 +12,7 @@ export interface PowerEntitySummary {
   watts: number;
   formatted: string;
   unit: string;
+  stateClass?: string;
 }
 
 export interface PowerAreaSummary {
@@ -21,7 +23,6 @@ export interface PowerAreaSummary {
   formattedTotal: string;
   entities: PowerEntitySummary[];
   percentage: number;
-  trend: number[];
 }
 
 export interface HousePowerUsageSummary {
@@ -44,19 +45,20 @@ export function buildHousePowerUsage(
 ): HousePowerUsageSummary {
   const entities = getLivePowerEntities(hass, config);
   const areas = new Map<string, PowerAreaSummary>();
+  const areasById = new Map((config?.areas || []).map((area) => [area.area_id, area]));
 
   entities.forEach((entity) => {
     let area = areas.get(entity.areaId);
+    const configArea = areasById.get(entity.areaId);
     if (!area) {
       area = {
         areaId: entity.areaId,
         name: entity.areaName,
-        icon: entity.icon,
+        icon: configArea ? getAreaIcon(configArea) : 'mdi:home',
         totalWatts: 0,
         formattedTotal: '0 W',
         entities: [],
         percentage: 0,
-        trend: [],
       };
       areas.set(entity.areaId, area);
     }
@@ -72,7 +74,6 @@ export function buildHousePowerUsage(
         ...area,
         formattedTotal: formatPowerWatts(area.totalWatts),
         entities: sortedEntities,
-        trend: sortedEntities.map((entity) => entity.watts),
       };
     })
     .filter((area) => area.totalWatts > 0)
@@ -120,7 +121,8 @@ export function getLivePowerEntities(
       const area = areasById.get(areaId);
       if (!area) return undefined;
 
-      return {
+      const stateClass = normalizeStateClass(state.attributes?.state_class);
+      const entity: PowerEntitySummary = {
         entityId,
         name: state.attributes?.friendly_name || entityId,
         areaId,
@@ -130,6 +132,8 @@ export function getLivePowerEntities(
         formatted: formatPowerWatts(watts),
         unit: normalizePowerUnit(state.attributes?.unit_of_measurement) || 'W',
       };
+      if (stateClass) entity.stateClass = stateClass;
+      return entity;
     })
     .filter((entity): entity is PowerEntitySummary => Boolean(entity));
 }
@@ -220,4 +224,9 @@ function normalizePowerUnit(unit: unknown): keyof typeof UNIT_TO_WATTS | undefin
   if (normalized === 'mw') return 'MW';
 
   return undefined;
+}
+
+function normalizeStateClass(stateClass: unknown): string | undefined {
+  const normalized = String(stateClass || '').trim().toLowerCase();
+  return ['measurement', 'total', 'total_increasing'].includes(normalized) ? normalized : undefined;
 }

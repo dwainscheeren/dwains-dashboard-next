@@ -39,6 +39,7 @@ export interface LovelaceCardConfig {
 }
 
 export type HomeSectionKey = 'summaries' | 'cameras' | 'areas' | 'devices' | 'favorites';
+export type HomeInformationCardKey = 'people' | 'climate' | 'power' | 'device_groups';
 
 export interface DwainsDashboardSettings {
   theme?: string;
@@ -60,6 +61,7 @@ export interface DwainsDashboardSettings {
   restrict_non_admin_dashboard_settings?: boolean;
   home_sections_order?: HomeSectionKey[];
   home_sections_hidden?: HomeSectionKey[];
+  home_information_cards_hidden?: HomeInformationCardKey[];
   hidden_device_types?: string[];
 }
 

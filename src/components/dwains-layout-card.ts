@@ -5,7 +5,7 @@ import { repeat } from 'lit/directives/repeat.js';
 import { ifDefined } from 'lit/directives/if-defined.js';
 
 import type { HomeAssistant } from '../types/home-assistant';
-import type { DwainsDashboardConfig, AreaConfig, EntityConfig, AreaData, HomeSectionKey } from '../types/strategy';
+import type { DwainsDashboardConfig, AreaConfig, EntityConfig, AreaData, HomeInformationCardKey, HomeSectionKey } from '../types/strategy';
 import { getAreaData, clearAreaDataCache } from '../utils/area';
 import { getAreaIcon, getDeviceClassIcon, getDomainColor, getDomainIcon } from '../utils/icons';
 import { getStatusDomains, getTotalWattage, type DomainCount as StatusDomainCount } from '../utils/header-status-domains';
@@ -15,7 +15,7 @@ import { filterHiddenDeviceEntities } from '../utils/device-admission';
 import { restrictNonAdminDashboardSettings } from '../utils/security';
 import { sortAreas } from '../utils/area-entities';
 import { navigateHomeAssistant } from '../utils/navigation';
-import { normalizeHiddenHomeSections, normalizeHomeSectionsOrder } from '../utils/home-sections';
+import { normalizeHiddenHomeInformationCards, normalizeHiddenHomeSections, normalizeHomeSectionsOrder } from '../utils/home-sections';
 import { buildHousePowerUsage } from '../utils/power-usage';
 import { showDomainEntitiesDialog } from './utils/show-domain-entities-dialog';
 import { showCardEditorDialog } from './utils/show-card-editor-dialog';
@@ -74,6 +74,21 @@ interface HousePowerUsage {
   formattedTotal: string;
   sensorCount: number;
   rooms: HousePowerRoom[];
+}
+
+interface HouseClimateMetric {
+  kind: 'temperature' | 'humidity';
+  label: string;
+  value: string;
+  count: number;
+  icon: string;
+  color: string;
+  entityIds: string[];
+}
+
+interface HouseClimateSummary {
+  sensorCount: number;
+  metrics: HouseClimateMetric[];
 }
 
 interface HomeAreaCamera {
@@ -1159,6 +1174,9 @@ export class DwainsLayoutCard extends LitElement {
       font-size: 13px;
       font-weight: 650;
       line-height: 1.15;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
     .welcome-actions {
@@ -4267,6 +4285,7 @@ export class DwainsLayoutCard extends LitElement {
     }
 
     .home-status-card.climate,
+    .home-status-card.house-climate-card,
     .status-card-compact.climate {
       --status-color: #34a6d8;
     }
@@ -4411,6 +4430,13 @@ export class DwainsLayoutCard extends LitElement {
       gap: 12px;
     }
 
+    .home-status-card.house-climate-card {
+      --status-color: #34a6d8;
+      grid-column: span 2;
+      min-width: 270px;
+      gap: 12px;
+    }
+
     .house-persons-head {
       width: 100%;
       display: flex;
@@ -4419,6 +4445,7 @@ export class DwainsLayoutCard extends LitElement {
     }
 
     .home-status-card.house-persons-card .house-persons-icon,
+    .home-status-card.house-climate-card .house-climate-icon,
     .home-status-card.house-power-card .house-power-icon {
       width: 42px;
       height: 42px;
@@ -4428,12 +4455,14 @@ export class DwainsLayoutCard extends LitElement {
     }
 
     .house-persons-copy,
+    .house-climate-copy,
     .house-power-copy {
       min-width: 0;
       text-align: left;
     }
 
     .house-persons-title,
+    .house-climate-title,
     .house-power-title {
       color: var(--primary-text-color);
       font-size: 15px;
@@ -4443,6 +4472,7 @@ export class DwainsLayoutCard extends LitElement {
 
     .house-persons-subtitle,
     .house-persons-empty,
+    .house-climate-subtitle,
     .house-power-subtitle,
     .house-power-empty {
       color: var(--secondary-text-color);
@@ -4451,10 +4481,91 @@ export class DwainsLayoutCard extends LitElement {
       line-height: 1.25;
     }
 
+    .house-climate-head {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .house-climate-grid {
+      width: 100%;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .house-climate-metric {
+      min-width: 0;
+      min-height: 48px;
+      padding: 8px 9px;
+      border: 0;
+      border-radius: 12px;
+      display: grid;
+      grid-template-columns: 26px minmax(0, 1fr);
+      align-items: center;
+      column-gap: 8px;
+      background: color-mix(in srgb, var(--metric-color) 12%, var(--card-background-color));
+      color: var(--primary-text-color);
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+      box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--metric-color) 14%, transparent);
+      transition:
+        transform 0.18s ease,
+        background-color 0.18s ease;
+    }
+
+    .house-climate-metric:active {
+      transform: scale(0.97);
+    }
+
+    .house-climate-metric-icon {
+      width: 26px;
+      height: 26px;
+      border-radius: 9px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: color-mix(in srgb, var(--metric-color) 18%, transparent);
+      color: var(--metric-color);
+    }
+
+    .house-climate-metric-icon ha-icon {
+      --mdc-icon-size: 16px;
+    }
+
+    .house-climate-metric-copy {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+    }
+
+    .house-climate-metric-value,
+    .house-climate-metric-label {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      line-height: 1.1;
+    }
+
+    .house-climate-metric-value {
+      font-size: 14px;
+      font-weight: 900;
+      color: var(--primary-text-color);
+    }
+
+    .house-climate-metric-label {
+      font-size: 10px;
+      font-weight: 750;
+      color: var(--secondary-text-color);
+    }
+
     .house-power-head {
       width: 100%;
       display: grid;
-      grid-template-columns: auto minmax(0, 1fr) auto auto;
+      grid-template-columns: auto minmax(0, 1fr) auto;
       align-items: center;
       gap: 10px;
     }
@@ -4465,29 +4576,6 @@ export class DwainsLayoutCard extends LitElement {
       font-weight: 950;
       line-height: 1;
       white-space: nowrap;
-    }
-
-    .house-power-see-all {
-      grid-column: 3 / -1;
-      justify-self: end;
-      min-height: 30px;
-      padding: 0 10px;
-      border: 0;
-      border-radius: 999px;
-      display: inline-flex;
-      align-items: center;
-      gap: 3px;
-      background: color-mix(in srgb, var(--status-color) 10%, var(--secondary-background-color));
-      color: var(--status-color);
-      cursor: pointer;
-      font: inherit;
-      font-size: 12px;
-      font-weight: 850;
-      white-space: nowrap;
-    }
-
-    .house-power-see-all ha-icon {
-      --mdc-icon-size: 15px;
     }
 
     .house-power-list {
@@ -4842,6 +4930,12 @@ export class DwainsLayoutCard extends LitElement {
         padding: 14px;
       }
 
+      .home-status-card.house-climate-card {
+        flex: 0 0 250px;
+        min-height: 132px;
+        padding: 14px;
+      }
+
       .home-status-card .status-card-title {
         font-size: 15px;
       }
@@ -5176,6 +5270,7 @@ export class DwainsLayoutCard extends LitElement {
       }
 
       .home-status-section.layout-grid .house-persons-card,
+      .home-status-section.layout-grid .house-climate-card,
       .home-status-section.layout-grid .house-power-card {
         grid-column: 1 / -1;
       }
@@ -5264,9 +5359,18 @@ export class DwainsLayoutCard extends LitElement {
           --status-color: #f2b447;
         }
 
+        .home-status-card.house-climate-card {
+          --status-color: #64c8e8;
+        }
+
         .house-person-mini {
           background: color-mix(in srgb, var(--card-background-color) 78%, #ffffff 5%);
           box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+        }
+
+        .house-climate-metric {
+          background: color-mix(in srgb, var(--metric-color) 18%, var(--card-background-color));
+          box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--metric-color) 18%, transparent);
         }
 
         .house-power-room-icon {
@@ -8999,6 +9103,11 @@ export class DwainsLayoutCard extends LitElement {
     return this._getHomeSectionsOrder().filter(section => !hidden.has(section) || (forceAreas && section === 'areas'));
   }
 
+  private _homeInformationCardVisible(card: HomeInformationCardKey): boolean {
+    const hidden = new Set(normalizeHiddenHomeInformationCards(this.config?.settings?.home_information_cards_hidden));
+    return !hidden.has(card);
+  }
+
   private _renderHomeSection(section: HomeSectionKey) {
     switch (section) {
       case 'summaries':
@@ -9149,7 +9258,7 @@ export class DwainsLayoutCard extends LitElement {
                   <span class="welcome-name">, ${userName}!</span>
                   <span class="welcome-title">Hello, ${userName}</span>
                 </div>
-                <div class="welcome-return">Welcome Back</div>
+                <div class="welcome-return">${this._getHomeSnapshotText(weatherEntity)}</div>
               </div>
             </div>
             <div class="welcome-actions">
@@ -9200,12 +9309,38 @@ export class DwainsLayoutCard extends LitElement {
 
   private _renderHomeStatusCards() {
     const domains = this._getStatusDomains();
-    const visibleDomains = domains.filter(d =>
-      d.domain !== 'person' &&
-      d.domain !== 'wattage' &&
-      d.domain !== 'camera'
-    );
+    const visibleDomains = this._homeInformationCardVisible('device_groups')
+      ? domains.filter(d =>
+          d.domain !== 'person' &&
+          d.domain !== 'wattage' &&
+          d.domain !== 'camera'
+        )
+      : [];
     const gridMode = this._mobileHomeDevicesLayout === 'grid';
+    const cards = [
+      this._homeInformationCardVisible('people') ? this._renderHousePersonsStatusCard() : nothing,
+      this._homeInformationCardVisible('climate') ? this._renderHouseClimateStatusCard() : nothing,
+      this._homeInformationCardVisible('power') ? this._renderHousePowerStatusCard() : nothing,
+      ...visibleDomains.map(domain => html`
+        <div
+          class="home-status-card ${domain.domain} ${domain.value ? 'has-value' : ''}"
+          style=${this._domainStatusStyle(domain.domain, domain.deviceClass)}
+          @click=${() => this._handleStatusCardClick(domain)}
+          data-domain=${domain.domain}
+        >
+          <div class="status-card-icon">
+            <ha-icon icon=${domain.icon}></ha-icon>
+            ${domain.count > 0 ? html`
+              <div class="status-card-badge">${domain.count}</div>
+            ` : nothing}
+          </div>
+          ${domain.value ? html`<div class="status-card-value">${domain.value}</div>` : nothing}
+          <div class="status-card-title">${this._statusCardTitle(domain)}</div>
+        </div>
+      `),
+    ].filter(card => card !== nothing);
+
+    if (!cards.length) return nothing;
 
     return html`
       <div class="home-status-section layout-${this._mobileHomeDevicesLayout}">
@@ -9236,29 +9371,7 @@ export class DwainsLayoutCard extends LitElement {
           </button>
         </div>
         <div class="home-status-grid">
-          ${this._renderHousePersonsStatusCard()}
-          ${this._renderHousePowerStatusCard()}
-          ${repeat(
-            visibleDomains,
-            d => `${d.domain}-${d.deviceClass || d.name}`,
-            domain => html`
-              <div
-                class="home-status-card ${domain.domain} ${domain.value ? 'has-value' : ''}"
-                style=${this._domainStatusStyle(domain.domain, domain.deviceClass)}
-                @click=${() => this._handleStatusCardClick(domain)}
-                data-domain=${domain.domain}
-              >
-                <div class="status-card-icon">
-                  <ha-icon icon=${domain.icon}></ha-icon>
-                  ${domain.count > 0 ? html`
-                    <div class="status-card-badge">${domain.count}</div>
-                  ` : nothing}
-                </div>
-                ${domain.value ? html`<div class="status-card-value">${domain.value}</div>` : nothing}
-                <div class="status-card-title">${this._statusCardTitle(domain)}</div>
-              </div>
-            `
-          )}
+          ${cards}
         </div>
       </div>
     `;
@@ -9396,6 +9509,8 @@ export class DwainsLayoutCard extends LitElement {
 
   private _renderHousePowerStatusCard() {
     const powerUsage = this._getHousePowerUsage();
+    if (!powerUsage.sensorCount) return nothing;
+
     const subtitle = powerUsage.sensorCount
       ? `${powerUsage.sensorCount} live power ${powerUsage.sensorCount === 1 ? 'sensor' : 'sensors'}`
       : 'No live power sensors';
@@ -9419,14 +9534,6 @@ export class DwainsLayoutCard extends LitElement {
             <div class="house-power-subtitle">${subtitle}</div>
           </div>
           <div class="house-power-total">${powerUsage.formattedTotal}</div>
-          <button
-            class="house-power-see-all"
-            type="button"
-            @click=${this._handleHousePowerSeeAll}
-          >
-            <span>See all</span>
-            <ha-icon icon="mdi:chevron-right"></ha-icon>
-          </button>
         </div>
         ${powerUsage.rooms.length ? html`
           <div class="house-power-list" aria-label="Top rooms by power usage">
@@ -9439,6 +9546,56 @@ export class DwainsLayoutCard extends LitElement {
         ` : html`
           <div class="house-power-empty">No room power usage right now</div>
         `}
+      </div>
+    `;
+  }
+
+  private _renderHouseClimateStatusCard() {
+    const climate = this._getHouseClimateSummary();
+    if (!climate.metrics.length) return nothing;
+
+    return html`
+      <div
+        class="home-status-card house-climate-card sensor"
+        @click=${() => this._showHouseClimateEntities()}
+        @keydown=${this._handleHouseClimateKeydown}
+        data-domain="sensor"
+        role="button"
+        tabindex="0"
+        aria-label="Indoor climate"
+      >
+        <div class="house-climate-head">
+          <div class="status-card-icon house-climate-icon">
+            <ha-icon icon="mdi:home-thermometer-outline"></ha-icon>
+          </div>
+          <div class="house-climate-copy">
+            <div class="house-climate-title">Indoor climate</div>
+            <div class="house-climate-subtitle">
+              ${climate.sensorCount === 1 ? '1 climate sensor' : `${climate.sensorCount} climate sensors`}
+            </div>
+          </div>
+        </div>
+        <div class="house-climate-grid">
+          ${climate.metrics.map(metric => html`
+            <button
+              class="house-climate-metric ${metric.kind}"
+              style=${`--metric-color: ${metric.color};`}
+              type="button"
+              @click=${(event: Event) => {
+                event.stopPropagation();
+                this._showHouseClimateEntities(metric.kind);
+              }}
+            >
+              <span class="house-climate-metric-icon">
+                <ha-icon icon=${metric.icon}></ha-icon>
+              </span>
+              <span class="house-climate-metric-copy">
+                <span class="house-climate-metric-value">${metric.value}</span>
+                <span class="house-climate-metric-label">${metric.label}</span>
+              </span>
+            </button>
+          `)}
+        </div>
       </div>
     `;
   }
@@ -9468,10 +9625,37 @@ export class DwainsLayoutCard extends LitElement {
     this._openDeviceDomain('energy');
   };
 
-  private _handleHousePowerSeeAll = (event: Event): void => {
-    event.stopPropagation();
-    this._openDeviceDomain('energy');
+  private _handleHouseClimateKeydown = (event: KeyboardEvent): void => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    this._showHouseClimateEntities();
   };
+
+  private _showHouseClimateEntities(kind?: HouseClimateMetric['kind']): void {
+    const climate = this._getHouseClimateSummary();
+    const metrics = kind
+      ? climate.metrics.filter(metric => metric.kind === kind)
+      : climate.metrics;
+    const entityIds = metrics.flatMap(metric => metric.entityIds);
+
+    if (!entityIds.length) {
+      this._openDeviceDomain('sensor');
+      return;
+    }
+
+    const title = kind
+      ? metrics[0]?.label || 'Indoor climate'
+      : 'Indoor climate';
+
+    showDomainEntitiesDialog(this, {
+      domain: 'sensor',
+      config: this.config,
+      entityIds,
+      customTitle: title,
+      viewAllLabel: 'View sensors',
+      onViewAll: () => this._openDeviceDomain('sensor'),
+    });
+  }
 
   private _renderHousePersonsStatusCard() {
     const personEntities = this._getVisiblePersonEntities();
@@ -9570,6 +9754,42 @@ export class DwainsLayoutCard extends LitElement {
       .replace(/\b\w/g, letter => letter.toUpperCase());
   }
 
+  private _getHomeSnapshotText(weatherEntity?: any): string {
+    const parts: string[] = [];
+    const personEntities = this._getVisiblePersonEntities();
+
+    if (personEntities.length) {
+      const homeCount = personEntities.filter(person => person.state === 'home').length;
+      parts.push(`${homeCount}/${personEntities.length} home`);
+    }
+
+    if (this._showNotificationsUi() && this._persistentNotifications.length) {
+      const count = this._persistentNotifications.length;
+      parts.push(`${count} ${count === 1 ? 'notification' : 'notifications'}`);
+    }
+
+    const attentionCount = this._getHomeSummaryCards()
+      .reduce((total, summary) => total + summary.count, 0);
+    if (attentionCount) {
+      parts.push(attentionCount === 1 ? '1 item needs attention' : `${attentionCount} items need attention`);
+    }
+
+    const weatherText = this._formatWeatherSnapshot(weatherEntity);
+    if (weatherText && parts.length < 3) {
+      parts.push(weatherText);
+    }
+
+    return parts.slice(0, 3).join(' · ') || 'Everything looks calm';
+  }
+
+  private _formatWeatherSnapshot(weatherEntity?: any): string {
+    const temperature = weatherEntity?.attributes?.temperature;
+    if (temperature === undefined || temperature === null || temperature === '') return '';
+
+    const unit = weatherEntity.attributes?.temperature_unit || this.hass?.config?.unit_system?.temperature || '';
+    return `${temperature}${unit ? ` ${unit}` : ''} outside`;
+  }
+
   private _getHousePowerUsage(): HousePowerUsage {
     const powerUsage = buildHousePowerUsage(this.hass, this.config);
     const rooms = powerUsage.areas.slice(0, 4).map(area => ({
@@ -9586,6 +9806,68 @@ export class DwainsLayoutCard extends LitElement {
       formattedTotal: powerUsage.formattedTotal,
       sensorCount: powerUsage.sensorCount,
       rooms,
+    };
+  }
+
+  private _getHouseClimateSummary(): HouseClimateSummary {
+    const values: Record<HouseClimateMetric['kind'], Array<{ value: number; unit: string; entityId: string }>> = {
+      temperature: [],
+      humidity: [],
+    };
+
+    this._getVisibleSortedAreas().forEach(area => {
+      this._getFilteredAreaEntities(area.area_id).forEach(entity => {
+        const state = this.hass?.states?.[entity.entity_id];
+        if (!state || !state.entity_id?.startsWith('sensor.')) return;
+
+        const deviceClass = String(state.attributes?.device_class || '').toLowerCase();
+        if (deviceClass !== 'temperature' && deviceClass !== 'humidity') return;
+
+        const value = Number.parseFloat(state.state);
+        if (!Number.isFinite(value)) return;
+
+        values[deviceClass].push({
+          value,
+          unit: String(state.attributes?.unit_of_measurement || (deviceClass === 'temperature'
+            ? this.hass?.config?.unit_system?.temperature || '°C'
+            : '%')),
+          entityId: entity.entity_id,
+        });
+      });
+    });
+
+    const metrics: HouseClimateMetric[] = [];
+    const temperature = this._houseClimateMetric('temperature', values.temperature);
+    const humidity = this._houseClimateMetric('humidity', values.humidity);
+    if (temperature) metrics.push(temperature);
+    if (humidity) metrics.push(humidity);
+
+    return {
+      sensorCount: values.temperature.length + values.humidity.length,
+      metrics,
+    };
+  }
+
+  private _houseClimateMetric(
+    kind: HouseClimateMetric['kind'],
+    values: Array<{ value: number; unit: string; entityId: string }>
+  ): HouseClimateMetric | undefined {
+    if (!values.length) return undefined;
+
+    const average = values.reduce((total, item) => total + item.value, 0) / values.length;
+    const unit = values[0]?.unit || (kind === 'temperature' ? '°C' : '%');
+    const value = kind === 'temperature'
+      ? `${average.toFixed(1)} ${unit}`
+      : `${Math.round(average)}${unit}`;
+
+    return {
+      kind,
+      label: kind === 'temperature' ? 'Average temp' : 'Average humidity',
+      value,
+      count: values.length,
+      icon: kind === 'temperature' ? getDeviceClassIcon('sensor', 'temperature') : getDeviceClassIcon('sensor', 'humidity'),
+      color: kind === 'temperature' ? getDomainColor('sensor', 'temperature') : getDomainColor('sensor', 'humidity'),
+      entityIds: values.map(item => item.entityId),
     };
   }
 

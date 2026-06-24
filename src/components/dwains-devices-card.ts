@@ -989,7 +989,10 @@ export class DwainsDevicesCard extends LitElement {
   private _renderEnergyView() {
     const summary = this._energySummary();
     const topArea = summary.areas[0];
-    const wholeHouseTrend = summary.areas.map((area) => area.totalWatts);
+    const wholeHouseStatisticsEntities = this._energyStatisticsEntities(
+      summary.areas.flatMap((area) => area.entities),
+      8
+    );
 
     return html`
       <div class="device-view energy-view">
@@ -1021,7 +1024,7 @@ export class DwainsDevicesCard extends LitElement {
                     </div>
                     <strong>${summary.formattedTotal}</strong>
                   </div>
-                  ${this._renderEnergySparkline(wholeHouseTrend, 'House power distribution')}
+                  ${this._renderEnergyStatisticsGraph(wholeHouseStatisticsEntities, 'Whole house power history')}
                 </section>
 
                 ${topArea ? html`
@@ -1087,7 +1090,10 @@ export class DwainsDevicesCard extends LitElement {
           </div>
         </header>
 
-        ${this._renderEnergySparkline(area.trend, `${area.name} power distribution`)}
+        ${this._renderEnergyStatisticsGraph(
+          this._energyStatisticsEntities(area.entities, 6),
+          `${area.name} power history`
+        )}
 
         <div class="energy-entity-list">
           ${repeat(
@@ -1142,40 +1148,43 @@ export class DwainsDevicesCard extends LitElement {
     return Math.max(4, Math.min(100, Math.round((entity.watts / areaTotalWatts) * 100)));
   }
 
-  private _renderEnergySparkline(values: number[], label: string) {
-    const path = this._sparklinePath(values, 220, 72);
-    const areaPath = this._sparklineAreaPath(values, 220, 72);
+  private _energyStatisticsEntities(
+    entities: PowerEntitySummary[],
+    limit: number
+  ): Array<{ entity: string; name: string }> {
+    return entities
+      .filter((entity) => ['measurement', 'total', 'total_increasing'].includes(entity.stateClass || ''))
+      .sort((a, b) => b.watts - a.watts)
+      .slice(0, limit)
+      .map((entity) => ({ entity: entity.entityId, name: entity.name }));
+  }
+
+  private _renderEnergyStatisticsGraph(
+    entities: Array<{ entity: string; name: string }>,
+    label: string
+  ) {
+    if (!entities.length) return nothing;
+
+    const graphConfig = {
+      type: 'statistics-graph',
+      entities,
+      days_to_show: 1,
+      period: '5minute',
+      stat_types: ['mean'],
+      chart_type: 'line',
+      hide_legend: true,
+      fit_y_data: true,
+      min_y_axis: 0,
+    };
+
     return html`
-      <svg class="energy-sparkline" viewBox="0 0 220 72" role="img" aria-label=${label} preserveAspectRatio="none">
-        <path class="energy-sparkline-fill" d=${areaPath}></path>
-        <path class="energy-sparkline-line" d=${path}></path>
-      </svg>
+      <dwains-dashboard-next-card-host
+        class="energy-statistics-card"
+        aria-label=${label}
+        .hass=${this._hass}
+        .config=${graphConfig}
+      ></dwains-dashboard-next-card-host>
     `;
-  }
-
-  private _sparklinePath(values: number[], width: number, height: number): string {
-    const points = this._sparklinePoints(values, width, height);
-    return points.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`).join(' ');
-  }
-
-  private _sparklineAreaPath(values: number[], width: number, height: number): string {
-    const line = this._sparklinePath(values, width, height);
-    return `${line} L ${width} ${height} L 0 ${height} Z`;
-  }
-
-  private _sparklinePoints(values: number[], width: number, height: number): Array<{ x: number; y: number }> {
-    const safeValues = values.length ? values : [0];
-    const max = Math.max(...safeValues, 1);
-    const min = Math.min(...safeValues, 0);
-    const range = Math.max(1, max - min);
-    const lastIndex = Math.max(1, safeValues.length - 1);
-    const padding = 8;
-
-    return safeValues.map((value, index) => {
-      const x = Math.round((index / lastIndex) * width * 10) / 10;
-      const y = Math.round((height - padding - ((value - min) / range) * (height - padding * 2)) * 10) / 10;
-      return { x, y };
-    });
   }
 
   private _renderMaintenanceView(maintenance: Map<string, MaintenanceBucket>) {
@@ -2140,25 +2149,17 @@ export class DwainsDevicesCard extends LitElement {
       white-space: nowrap;
     }
 
-    .energy-sparkline {
-      width: 100%;
-      height: 72px;
-      margin-top: 12px;
+    .energy-statistics-card {
       display: block;
-      overflow: visible;
-    }
-
-    .energy-sparkline-fill {
-      fill: color-mix(in srgb, var(--domain-color) 13%, transparent);
-    }
-
-    .energy-sparkline-line {
-      fill: none;
-      stroke: var(--domain-color);
-      stroke-width: 3;
-      stroke-linecap: round;
-      stroke-linejoin: round;
-      filter: drop-shadow(0 8px 10px color-mix(in srgb, var(--domain-color) 18%, transparent));
+      min-height: 150px;
+      margin-top: 12px;
+      border-radius: 12px;
+      overflow: hidden;
+      background: color-mix(in srgb, var(--domain-color) 4%, transparent);
+      --ha-card-background: transparent;
+      --ha-card-box-shadow: none;
+      --ha-card-border-width: 0;
+      --ha-card-border-radius: 12px;
     }
 
     .energy-top-entities {
