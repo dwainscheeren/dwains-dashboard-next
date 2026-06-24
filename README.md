@@ -12,7 +12,16 @@ See this as Dwains Dashboard v4: totally rebuilt from scratch, with a completely
 
 ## Status
 
-Current release: `1.1.3`
+Current release: `1.1.4`
+
+## What's New In 1.1.4
+
+- Added Home Assistant-style summary cards for repairs, updates and discovered devices.
+- Added a Maintenance view for low batteries and unavailable devices.
+- Added suggested favorites using Home Assistant usage prediction, with a setting to turn suggestions on or off.
+- Added settings to show or hide Dwains Dashboard notifications and home page sections.
+- Improved mobile Home Assistant header and drawer handling inside Dwains Dashboard Next.
+- Improved Devices page visibility controls and active status counting.
 
 ## What's New In 1.1.3
 

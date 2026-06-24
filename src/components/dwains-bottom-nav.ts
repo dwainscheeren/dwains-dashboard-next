@@ -39,6 +39,7 @@ const MENU_PATH = '__ha_menu__';
 const PAGES_PATH = '__dd_pages__';
 const MOBILE_NAV_QUERY = '(max-width: 768px)';
 const MOBILE_NAV_ACTIVE_CLASS = 'dd-next-mobile-nav-active';
+const HIDE_NATIVE_HEADER_STYLE_ID = 'dd-hide-header';
 
 /**
  * dwains-dashboard-next-bottom-nav — vaste navigatiebalk onderaan op mobiel (smart-home-app
@@ -921,57 +922,81 @@ export function ensureBottomNav(hass: any, settings?: DwainsDashboardSettings): 
 }
 
 /**
- * Verberg HA's eigen kopbalk (toolbar + tabs) op mobiel, zodat onze onderbalk de
- * navigatie wordt en het geheel als een app voelt. Best-effort: zoekt hui-root
- * in de shadow-DOM en injecteert daar een style. Faalt het, dan blijft de
- * bovenbalk gewoon staan.
+ * Verberg HA's eigen kopbalk op mobiel. HA bouwt die toolbar op verschillende
+ * plekken afhankelijk van frontend-versie en dashboardtype, dus we injecteren
+ * dezelfde style in meerdere shell shadow-roots in plaats van alleen hui-root.
  */
 function _hideNativeHeaderOnMobile(attempt = 0): void {
-  const huiRoot = _deepFind('hui-root');
-  if (huiRoot && huiRoot.shadowRoot) {
-    let style = huiRoot.shadowRoot.querySelector('#dd-hide-header') as HTMLStyleElement | null;
+  const roots = _nativeHeaderStyleRoots();
+  const css = `
+    @media (max-width: 768px) {
+      :host-context(.${MOBILE_NAV_ACTIVE_CLASS}) app-header,
+      :host-context(.${MOBILE_NAV_ACTIVE_CLASS}) app-toolbar,
+      :host-context(.${MOBILE_NAV_ACTIVE_CLASS}) ha-menu-button,
+      :host-context(.${MOBILE_NAV_ACTIVE_CLASS}) ha-icon-button,
+      :host-context(.${MOBILE_NAV_ACTIVE_CLASS}) ha-tabs,
+      :host-context(.${MOBILE_NAV_ACTIVE_CLASS}) ha-tab-group,
+      :host-context(.${MOBILE_NAV_ACTIVE_CLASS}) [role="tablist"],
+      :host-context(.${MOBILE_NAV_ACTIVE_CLASS}) .header,
+      :host-context(.${MOBILE_NAV_ACTIVE_CLASS}) .toolbar,
+      :host-context(.${MOBILE_NAV_ACTIVE_CLASS}) .main-toolbar,
+      :host-context(.${MOBILE_NAV_ACTIVE_CLASS}) .header-toolbar,
+      :host-context(.${MOBILE_NAV_ACTIVE_CLASS}) .view-header,
+      :host-context(.${MOBILE_NAV_ACTIVE_CLASS}) .toolbar-items,
+      :host-context(.${MOBILE_NAV_ACTIVE_CLASS}) .action-items,
+      :host-context(.${MOBILE_NAV_ACTIVE_CLASS}) #toolbar,
+      :host-context(.${MOBILE_NAV_ACTIVE_CLASS}) #tabs {
+        display: none !important;
+        visibility: hidden !important;
+        height: 0 !important;
+        min-height: 0 !important;
+        max-height: 0 !important;
+        overflow: hidden !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        border: 0 !important;
+      }
+      :host-context(.${MOBILE_NAV_ACTIVE_CLASS}) ha-app-layout,
+      :host-context(.${MOBILE_NAV_ACTIVE_CLASS}) #view,
+      :host-context(.${MOBILE_NAV_ACTIVE_CLASS}) .view,
+      :host-context(.${MOBILE_NAV_ACTIVE_CLASS}) hui-view,
+      :host-context(.${MOBILE_NAV_ACTIVE_CLASS}) hui-sections-view,
+      :host-context(.${MOBILE_NAV_ACTIVE_CLASS}) hui-masonry-view {
+        padding-top: 0 !important;
+        margin-top: 0 !important;
+      }
+    }
+  `;
+  roots.forEach((root) => {
+    const host = root instanceof Document ? root.head || root.documentElement : root;
+    let style = root.querySelector(`#${HIDE_NATIVE_HEADER_STYLE_ID}`) as HTMLStyleElement | null;
     if (!style) {
       style = document.createElement('style');
-      style.id = 'dd-hide-header';
-      huiRoot.shadowRoot.appendChild(style);
+      style.id = HIDE_NATIVE_HEADER_STYLE_ID;
+      host.appendChild(style);
     }
-    style.textContent = `
-      @media (max-width: 768px) {
-        :host-context(.dd-next-mobile-nav-active) .header,
-        :host-context(.dd-next-mobile-nav-active) .toolbar,
-        :host-context(.dd-next-mobile-nav-active) app-toolbar,
-        :host-context(.dd-next-mobile-nav-active) ha-menu-button,
-        :host-context(.dd-next-mobile-nav-active) ha-icon-button,
-        :host-context(.dd-next-mobile-nav-active) ha-tabs,
-        :host-context(.dd-next-mobile-nav-active) ha-tab-group,
-        :host-context(.dd-next-mobile-nav-active) [role="tablist"],
-        :host-context(.dd-next-mobile-nav-active) .view-header,
-        :host-context(.dd-next-mobile-nav-active) .header-toolbar {
-          display: none !important;
-          visibility: hidden !important;
-          height: 0 !important;
-          min-height: 0 !important;
-          max-height: 0 !important;
-          overflow: hidden !important;
-          padding: 0 !important;
-          margin: 0 !important;
-          border: 0 !important;
-        }
-        :host-context(.dd-next-mobile-nav-active) #view,
-        :host-context(.dd-next-mobile-nav-active) .view,
-        :host-context(.dd-next-mobile-nav-active) hui-view,
-        :host-context(.dd-next-mobile-nav-active) hui-sections-view,
-        :host-context(.dd-next-mobile-nav-active) hui-masonry-view {
-          padding-top: 0 !important;
-          margin-top: 0 !important;
-        }
-      }
-    `;
-    return;
-  }
-  if (attempt < 25) {
+    style.textContent = css;
+  });
+  if (roots.length <= 1 && attempt < 25) {
     setTimeout(() => _hideNativeHeaderOnMobile(attempt + 1), 300);
   }
+}
+
+function _nativeHeaderStyleRoots(): (Document | ShadowRoot)[] {
+  const roots = new Set<Document | ShadowRoot>([document]);
+  [
+    'home-assistant',
+    'home-assistant-main',
+    'partial-panel-resolver',
+    'ha-panel-lovelace',
+    'hui-root',
+    'ha-app-layout',
+  ].forEach((tag) => {
+    _deepFindAll(tag).forEach((el) => {
+      if (el.shadowRoot) roots.add(el.shadowRoot);
+    });
+  });
+  return Array.from(roots);
 }
 
 /**
@@ -981,10 +1006,11 @@ function _hideNativeHeaderOnMobile(attempt = 0): void {
  * altijd terugzet bij dashboardwissels.
  */
 function _setDrawerPlacement(placement: 'start' | 'end'): void {
-  const wa = _deepFind('wa-drawer');
-  if (wa && wa.getAttribute('placement') !== placement) {
-    wa.setAttribute('placement', placement);
-  }
+  _deepFindAll('wa-drawer').forEach((wa) => {
+    if (wa.getAttribute('placement') !== placement) {
+      wa.setAttribute('placement', placement);
+    }
+  });
 }
 
 // ---- DD-sectie bovenin het HA-zijmenu -------------------------------------
@@ -1035,6 +1061,9 @@ function _syncHaShellForBottomNav(dashSegment?: string): void {
   const active = _isMobileNavActive(dashSegment);
   document.documentElement.classList.toggle(MOBILE_NAV_ACTIVE_CLASS, active);
   document.body?.classList.toggle(MOBILE_NAV_ACTIVE_CLASS, active);
+  if (active) {
+    _hideNativeHeaderOnMobile();
+  }
   _setDrawerPlacement(active ? 'end' : 'start');
   if (!active) {
     _removeSidebarSection();
@@ -1334,4 +1363,23 @@ function _deepFind(tag: string): Element | null {
     });
   }
   return null;
+}
+
+/** Zoek alle elementen met de gegeven tag, dwars door shadow-roots heen. */
+function _deepFindAll(tag: string): Element[] {
+  const found: Element[] = [];
+  const seen = new Set<Element>();
+  const queue: (Document | ShadowRoot)[] = [document];
+  while (queue.length) {
+    const root = queue.shift()!;
+    root.querySelectorAll(tag).forEach((el) => found.push(el));
+    root.querySelectorAll('*').forEach((el) => {
+      const sr = (el as Element).shadowRoot;
+      if (sr && !seen.has(el)) {
+        seen.add(el);
+        queue.push(sr);
+      }
+    });
+  }
+  return found;
 }

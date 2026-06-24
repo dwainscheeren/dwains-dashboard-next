@@ -1,6 +1,7 @@
 import type { HomeSectionKey } from '../types/strategy';
 
 export const DEFAULT_HOME_SECTIONS_ORDER: HomeSectionKey[] = [
+  'summaries',
   'cameras',
   'areas',
   'devices',
@@ -8,6 +9,11 @@ export const DEFAULT_HOME_SECTIONS_ORDER: HomeSectionKey[] = [
 ];
 
 export const HOME_SECTION_META: Record<HomeSectionKey, { label: string; icon: string; description: string }> = {
+  summaries: {
+    label: 'Summaries',
+    icon: 'mdi:clipboard-list-outline',
+    description: 'Repairs, updates and newly discovered devices from Home Assistant.',
+  },
   cameras: {
     label: 'Cameras',
     icon: 'mdi:cctv',
@@ -38,7 +44,21 @@ export function normalizeHomeSectionsOrder(order?: readonly unknown[]): HomeSect
   const unique = normalized.filter((section, index, all) => all.indexOf(section) === index);
   const missing = DEFAULT_HOME_SECTIONS_ORDER.filter(section => !unique.includes(section));
 
-  return [...unique, ...missing];
+  const merged = [...unique];
+  missing.forEach(section => {
+    const defaultIndex = DEFAULT_HOME_SECTIONS_ORDER.indexOf(section);
+    const insertIndex = merged.findIndex(
+      current => DEFAULT_HOME_SECTIONS_ORDER.indexOf(current) > defaultIndex
+    );
+
+    if (insertIndex === -1) {
+      merged.push(section);
+    } else {
+      merged.splice(insertIndex, 0, section);
+    }
+  });
+
+  return merged;
 }
 
 export function normalizeHiddenHomeSections(hidden?: readonly unknown[]): HomeSectionKey[] {

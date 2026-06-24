@@ -38,7 +38,7 @@ export interface LovelaceCardConfig {
   [key: string]: any;
 }
 
-export type HomeSectionKey = 'cameras' | 'areas' | 'devices' | 'favorites';
+export type HomeSectionKey = 'summaries' | 'cameras' | 'areas' | 'devices' | 'favorites';
 
 export interface DwainsDashboardSettings {
   theme?: string;
@@ -50,6 +50,8 @@ export interface DwainsDashboardSettings {
   alarm_entity_id?: string;
   show_weather?: boolean;
   show_time?: boolean;
+  show_notifications?: boolean;
+  show_suggested_favorites?: boolean;
   hidden_persons?: string[];
   hide_unavailable_entities?: boolean;
   show_recent_devices_panel?: boolean;

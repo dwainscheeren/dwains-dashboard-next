@@ -25,11 +25,36 @@ import {
   type RecentDeviceSummary,
 } from '../utils/device-admission';
 import { ensureBottomNav } from './dwains-bottom-nav';
+import { fireEvent } from './utils/fire-event';
 import './utils/dd-card-host';
 
 const NEW_DEVICES_KEY = '__new_devices__';
+const MAINTENANCE_KEY = '__maintenance__';
+const MAINTENANCE_AREA_KEY = '__maintenance_no_area__';
+const LOW_BATTERY_THRESHOLD = 20;
 const PERSON_DOMAIN = 'person';
 const PERSON_AREA_KEY = '__people__';
+
+interface MaintenanceItem {
+  entityId: string;
+  deviceId?: string;
+  areaId: string;
+  name: string;
+  stateLabel: string;
+  icon: string;
+  kind: 'battery' | 'unavailable';
+}
+
+interface MaintenanceBucket {
+  area: AreaConfig;
+  items: MaintenanceItem[];
+}
+
+interface MaintenanceSummary {
+  lowBatteryCount: number;
+  unavailableDeviceCount: number;
+  totalCount: number;
+}
 
 /**
  * dwains-dashboard-next-devices-card — herbouwt de "Devices"-pagina uit Dwains Dashboard 3.x.
@@ -97,8 +122,12 @@ export class DwainsDevicesCard extends LitElement {
 
     if (!this._selectedDomain) {
       const data = this._buildData();
+      const maintenance = this._buildMaintenanceData();
+      const showMaintenanceMenu = this._maintenanceSummary(maintenance).totalCount > 0;
       if (urlDomain === NEW_DEVICES_KEY) {
         this._selectedDomain = NEW_DEVICES_KEY;
+      } else if (urlDomain === MAINTENANCE_KEY && showMaintenanceMenu) {
+        this._selectedDomain = MAINTENANCE_KEY;
       } else if (urlDomain && data.has(urlDomain)) {
         this._selectedDomain = urlDomain;
       } else {
@@ -337,6 +366,148 @@ export class DwainsDevicesCard extends LitElement {
     return data;
   }
 
+  private _buildMaintenanceData(): Map<string, MaintenanceBucket> {
+    const buckets = new Map<string, MaintenanceBucket>();
+    if (!this._hass || !this.config) return buckets;
+
+    const hiddenDevices = hiddenDeviceIds(this.config);
+    Object.values(this._hass.states).forEach((state: any) => {
+      const entityId = state?.entity_id;
+      if (!entityId) return;
+
+      const registry = this._hass.entities?.[entityId];
+      if (registry?.hidden_by) return;
+
+      const deviceId = this._deviceIdForEntity(entityId, registry);
+      if (deviceId && hiddenDevices.has(deviceId)) return;
+
+      const kind = this._maintenanceKind(entityId, state);
+      if (!kind) return;
+
+      const area = this._maintenanceAreaForEntity(entityId, state, registry);
+      let bucket = buckets.get(area.area_id);
+      if (!bucket) {
+        bucket = { area, items: [] };
+        buckets.set(area.area_id, bucket);
+      }
+      bucket.items.push({
+        entityId,
+        deviceId,
+        areaId: area.area_id,
+        name: state.attributes?.friendly_name || registry?.name || entityId,
+        stateLabel: this._formatMaintenanceState(state, kind),
+        icon: this._maintenanceIcon(entityId, state, kind),
+        kind,
+      });
+    });
+
+    buckets.forEach((bucket) => {
+      bucket.items.sort((a, b) => {
+        if (a.kind !== b.kind) return a.kind === 'unavailable' ? -1 : 1;
+        return a.name.localeCompare(b.name);
+      });
+    });
+
+    return buckets;
+  }
+
+  private _maintenanceSummary(buckets: Map<string, MaintenanceBucket>): MaintenanceSummary {
+    let lowBatteryCount = 0;
+    const unavailableDevices = new Set<string>();
+    let unavailableEntityFallbackCount = 0;
+
+    buckets.forEach((bucket) => {
+      bucket.items.forEach((item) => {
+        if (item.kind === 'battery') {
+          lowBatteryCount += 1;
+          return;
+        }
+        if (item.deviceId) {
+          unavailableDevices.add(item.deviceId);
+        } else {
+          unavailableEntityFallbackCount += 1;
+        }
+      });
+    });
+
+    const unavailableDeviceCount = unavailableDevices.size + unavailableEntityFallbackCount;
+    return {
+      lowBatteryCount,
+      unavailableDeviceCount,
+      totalCount: lowBatteryCount + unavailableDeviceCount,
+    };
+  }
+
+  private _maintenanceSubtitle(buckets: Map<string, MaintenanceBucket>): string {
+    const summary = this._maintenanceSummary(buckets);
+    const parts: string[] = [];
+    if (summary.lowBatteryCount) {
+      parts.push(`${summary.lowBatteryCount} low ${summary.lowBatteryCount === 1 ? 'battery' : 'batteries'}`);
+    }
+    if (summary.unavailableDeviceCount) {
+      parts.push(`${summary.unavailableDeviceCount} unavailable ${summary.unavailableDeviceCount === 1 ? 'device' : 'devices'}`);
+    }
+    return parts.length ? parts.join(', ') : 'Everything looks good';
+  }
+
+  private _maintenanceKind(entityId: string, state: any): MaintenanceItem['kind'] | undefined {
+    if (state.state === 'unavailable') return 'unavailable';
+    if (this._isLowBatteryEntity(entityId, state)) return 'battery';
+    return undefined;
+  }
+
+  private _isLowBatteryEntity(entityId: string, state: any): boolean {
+    const domain = entityId.split('.')[0];
+    const deviceClass = state.attributes?.device_class;
+    if (deviceClass !== 'battery') return false;
+
+    if (domain === 'binary_sensor') {
+      return state.state === 'on';
+    }
+
+    const value = Number(state.state);
+    return Number.isFinite(value) && value <= LOW_BATTERY_THRESHOLD;
+  }
+
+  private _deviceIdForEntity(entityId: string, registry?: any): string | undefined {
+    return registry?.device_id || this.config?.entities?.find((entity) => entity.entity_id === entityId)?.device_id;
+  }
+
+  private _maintenanceAreaForEntity(entityId: string, state: any, registry?: any): AreaConfig {
+    const configEntity = this.config?.entities?.find((entity) => entity.entity_id === entityId);
+    const deviceId = this._deviceIdForEntity(entityId, registry);
+    const device = deviceId ? this.config?.devices?.find((item) => item.device_id === deviceId) : undefined;
+    const areaId =
+      registry?.area_id ||
+      configEntity?.area_id ||
+      state.attributes?.area_id ||
+      device?.area_id;
+
+    const area = areaId ? this.config?.areas?.find((item) => item.area_id === areaId) : undefined;
+    if (area) return area;
+
+    return {
+      area_id: MAINTENANCE_AREA_KEY,
+      name: 'No area',
+      icon: 'mdi:home-question',
+    };
+  }
+
+  private _maintenanceIcon(entityId: string, state: any, kind: MaintenanceItem['kind']): string {
+    if (kind === 'battery') return 'mdi:battery-alert';
+    const domain = entityId.split('.')[0] || '';
+    return state.attributes?.icon || getDomainIcon(domain) || 'mdi:help-box';
+  }
+
+  private _formatMaintenanceState(state: any, kind: MaintenanceItem['kind']): string {
+    if (kind === 'unavailable') {
+      return state.state === 'unknown' ? 'Unknown' : 'Unavailable';
+    }
+
+    const unit = state.attributes?.unit_of_measurement || '%';
+    return `${state.state}${unit}`;
+  }
+
   private _addPersonData(
     data: Map<string, Map<string, { area: AreaConfig; entities: EntityConfig[] }>>
   ): void {
@@ -417,6 +588,7 @@ export class DwainsDevicesCard extends LitElement {
 
   // Leesbare naam voor een type-sleutel (domein of binary_sensor.<class>).
   private _typeName(key: string): string {
+    if (key === MAINTENANCE_KEY) return 'Maintenance';
     if (key.startsWith('binary_sensor.')) {
       return getDeviceClassName(this._hass, key.slice('binary_sensor.'.length));
     }
@@ -425,6 +597,7 @@ export class DwainsDevicesCard extends LitElement {
 
   // Icoon voor een type-sleutel.
   private _typeIcon(key: string): string {
+    if (key === MAINTENANCE_KEY) return 'mdi:wrench';
     if (key === PERSON_DOMAIN) return 'mdi:account-group';
     if (key.startsWith('binary_sensor.')) {
       return getDeviceClassIcon('binary_sensor', key.slice('binary_sensor.'.length));
@@ -433,6 +606,7 @@ export class DwainsDevicesCard extends LitElement {
   }
 
   private _typeColor(key: string): string {
+    if (key === MAINTENANCE_KEY) return 'var(--warning-color, #ff9800)';
     if (key.startsWith('binary_sensor.')) {
       return getDomainColor('binary_sensor', key.slice('binary_sensor.'.length));
     }
@@ -446,11 +620,15 @@ export class DwainsDevicesCard extends LitElement {
         domain,
         icon: domain === NEW_DEVICES_KEY
           ? 'mdi:new-box'
+          : domain === MAINTENANCE_KEY
+            ? 'mdi:wrench'
           : domain
             ? this._typeIcon(domain)
             : 'mdi:format-list-bulleted-type',
         label: domain === NEW_DEVICES_KEY
           ? 'New devices'
+          : domain === MAINTENANCE_KEY
+            ? 'Maintenance'
           : domain
             ? this._typeName(domain)
             : this._t('devices.title'),
@@ -483,7 +661,8 @@ export class DwainsDevicesCard extends LitElement {
 
   private _applyPendingDomainSelection(
     data?: Map<string, Map<string, { area: AreaConfig; entities: EntityConfig[] }>>,
-    showNewDevicesMenu?: boolean
+    showNewDevicesMenu?: boolean,
+    showMaintenanceMenu?: boolean
   ): boolean {
     if (!this._hass || !this.config) return false;
 
@@ -495,9 +674,14 @@ export class DwainsDevicesCard extends LitElement {
       shouldShowRecentDevicesPanel(this.config) &&
       (this._newDevices().length > 0 || hiddenDeviceIds(this.config).size > 0)
     );
+    const canShowMaintenance = showMaintenanceMenu ?? (
+      this._maintenanceSummary(this._buildMaintenanceData()).totalCount > 0
+    );
 
     if (domain === NEW_DEVICES_KEY) {
       if (!canShowNewDevices) return false;
+    } else if (domain === MAINTENANCE_KEY) {
+      if (!canShowMaintenance) return false;
     } else if (!currentData.has(domain)) {
       return false;
     }
@@ -563,9 +747,11 @@ export class DwainsDevicesCard extends LitElement {
     const newDevices = this._newDevices();
     const hiddenCount = hiddenDeviceIds(this.config).size;
     const showNewDevicesMenu = shouldShowRecentDevicesPanel(this.config) && (newDevices.length > 0 || hiddenCount > 0);
-    this._applyPendingDomainSelection(data, showNewDevicesMenu);
+    const maintenance = this._buildMaintenanceData();
+    const showMaintenanceMenu = this._maintenanceSummary(maintenance).totalCount > 0;
+    this._applyPendingDomainSelection(data, showNewDevicesMenu, showMaintenanceMenu);
 
-    if (domains.length === 0 && !showNewDevicesMenu) {
+    if (domains.length === 0 && !showNewDevicesMenu && !showMaintenanceMenu) {
       return html`
         <div class="layout-container">
           ${this._renderMobileOverlay()}
@@ -585,18 +771,24 @@ export class DwainsDevicesCard extends LitElement {
       if (!showNewDevicesMenu) {
         this._selectedDomain = domains[0] ?? null;
       }
+    } else if (this._selectedDomain === MAINTENANCE_KEY) {
+      if (!showMaintenanceMenu) {
+        this._selectedDomain = domains[0] ?? (showNewDevicesMenu ? NEW_DEVICES_KEY : null);
+      }
     } else if (!this._selectedDomain || !data.has(this._selectedDomain)) {
-      this._selectedDomain = domains[0] ?? (showNewDevicesMenu ? NEW_DEVICES_KEY : null);
+      this._selectedDomain = domains[0] ?? (showMaintenanceMenu ? MAINTENANCE_KEY : showNewDevicesMenu ? NEW_DEVICES_KEY : null);
     }
 
     return html`
       <div class="layout-container">
         ${this._renderMobileOverlay()}
-        ${this._renderSidebar(data, domains, newDevices, showNewDevicesMenu)}
+        ${this._renderSidebar(data, domains, newDevices, showNewDevicesMenu, maintenance, showMaintenanceMenu)}
         <div class="main-content">
           <div class="content-area">
             ${this._selectedDomain === NEW_DEVICES_KEY
               ? this._renderNewDevicesView(newDevices)
+              : this._selectedDomain === MAINTENANCE_KEY
+                ? this._renderMaintenanceView(maintenance)
               : this._renderDeviceView(data)}
           </div>
         </div>
@@ -618,7 +810,9 @@ export class DwainsDevicesCard extends LitElement {
     data: Map<string, Map<string, { area: AreaConfig; entities: EntityConfig[] }>>,
     domains: string[],
     newDevices: RecentDeviceSummary[],
-    showNewDevicesMenu: boolean
+    showNewDevicesMenu: boolean,
+    maintenance: Map<string, MaintenanceBucket>,
+    showMaintenanceMenu: boolean
   ) {
     const classes = {
       sidebar: true,
@@ -645,6 +839,25 @@ export class DwainsDevicesCard extends LitElement {
                     </div>
                   </div>
                   <span class="domain-count">${newDevices.length}</span>
+                  <ha-icon class="device-menu-chevron" icon="mdi:chevron-right"></ha-icon>
+                </button>
+              `
+            : nothing}
+          ${showMaintenanceMenu
+            ? html`
+                <button
+                  class="area-button maintenance ${this._selectedDomain === MAINTENANCE_KEY ? 'selected' : ''}"
+                  style=${`--domain-color: ${this._typeColor(MAINTENANCE_KEY)};`}
+                  @click=${() => this._selectDomain(MAINTENANCE_KEY)}
+                >
+                  <div class="area-icon">
+                    <ha-icon icon="mdi:wrench"></ha-icon>
+                  </div>
+                  <div class="area-info">
+                    <div class="area-name">Maintenance</div>
+                    <div class="device-menu-subtitle">${this._maintenanceSubtitle(maintenance)}</div>
+                  </div>
+                  <span class="domain-count">${this._maintenanceSummary(maintenance).totalCount}</span>
                   <ha-icon class="device-menu-chevron" icon="mdi:chevron-right"></ha-icon>
                 </button>
               `
@@ -756,6 +969,112 @@ export class DwainsDevicesCard extends LitElement {
         })}
       </div>
     `;
+  }
+
+  private _renderMaintenanceView(maintenance: Map<string, MaintenanceBucket>) {
+    const summary = this._maintenanceSummary(maintenance);
+    const orderedBuckets = this._orderedMaintenanceBuckets(maintenance);
+
+    return html`
+      <div class="device-view maintenance-view">
+        <div class="device-header maintenance-header" style=${`--domain-color: ${this._typeColor(MAINTENANCE_KEY)};`}>
+          <div class="device-title-wrap">
+            <ha-icon icon="mdi:wrench"></ha-icon>
+            <div>
+              <h1 class="device-title">Maintenance</h1>
+              <div class="maintenance-header-subtitle">${this._maintenanceSubtitle(maintenance)}</div>
+            </div>
+          </div>
+          <div class="maintenance-summary">
+            <span>
+              <ha-icon icon="mdi:battery-alert"></ha-icon>
+              ${summary.lowBatteryCount}
+            </span>
+            <span>
+              <ha-icon icon="mdi:alert-circle-outline"></ha-icon>
+              ${summary.unavailableDeviceCount}
+            </span>
+          </div>
+        </div>
+
+        ${orderedBuckets.length
+          ? orderedBuckets.map((bucket) => html`
+              <div class="maintenance-area-group">
+                <button
+                  class="maintenance-area-title"
+                  type="button"
+                  @click=${() => this._navigateToArea(bucket.area.area_id)}
+                  ?disabled=${bucket.area.area_id === MAINTENANCE_AREA_KEY}
+                >
+                  <span>${bucket.area.name}</span>
+                  <span>${bucket.items.length}</span>
+                  <ha-icon icon="mdi:chevron-right"></ha-icon>
+                </button>
+                <div class="maintenance-grid">
+                  ${repeat(
+                    bucket.items,
+                    (item) => item.entityId,
+                    (item) => this._renderMaintenanceCard(item)
+                  )}
+                </div>
+              </div>
+            `)
+          : html`
+              <div class="maintenance-empty">
+                <ha-icon icon="mdi:check-circle-outline"></ha-icon>
+                <span>No low batteries or unavailable devices right now.</span>
+              </div>
+            `}
+      </div>
+    `;
+  }
+
+  private _orderedMaintenanceBuckets(maintenance: Map<string, MaintenanceBucket>): MaintenanceBucket[] {
+    const areaOrder = new Map(this._getVisibleSortedAreas().map((area, index) => [area.area_id, index]));
+    return [...maintenance.values()].sort((a, b) => {
+      const aOrder = areaOrder.get(a.area.area_id) ?? Number.MAX_SAFE_INTEGER;
+      const bOrder = areaOrder.get(b.area.area_id) ?? Number.MAX_SAFE_INTEGER;
+      if (aOrder !== bOrder) return aOrder - bOrder;
+      return a.area.name.localeCompare(b.area.name);
+    });
+  }
+
+  private _renderMaintenanceCard(item: MaintenanceItem) {
+    return html`
+      <button
+        class="maintenance-card ${item.kind}"
+        type="button"
+        @click=${() => this._showMoreInfo(item.entityId)}
+      >
+        <div class="maintenance-card-icon">
+          <ha-icon icon=${item.icon}></ha-icon>
+          ${item.kind === 'unavailable'
+            ? html`<span class="maintenance-alert-dot">!</span>`
+            : nothing}
+        </div>
+        <div class="maintenance-card-copy">
+          <div class="maintenance-card-title">${item.name}</div>
+          <div class="maintenance-card-state">${item.stateLabel}</div>
+        </div>
+      </button>
+    `;
+  }
+
+  private _showMoreInfo(entityId: string): void {
+    fireEvent(this, 'hass-more-info', { entityId });
+  }
+
+  private _navigateToArea(areaId: string): void {
+    if (!areaId || areaId === MAINTENANCE_AREA_KEY) return;
+    const seg = window.location.pathname.split('/')[1] || 'lovelace';
+    const url = new URL(window.location.href);
+    url.pathname = `/${seg}/home`;
+    url.searchParams.set('dd_area', areaId);
+    url.searchParams.delete('dd_device');
+    window.history.pushState(null, '', url.toString());
+    const ev = new Event('location-changed', { bubbles: true, composed: true });
+    (ev as any).detail = { replace: false };
+    window.dispatchEvent(ev);
   }
 
   private _renderDeviceEditToolbar(allEntityIds: string[], selectedCount: number) {
@@ -1497,6 +1816,10 @@ export class DwainsDevicesCard extends LitElement {
       margin-bottom: 0;
     }
 
+    .area-button.maintenance {
+      --domain-color: var(--warning-color, #ff9800);
+    }
+
     .recent-header {
       display: flex;
       align-items: flex-start;
@@ -1664,6 +1987,209 @@ export class DwainsDevicesCard extends LitElement {
       padding: 8px 10px;
       background: var(--secondary-background-color);
       color: var(--primary-color);
+    }
+
+    .maintenance-view {
+      max-width: 1200px;
+    }
+
+    .maintenance-header {
+      align-items: flex-start;
+      margin-bottom: 22px;
+    }
+
+    .maintenance-header-subtitle {
+      margin-top: 3px;
+      color: var(--secondary-text-color);
+      font-size: 13px;
+      font-weight: 500;
+    }
+
+    .maintenance-summary {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .maintenance-summary span {
+      min-height: 34px;
+      padding: 0 12px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: color-mix(in srgb, var(--domain-color) 10%, var(--card-background-color));
+      color: var(--domain-color);
+      font-size: 13px;
+      font-weight: 800;
+      box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--domain-color) 14%, transparent);
+    }
+
+    .maintenance-summary ha-icon {
+      --mdc-icon-size: 17px;
+    }
+
+    .maintenance-area-group {
+      margin-bottom: 18px;
+    }
+
+    .maintenance-area-title {
+      min-height: 34px;
+      margin: 0 0 7px;
+      padding: 0 4px;
+      border: 0;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: transparent;
+      color: var(--secondary-text-color);
+      cursor: pointer;
+      font: inherit;
+      font-size: 14px;
+      font-weight: 760;
+    }
+
+    .maintenance-area-title:disabled {
+      cursor: default;
+    }
+
+    .maintenance-area-title span:first-child {
+      color: var(--primary-text-color);
+    }
+
+    .maintenance-area-title span:nth-child(2) {
+      min-width: 21px;
+      height: 21px;
+      padding: 0 7px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--secondary-background-color);
+      color: var(--secondary-text-color);
+      font-size: 11px;
+      font-weight: 850;
+    }
+
+    .maintenance-area-title ha-icon {
+      --mdc-icon-size: 18px;
+    }
+
+    .maintenance-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+      gap: 8px;
+    }
+
+    .maintenance-card {
+      min-height: 56px;
+      padding: 10px 12px;
+      border: 1px solid var(--divider-color);
+      border-radius: 10px;
+      display: grid;
+      grid-template-columns: 34px minmax(0, 1fr);
+      align-items: center;
+      gap: 10px;
+      background: var(--card-background-color);
+      color: var(--primary-text-color);
+      cursor: pointer;
+      text-align: left;
+      font: inherit;
+      box-shadow: 0 8px 20px rgba(15, 23, 42, 0.04);
+      transition:
+        border-color 0.18s ease,
+        box-shadow 0.18s ease,
+        transform 0.18s ease;
+    }
+
+    .maintenance-card:hover {
+      border-color: color-mix(in srgb, var(--domain-color) 26%, var(--divider-color));
+      box-shadow: 0 12px 26px rgba(15, 23, 42, 0.08);
+      transform: translateY(-1px);
+    }
+
+    .maintenance-card-icon {
+      position: relative;
+      width: 34px;
+      height: 34px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex: 0 0 auto;
+      background: var(--secondary-background-color);
+      color: var(--secondary-text-color);
+    }
+
+    .maintenance-card.battery .maintenance-card-icon {
+      background: rgba(var(--rgb-warning-color, 255, 152, 0), 0.12);
+      color: var(--warning-color, #ff9800);
+    }
+
+    .maintenance-card.unavailable .maintenance-card-icon {
+      background: color-mix(in srgb, var(--secondary-text-color) 10%, var(--secondary-background-color));
+      color: color-mix(in srgb, var(--secondary-text-color) 86%, var(--primary-text-color));
+    }
+
+    .maintenance-card-icon ha-icon {
+      --mdc-icon-size: 20px;
+    }
+
+    .maintenance-alert-dot {
+      position: absolute;
+      top: -4px;
+      right: -4px;
+      width: 16px;
+      height: 16px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--warning-color, #ff9800);
+      color: #ffffff;
+      font-size: 11px;
+      font-weight: 900;
+      box-shadow: 0 0 0 2px var(--card-background-color);
+    }
+
+    .maintenance-card-copy {
+      min-width: 0;
+    }
+
+    .maintenance-card-title {
+      color: var(--primary-text-color);
+      font-size: 14px;
+      font-weight: 750;
+      line-height: 1.16;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .maintenance-card-state {
+      margin-top: 2px;
+      color: var(--secondary-text-color);
+      font-size: 12px;
+      font-weight: 550;
+      line-height: 1.2;
+    }
+
+    .maintenance-empty {
+      min-height: 180px;
+      border: 1px dashed var(--divider-color);
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      color: var(--secondary-text-color);
+      background: var(--card-background-color);
+    }
+
+    .maintenance-empty ha-icon {
+      --mdc-icon-size: 22px;
+      color: var(--success-color, #4caf50);
     }
 
     /* Domain (per area) groups */
@@ -2078,6 +2604,22 @@ export class DwainsDevicesCard extends LitElement {
 
       .device-action {
         justify-content: center;
+      }
+
+      .maintenance-header {
+        gap: 12px;
+      }
+
+      .maintenance-summary {
+        width: 100%;
+      }
+
+      .maintenance-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .maintenance-card {
+        min-height: 62px;
       }
     }
   `;

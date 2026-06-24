@@ -370,7 +370,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
         color: "#0ea5e9",
         title: "Home page",
         description: "Section order and favorites.",
-        summary: `${visibleHomeSections} sections · ${favoriteCount} favorites`,
+        summary: `${visibleHomeSections} sections · ${favoriteCount} favorites · ${this._config?.settings?.show_suggested_favorites === false ? "Suggestions off" : "Suggestions on"}`,
       },
       {
         page: "header",
@@ -378,8 +378,8 @@ export class DwainsDashboardStrategyEditor extends LitElement {
         icon: "mdi:card-account-details-star-outline",
         color: "#22a06b",
         title: "Header & status",
-        description: "Time, weather and alarm chip.",
-        summary: this._config?.settings?.alarm_entity_id ? "Alarm selected" : "No alarm selected",
+        description: "Time, weather, notifications and alarm chip.",
+        summary: `${this._config?.settings?.show_notifications === false ? "Notifications hidden" : "Notifications shown"} · ${this._config?.settings?.alarm_entity_id ? "Alarm selected" : "No alarm selected"}`,
       },
       {
         page: "people_areas",
@@ -504,6 +504,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
       case "header":
         return html`
           ${this._renderTimeSettingsPanel()}
+          ${this._renderNotificationSettingsPanel()}
           ${this._renderWeatherSettingsPanel()}
           ${this._renderAlarmSettingsPanel()}
         `;
@@ -613,7 +614,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
     return this._renderSettingsPanel(
       "mdi:home-edit-outline",
       "Home layout",
-      "Choose the order of the home page sections. Camera cards only appear when an area contains one or more camera entities.",
+      "Choose the order of the home page sections. Summaries show active Home Assistant repairs, updates and discovered devices.",
       this._renderHomeSectionOrder()
     );
   }
@@ -647,6 +648,17 @@ export class DwainsDashboardStrategyEditor extends LitElement {
       "Choose entities that you always want to see on the home page.",
       html`
         <div class="favorites-section">
+          <div class="favorite-suggestions-toggle">
+            <ha-formfield label="Show suggested favorites from Home Assistant">
+              <ha-switch
+                .checked=${this._config?.settings?.show_suggested_favorites !== false}
+                @change=${this._toggleSuggestedFavorites}
+              ></ha-switch>
+            </ha-formfield>
+            <p class="toggle-description">
+              Adds entities Home Assistant predicts you use often next to your pinned favorites.
+            </p>
+          </div>
           <div class="entity-picker">
             <div class="entity-picker-header">
               <h4>Selected Entities</h4>
@@ -679,6 +691,26 @@ export class DwainsDashboardStrategyEditor extends LitElement {
               <ha-switch
                 .checked=${this._config?.settings?.show_time !== false}
                 @change=${this._toggleTimeDisplay}
+              ></ha-switch>
+            </ha-formfield>
+          </div>
+        </div>
+      `
+    );
+  }
+
+  private _renderNotificationSettingsPanel() {
+    return this._renderSettingsPanel(
+      "mdi:bell-outline",
+      "Notifications",
+      "Show or hide Dwains Dashboard notification buttons and badges.",
+      html`
+        <div class="notifications-section">
+          <div class="notifications-toggle">
+            <ha-formfield label="Show notifications in Dwains Dashboard">
+              <ha-switch
+                .checked=${this._config?.settings?.show_notifications !== false}
+                @change=${this._toggleNotificationsDisplay}
               ></ha-switch>
             </ha-formfield>
           </div>
@@ -2173,6 +2205,36 @@ export class DwainsDashboardStrategyEditor extends LitElement {
     this._fireConfigChanged(newConfig);
   }
 
+  private _toggleNotificationsDisplay(e: Event): void {
+    const target = e.target as any;
+    const showNotifications = target.checked;
+
+    const newConfig: DwainsDashboardConfig = {
+      ...this._config!,
+      settings: {
+        ...this._config!.settings,
+        show_notifications: showNotifications
+      }
+    };
+
+    this._fireConfigChanged(newConfig);
+  }
+
+  private _toggleSuggestedFavorites(e: Event): void {
+    const target = e.target as any;
+    const showSuggestedFavorites = target.checked;
+
+    const newConfig: DwainsDashboardConfig = {
+      ...this._config!,
+      settings: {
+        ...this._config!.settings,
+        show_suggested_favorites: showSuggestedFavorites
+      }
+    };
+
+    this._fireConfigChanged(newConfig);
+  }
+
   private _toggleHideUnavailableEntities(e: Event): void {
     const target = e.target as any;
     const hideUnavailable = target.checked;
@@ -3220,12 +3282,14 @@ export class DwainsDashboardStrategyEditor extends LitElement {
 
       .time-toggle,
       .weather-toggle,
+      .favorite-suggestions-toggle,
       .hide-unavailable-toggle {
         margin-bottom: 16px;
       }
 
       .time-toggle ha-formfield,
       .weather-toggle ha-formfield,
+      .favorite-suggestions-toggle ha-formfield,
       .hide-unavailable-toggle ha-formfield {
         --mdc-typography-body2-font-size: 14px;
       }

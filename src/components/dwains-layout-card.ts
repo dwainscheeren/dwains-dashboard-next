@@ -36,6 +36,9 @@ const SIDEBAR_DEFAULT_WIDTH = 250;
 const SIDEBAR_MIN_WIDTH = 240;
 const SIDEBAR_MAX_WIDTH = 660;
 const SIDEBAR_COLLAPSE_THRESHOLD = 96;
+const AREA_HEADER_STICK_SCROLL = 76;
+const AREA_HEADER_UNSTICK_SCROLL = 38;
+const AREA_HEADER_REVEAL_SCROLL = 88;
 
 interface CachedAreaData {
   data: AreaData;
@@ -83,6 +86,18 @@ interface HomeAreaCamera {
   count: number;
 }
 
+type HomeSummaryKey = 'repairs' | 'updates' | 'discovered';
+
+interface HomeSummaryCard {
+  key: HomeSummaryKey;
+  label: string;
+  subtitle: string;
+  icon: string;
+  color: string;
+  count: number;
+  path: string;
+}
+
 @customElement('dwains-dashboard-next-layout-card')
 export class DwainsLayoutCard extends LitElement {
   @property({ attribute: false }) public hass!: HomeAssistant;
@@ -115,6 +130,9 @@ export class DwainsLayoutCard extends LitElement {
   @state() private _areaSidebarWidth = SIDEBAR_DEFAULT_WIDTH;
   @state() private _areaSidebarCollapsed = false;
   @state() private _isResizingSidebar = false;
+  @state() private _repairsIssueCount = 0;
+  @state() private _discoveredDeviceCount = 0;
+  @state() private _suggestedFavoriteEntities: string[] = [];
 
   // Performance optimizations
   private _areaEntitiesCache = new Map<string, { entities: EntityConfig[], timestamp: number }>();
@@ -128,6 +146,10 @@ export class DwainsLayoutCard extends LitElement {
   private _resizeObserver?: ResizeObserver;
   private _persistentNotificationsUnsub?: () => void;
   private _persistentNotificationsLoaded = false;
+  private _homeSummariesLoaded = false;
+  private _homeSummariesRefreshInterval?: number;
+  private _favoriteSuggestionsLoaded = false;
+  private _favoriteSuggestionsLoading = false;
   private _mobileDomainMenuPortal?: HTMLElement;
   private _areaHeaderScrollRaf?: number;
   private _lastAreaScrollTop = 0;
@@ -190,6 +212,100 @@ export class DwainsLayoutCard extends LitElement {
 
   private _canManageDashboard(): boolean {
     return !restrictNonAdminDashboardSettings(this.hass, this.config?.settings);
+  }
+
+  private _showNotificationsUi(): boolean {
+    return this.config?.settings?.show_notifications !== false;
+  }
+
+  private _showSuggestedFavoritesUi(): boolean {
+    return this.config?.settings?.show_suggested_favorites !== false;
+  }
+
+  private _hasUsagePredictionComponent(): boolean {
+    return Boolean(this.hass?.config?.components?.includes('usage_prediction'));
+  }
+
+  private _isFavoriteEntityVisible(entityId: string): boolean {
+    const state = this.hass?.states?.[entityId];
+    const registry = this.hass?.entities?.[entityId] as any;
+    return Boolean(
+      state &&
+      state.state !== 'unavailable' &&
+      state.state !== 'unknown' &&
+      !registry?.hidden_by &&
+      !registry?.hidden
+    );
+  }
+
+  private _getManualFavoriteEntities(): string[] {
+    const seen = new Set<string>();
+    return (this.config?.favorites || []).filter((entityId) => {
+      if (seen.has(entityId)) return false;
+      seen.add(entityId);
+      return this._isFavoriteEntityVisible(entityId);
+    });
+  }
+
+  private _getEffectiveFavoriteEntities(): string[] {
+    const manualFavorites = this._getManualFavoriteEntities();
+    if (!this._showSuggestedFavoritesUi()) return manualFavorites;
+
+    const limit = Math.max(8, manualFavorites.length);
+    if (manualFavorites.length >= limit) return manualFavorites.slice(0, limit);
+
+    const seen = new Set(manualFavorites);
+    const suggestedFavorites = this._suggestedFavoriteEntities.filter((entityId) => {
+      if (seen.has(entityId)) return false;
+      if (!this._isFavoriteEntityVisible(entityId)) return false;
+      seen.add(entityId);
+      return true;
+    });
+
+    return [...manualFavorites, ...suggestedFavorites].slice(0, limit);
+  }
+
+  private _ensureFavoriteSuggestionsFeature(): void {
+    if (!this.hass || !this._showSuggestedFavoritesUi()) return;
+    if (this._favoriteSuggestionsLoaded || this._favoriteSuggestionsLoading) return;
+    if (!this._hasUsagePredictionComponent()) {
+      this._favoriteSuggestionsLoaded = true;
+      this._suggestedFavoriteEntities = [];
+      return;
+    }
+    if (this._getManualFavoriteEntities().length >= 8) {
+      return;
+    }
+
+    void this._loadFavoriteSuggestions();
+  }
+
+  private async _loadFavoriteSuggestions(): Promise<void> {
+    if (!this.hass || this._favoriteSuggestionsLoading) return;
+
+    this._favoriteSuggestionsLoading = true;
+    try {
+      const result = await this.hass.callWS<{ entities?: string[] }>({
+        type: 'usage_prediction/common_control',
+      });
+      this._suggestedFavoriteEntities = Array.isArray(result?.entities)
+        ? result.entities.filter((entityId): entityId is string => typeof entityId === 'string')
+        : [];
+    } catch (err) {
+      console.debug('Dwains Dashboard: favorite suggestions are not available.', err);
+      this._suggestedFavoriteEntities = [];
+    } finally {
+      this._favoriteSuggestionsLoading = false;
+      this._favoriteSuggestionsLoaded = true;
+    }
+  }
+
+  private _ensurePersistentNotificationsFeature(): void {
+    if (!this._showNotificationsUi() || !this.hass || this._persistentNotificationsLoaded) return;
+
+    this._persistentNotificationsLoaded = true;
+    void this._loadPersistentNotifications(false);
+    void this._ensurePersistentNotificationsSubscription();
   }
 
   static getStubConfig() {
@@ -1411,6 +1527,126 @@ export class DwainsLayoutCard extends LitElement {
       box-shadow:
         0 8px 18px rgba(15, 23, 42, 0.08),
         inset 0 0 0 1px color-mix(in srgb, #ef4444 8%, transparent);
+    }
+
+    .home-summaries-section {
+      margin-bottom: 36px;
+    }
+
+    .home-summaries-section .home-status-heading ha-icon {
+      color: #f59e0b;
+      background: color-mix(in srgb, #f59e0b 13%, transparent);
+      box-shadow: inset 0 0 0 1px color-mix(in srgb, #f59e0b 9%, transparent);
+    }
+
+    .home-summaries-section .mobile-layout-toggle.active {
+      color: #f59e0b;
+      background: color-mix(in srgb, #f59e0b 13%, var(--card-background-color));
+      box-shadow:
+        0 8px 18px rgba(15, 23, 42, 0.08),
+        inset 0 0 0 1px color-mix(in srgb, #f59e0b 9%, transparent);
+    }
+
+    .home-summary-list {
+      width: min(100%, 620px);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .home-summary-card {
+      appearance: none;
+      width: 100%;
+      min-height: 68px;
+      padding: 12px 14px;
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 13px;
+      border: 1px solid color-mix(in srgb, var(--primary-text-color) 9%, transparent);
+      border-radius: 10px;
+      background: var(--card-background-color);
+      color: var(--primary-text-color);
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+      box-shadow: 0 8px 20px color-mix(in srgb, var(--primary-text-color) 5%, transparent);
+      transition:
+        transform 0.16s ease,
+        border-color 0.16s ease,
+        box-shadow 0.16s ease;
+    }
+
+    .home-summary-card:hover {
+      transform: translateY(-1px);
+      border-color: color-mix(in srgb, var(--summary-color) 35%, transparent);
+      box-shadow: 0 12px 26px color-mix(in srgb, var(--summary-color) 13%, transparent);
+    }
+
+    .home-summary-card:active {
+      transform: scale(0.992);
+    }
+
+    .home-summary-card:focus-visible {
+      outline: 2px solid color-mix(in srgb, var(--summary-color) 70%, #ffffff);
+      outline-offset: 2px;
+    }
+
+    .home-summary-icon {
+      width: 38px;
+      height: 38px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 9px;
+      color: var(--summary-color);
+      background: color-mix(in srgb, var(--summary-color) 14%, transparent);
+      flex: 0 0 auto;
+    }
+
+    .home-summary-icon ha-icon {
+      --mdc-icon-size: 21px;
+    }
+
+    .home-summary-copy {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .home-summary-title {
+      color: var(--primary-text-color);
+      font-size: 14px;
+      font-weight: 850;
+      line-height: 1.2;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .home-summary-subtitle {
+      color: var(--secondary-text-color);
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1.25;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .home-summary-chevron {
+      width: 26px;
+      height: 26px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: color-mix(in srgb, var(--primary-text-color) 48%, transparent);
+      flex: 0 0 auto;
+    }
+
+    .home-summary-chevron ha-icon {
+      --mdc-icon-size: 20px;
     }
 
     .home-camera-grid {
@@ -4489,6 +4725,31 @@ export class DwainsLayoutCard extends LitElement {
         display: none;
       }
 
+      .home-summaries-section {
+        margin: 0 -10px 18px;
+      }
+
+      .home-summaries-section .home-status-heading {
+        display: none;
+      }
+
+      .home-summary-list {
+        width: auto;
+        padding: 2px 18px 16px;
+        gap: 8px;
+      }
+
+      .home-summary-card {
+        min-height: 64px;
+        padding: 11px 12px;
+        border-radius: 14px;
+      }
+
+      .home-summary-icon {
+        width: 36px;
+        height: 36px;
+      }
+
       .home-camera-grid {
         display: flex;
         grid-template-columns: none;
@@ -4987,6 +5248,21 @@ export class DwainsLayoutCard extends LitElement {
 
         .house-person-mini.is-away {
           background: color-mix(in srgb, #df5b63 16%, var(--card-background-color));
+        }
+
+        .home-summary-card {
+          background:
+            linear-gradient(180deg,
+              color-mix(in srgb, var(--card-background-color) 88%, #ffffff 4%),
+              color-mix(in srgb, var(--card-background-color) 96%, #000000 4%));
+          border-color: rgba(255, 255, 255, 0.08);
+          box-shadow:
+            0 12px 26px rgba(0, 0, 0, 0.24),
+            inset 0 1px 0 rgba(255, 255, 255, 0.04);
+        }
+
+        .home-summary-icon {
+          background: color-mix(in srgb, var(--summary-color) 20%, transparent);
         }
       }
 
@@ -6703,9 +6979,9 @@ export class DwainsLayoutCard extends LitElement {
       }
 
       .area-content-area .area-header {
-        position: sticky;
-        top: 0;
-        z-index: 90;
+        position: relative;
+        top: auto;
+        z-index: 3;
       }
 
       .area-content-area .area-header.is-stuck,
@@ -6715,6 +6991,9 @@ export class DwainsLayoutCard extends LitElement {
       .area-content-area .area-header.is-stuck.has-picture,
       .area-content-area .area-header.is-stuck.has-picture.has-metrics,
       .area-content-area .area-header.is-stuck.has-picture.has-quick-controls {
+        position: sticky;
+        top: 0;
+        z-index: 90;
         min-height: calc(62px + env(safe-area-inset-top, 0px));
         margin-bottom: 4px;
         padding: calc(8px + env(safe-area-inset-top, 0px)) 14px 7px;
@@ -7138,17 +7417,20 @@ export class DwainsLayoutCard extends LitElement {
 
       .sidebar .area-list {
         display: grid;
+        grid-template-columns: minmax(0, 1fr) !important;
         gap: 8px;
       }
 
       .sidebar .floor-section {
         display: grid;
+        grid-template-columns: minmax(0, 1fr) !important;
         gap: 8px;
         margin-bottom: 10px;
       }
 
       .sidebar .floor-areas {
         display: grid;
+        grid-template-columns: minmax(0, 1fr) !important;
         gap: 8px;
       }
 
@@ -7566,6 +7848,10 @@ export class DwainsLayoutCard extends LitElement {
     if (this._timeInterval) {
       clearInterval(this._timeInterval);
     }
+    if (this._homeSummariesRefreshInterval) {
+      clearInterval(this._homeSummariesRefreshInterval);
+      this._homeSummariesRefreshInterval = undefined;
+    }
     if (this._areaHeaderScrollRaf) {
       cancelAnimationFrame(this._areaHeaderScrollRaf);
       this._areaHeaderScrollRaf = undefined;
@@ -7617,6 +7903,33 @@ export class DwainsLayoutCard extends LitElement {
     });
   };
 
+  private _scrollContentAreaToTop(): void {
+    const scrollContainer = this.shadowRoot?.querySelector('.content-area') as HTMLElement | null;
+    if (!scrollContainer) return;
+    scrollContainer.scrollTop = 0;
+    scrollContainer.scrollLeft = 0;
+  }
+
+  private _resetAreaHeaderScrollState(scrollToTop = false): void {
+    if (this._areaHeaderScrollRaf) {
+      cancelAnimationFrame(this._areaHeaderScrollRaf);
+      this._areaHeaderScrollRaf = undefined;
+    }
+    if (scrollToTop) {
+      this._scrollContentAreaToTop();
+    }
+    if (this._areaHeaderStuck) this._areaHeaderStuck = false;
+    if (this._areaHeaderRevealed) this._areaHeaderRevealed = false;
+    this._lastAreaScrollTop = 0;
+    this._areaScrollUpDistance = 0;
+  }
+
+  private _resetAreaHeaderAfterNavigation(): void {
+    this._resetAreaHeaderScrollState(true);
+    requestAnimationFrame(() => this._resetAreaHeaderScrollState(true));
+    window.setTimeout(() => this._resetAreaHeaderScrollState(true), 80);
+  }
+
   private _updateAreaHeaderScrollState(): void {
     const scrollContainer = this.shadowRoot?.querySelector('.content-area') as HTMLElement | null;
     if (!this._isMobile || this._selectedView !== 'area' || !scrollContainer) {
@@ -7639,7 +7952,7 @@ export class DwainsLayoutCard extends LitElement {
     if (!fromScroll) {
       this._lastAreaScrollTop = scrollTop;
       this._areaScrollUpDistance = 0;
-      const shouldStick = scrollTop > 28;
+      const shouldStick = scrollTop > AREA_HEADER_STICK_SCROLL;
       if (this._areaHeaderStuck !== shouldStick) {
         this._areaHeaderStuck = shouldStick;
       }
@@ -7667,16 +7980,16 @@ export class DwainsLayoutCard extends LitElement {
     let shouldStick = this._areaHeaderStuck;
     let shouldReveal = this._areaHeaderRevealed;
 
-    if (delta > 1 && scrollTop > 34) {
+    if (delta > 1 && scrollTop > AREA_HEADER_STICK_SCROLL) {
       shouldStick = true;
       shouldReveal = false;
     }
 
-    if (this._areaHeaderStuck && this._areaScrollUpDistance >= 14 && scrollTop > 34) {
+    if (this._areaHeaderStuck && this._areaScrollUpDistance >= 18 && scrollTop > AREA_HEADER_REVEAL_SCROLL) {
       shouldReveal = true;
     }
 
-    if (scrollTop <= 28) {
+    if (scrollTop <= AREA_HEADER_UNSTICK_SCROLL) {
       shouldStick = false;
       shouldReveal = false;
     }
@@ -7949,6 +8262,8 @@ export class DwainsLayoutCard extends LitElement {
       const oldHass = changedProps.get('hass') as HomeAssistant | undefined;
       if (!oldHass) return true;
 
+      if (this._hasUpdateEntityChanges(oldHass, this.hass)) return true;
+
       // Check if any visible entities changed
       const relevantEntities = this._getRelevantEntities();
       return relevantEntities.some(entityId =>
@@ -7976,10 +8291,35 @@ export class DwainsLayoutCard extends LitElement {
         this._renderFavoriteTileCards();
       }
 
-      if (!this._persistentNotificationsLoaded) {
-        this._persistentNotificationsLoaded = true;
-        void this._loadPersistentNotifications(false);
-        void this._ensurePersistentNotificationsSubscription();
+      this._ensurePersistentNotificationsFeature();
+
+      if (!this._homeSummariesLoaded) {
+        this._homeSummariesLoaded = true;
+        void this._loadHomeAssistantSummaries();
+        this._homeSummariesRefreshInterval = window.setInterval(
+          () => void this._loadHomeAssistantSummaries(),
+          5 * 60 * 1000
+        );
+      }
+
+      this._ensureFavoriteSuggestionsFeature();
+    }
+
+    if (changedProps.has('config')) {
+      if (this._showNotificationsUi()) {
+        this._ensurePersistentNotificationsFeature();
+      } else {
+        this._notificationsOpen = false;
+        this._persistentNotificationsLoaded = false;
+        this._persistentNotifications = [];
+      }
+
+      if (!this._showSuggestedFavoritesUi()) {
+        this._favoriteSuggestionsLoaded = false;
+        this._favoriteSuggestionsLoading = false;
+        this._suggestedFavoriteEntities = [];
+      } else {
+        this._ensureFavoriteSuggestionsFeature();
       }
     }
 
@@ -8005,7 +8345,11 @@ export class DwainsLayoutCard extends LitElement {
     }
 
     if (changedProps.has('_selectedView') || changedProps.has('_selectedArea')) {
-      setTimeout(() => this._updateAreaHeaderScrollState(), 0);
+      if (this._selectedView === 'area') {
+        this._resetAreaHeaderAfterNavigation();
+      } else {
+        this._resetAreaHeaderScrollState(false);
+      }
     }
 
     // Re-observe entity card wrappers after update
@@ -8127,6 +8471,8 @@ export class DwainsLayoutCard extends LitElement {
   }
 
   private _renderNotificationsPanel() {
+    if (!this._showNotificationsUi()) return nothing;
+
     const count = this._persistentNotifications.length;
     const hasNotifications = count > 0;
 
@@ -8241,12 +8587,14 @@ export class DwainsLayoutCard extends LitElement {
       sidebar: true,
       open: this._isMobile && this._mobileNavOpen
     };
+    const showNotifications = this._showNotificationsUi();
+    const hasNotifications = showNotifications && this._persistentNotifications.length > 0;
 
     return html`
       <nav class=${classMap(classes)}>
         <div class="area-list">
           <div
-            class="area-button home-button ${this._selectedView === 'home' ? 'selected' : ''} ${this._persistentNotifications.length ? 'has-notifications' : ''}"
+            class="area-button home-button ${this._selectedView === 'home' ? 'selected' : ''} ${hasNotifications ? 'has-notifications' : ''}"
             role="button"
             tabindex="0"
             @click=${() => this._selectView('home')}
@@ -8269,6 +8617,8 @@ export class DwainsLayoutCard extends LitElement {
   }
 
   private _renderHomeNotificationShortcut() {
+    if (!this._showNotificationsUi()) return nothing;
+
     const count = this._persistentNotifications.length;
     if (!count) return nothing;
 
@@ -8616,6 +8966,8 @@ export class DwainsLayoutCard extends LitElement {
 
   private _renderHomeSection(section: HomeSectionKey) {
     switch (section) {
+      case 'summaries':
+        return this._renderHomeSummaries();
       case 'cameras':
         return this._renderHomeCameras();
       case 'areas':
@@ -8627,6 +8979,110 @@ export class DwainsLayoutCard extends LitElement {
       default:
         return nothing;
     }
+  }
+
+  private _renderHomeSummaries() {
+    const summaries = this._getHomeSummaryCards();
+    if (!summaries.length) return nothing;
+
+    return html`
+      <section class="home-summaries-section">
+        <div class="home-status-heading">
+          <ha-icon icon="mdi:clipboard-list-outline"></ha-icon>
+          <span>Summaries</span>
+        </div>
+        <div class="mobile-section-heading">
+          <div class="mobile-section-title">
+            <button
+              class="mobile-layout-toggle active"
+              type="button"
+              title="Summaries"
+              aria-label="Summaries"
+            >
+              <ha-icon icon="mdi:clipboard-list-outline"></ha-icon>
+            </button>
+            <span class="mobile-section-title-label">Summaries</span>
+          </div>
+          <span class="mobile-section-action" aria-label="${summaries.length} summaries">
+            <span>${summaries.length}</span>
+            <ha-icon icon="mdi:clipboard-list-outline"></ha-icon>
+          </span>
+        </div>
+        <div class="home-summary-list">
+          ${repeat(
+            summaries,
+            summary => summary.key,
+            summary => html`
+              <button
+                class="home-summary-card ${summary.key}"
+                type="button"
+                style=${`--summary-color: ${summary.color};`}
+                @click=${() => this._openHomeAssistantPage(summary.path)}
+              >
+                <span class="home-summary-icon">
+                  <ha-icon icon=${summary.icon}></ha-icon>
+                </span>
+                <span class="home-summary-copy">
+                  <span class="home-summary-title">${summary.label}</span>
+                  <span class="home-summary-subtitle">${summary.subtitle}</span>
+                </span>
+                <span class="home-summary-chevron">
+                  <ha-icon icon="mdi:chevron-right"></ha-icon>
+                </span>
+              </button>
+            `
+          )}
+        </div>
+      </section>
+    `;
+  }
+
+  private _getHomeSummaryCards(): HomeSummaryCard[] {
+    const cards: HomeSummaryCard[] = [];
+    const updateCount = this._getUpdateEntityCount();
+
+    if (this._repairsIssueCount > 0) {
+      cards.push({
+        key: 'repairs',
+        label: 'Repairs',
+        subtitle: `${this._repairsIssueCount} ${this._repairsIssueCount === 1 ? 'issue' : 'issues'}`,
+        icon: 'mdi:wrench',
+        color: '#f59e0b',
+        count: this._repairsIssueCount,
+        path: '/config/repairs',
+      });
+    }
+
+    if (updateCount > 0) {
+      cards.push({
+        key: 'updates',
+        label: 'Updates',
+        subtitle: `${updateCount} ${updateCount === 1 ? 'update' : 'updates'} available`,
+        icon: 'mdi:package-up',
+        color: '#0ea5e9',
+        count: updateCount,
+        path: '/config/updates',
+      });
+    }
+
+    if (this._discoveredDeviceCount > 0) {
+      cards.push({
+        key: 'discovered',
+        label: 'Devices discovered',
+        subtitle: `${this._discoveredDeviceCount} ${this._discoveredDeviceCount === 1 ? 'device' : 'devices'} to add`,
+        icon: 'mdi:devices',
+        color: '#1494aa',
+        count: this._discoveredDeviceCount,
+        path: '/config/integrations',
+      });
+    }
+
+    return cards;
+  }
+
+  private _openHomeAssistantPage(path: string): void {
+    this._closeMobileNav();
+    navigateHomeAssistant(path);
   }
 
   private _renderHomeWelcome() {
@@ -8672,17 +9128,19 @@ export class DwainsLayoutCard extends LitElement {
                   <ha-icon icon="mdi:cog-outline"></ha-icon>
                 </button>
               ` : nothing}
-              <button
-                class="welcome-action"
-                type="button"
-                title="Notifications"
-                @click=${this._openNotifications}
-              >
-                <ha-icon icon="mdi:bell-outline"></ha-icon>
-                ${this._persistentNotifications.length
-                  ? html`<span class="welcome-action-badge">${this._persistentNotifications.length}</span>`
-                  : nothing}
-              </button>
+              ${this._showNotificationsUi() ? html`
+                <button
+                  class="welcome-action"
+                  type="button"
+                  title="Notifications"
+                  @click=${this._openNotifications}
+                >
+                  <ha-icon icon="mdi:bell-outline"></ha-icon>
+                  ${this._persistentNotifications.length
+                    ? html`<span class="welcome-action-badge">${this._persistentNotifications.length}</span>`
+                    : nothing}
+                </button>
+              ` : nothing}
             </div>
             <div class="welcome-time-section">
               <div class="welcome-time">${this._currentTime}</div>
@@ -9349,13 +9807,7 @@ export class DwainsLayoutCard extends LitElement {
   }
 
   private _renderFavorites() {
-    const favorites = this.config?.favorites || [];
-    // Alleen beschikbare favorieten; geen balk als er niets te tonen is
-    const available = favorites.filter(entityId => {
-      const state = this.hass?.states[entityId];
-      const registry = this.hass?.entities?.[entityId];
-      return state && state.state !== 'unavailable' && state.state !== 'unknown' && !registry?.hidden_by;
-    });
+    const available = this._getEffectiveFavoriteEntities();
     if (available.length === 0) return nothing;
 
     return html`
@@ -11222,10 +11674,7 @@ export class DwainsLayoutCard extends LitElement {
   // Event Handlers
   private _selectView(view: 'home' | 'area') {
     this._closeMobileDomainMenu();
-    this._areaHeaderStuck = false;
-    this._areaHeaderRevealed = false;
-    this._lastAreaScrollTop = 0;
-    this._areaScrollUpDistance = 0;
+    this._resetAreaHeaderScrollState(view === 'area');
     this._selectedView = view;
     if (view === 'home') {
       this._selectedArea = null;
@@ -11238,10 +11687,7 @@ export class DwainsLayoutCard extends LitElement {
 
   private _selectArea(areaId: string) {
     this._closeMobileDomainMenu();
-    this._areaHeaderStuck = false;
-    this._areaHeaderRevealed = false;
-    this._lastAreaScrollTop = 0;
-    this._areaScrollUpDistance = 0;
+    this._resetAreaHeaderScrollState(true);
     this._selectedArea = areaId;
     this._selectedView = 'area';
     this._editMode = false;
@@ -11274,10 +11720,7 @@ export class DwainsLayoutCard extends LitElement {
     if (!this._isMobile) return;
     this._selectedView = 'home';
     this._selectedArea = null;
-    this._areaHeaderStuck = false;
-    this._areaHeaderRevealed = false;
-    this._lastAreaScrollTop = 0;
-    this._areaScrollUpDistance = 0;
+    this._resetAreaHeaderScrollState(false);
     this._editMode = false;
     this._updateUrlArea(null);
     this._mobileNavOpen = true;
@@ -11334,19 +11777,7 @@ export class DwainsLayoutCard extends LitElement {
   }
 
   private _renderFavoritesSection() {
-    const favorites = this.config?.favorites || [];
-
-    if (favorites.length === 0) {
-      return nothing;
-    }
-
-    // Filter only available favorites
-    const availableFavorites = favorites.filter(entityId => {
-      const state = this.hass?.states[entityId];
-      const registry = this.hass?.entities?.[entityId];
-      return state && state.state !== 'unavailable' && state.state !== 'unknown' && !registry?.hidden_by;
-    });
-
+    const availableFavorites = this._getEffectiveFavoriteEntities();
     if (availableFavorites.length === 0) {
       return nothing;
     }
@@ -11405,6 +11836,126 @@ export class DwainsLayoutCard extends LitElement {
     });
   }
 
+  private async _loadHomeAssistantSummaries(): Promise<void> {
+    if (!this.hass) return;
+
+    const [repairsIssueCount, discoveredDeviceCount] = await Promise.all([
+      this._fetchRepairsIssueCount(),
+      this._fetchDiscoveredDeviceCount(),
+    ]);
+
+    if (this._repairsIssueCount !== repairsIssueCount) {
+      this._repairsIssueCount = repairsIssueCount;
+    }
+    if (this._discoveredDeviceCount !== discoveredDeviceCount) {
+      this._discoveredDeviceCount = discoveredDeviceCount;
+    }
+  }
+
+  private async _fetchRepairsIssueCount(): Promise<number> {
+    try {
+      const response = await this.hass.callWS<any>({ type: 'repairs/list_issues' });
+      const issues = this._extractCollection(response?.issues ?? response);
+      return issues.filter(item => !this._isSummaryItemDismissed(item)).length;
+    } catch (err) {
+      return 0;
+    }
+  }
+
+  private async _fetchDiscoveredDeviceCount(): Promise<number> {
+    const messageTypes = [
+      'config_entries/flow/progress',
+      'config_entries/discovery_info',
+      'config_entries/discovery_info/list',
+      'config_entries/get_discovery_info',
+    ];
+
+    for (const type of messageTypes) {
+      try {
+        const response = await this.hass.callWS<any>({ type });
+        const count = this._countDiscoveryItems(response);
+        if (count > 0) return count;
+      } catch (err) {
+        // Different HA versions expose different discovery endpoints.
+      }
+    }
+
+    return 0;
+  }
+
+  private _getUpdateEntityCount(): number {
+    return Object.values(this.hass?.states || {}).filter((entity: any) =>
+      entity.entity_id?.startsWith('update.') &&
+      entity.state === 'on'
+    ).length;
+  }
+
+  private _hasUpdateEntityChanges(oldHass: HomeAssistant, newHass: HomeAssistant): boolean {
+    const updateEntityIds = new Set([
+      ...Object.keys(oldHass.states || {}).filter(entityId => entityId.startsWith('update.')),
+      ...Object.keys(newHass.states || {}).filter(entityId => entityId.startsWith('update.')),
+    ]);
+
+    for (const entityId of updateEntityIds) {
+      const oldState = oldHass.states[entityId];
+      const newState = newHass.states[entityId];
+      if (oldState?.state !== newState?.state) return true;
+    }
+
+    return false;
+  }
+
+  private _extractCollection(value: any): any[] {
+    if (!value) return [];
+    if (Array.isArray(value)) return value;
+    if (typeof value === 'object') return Object.values(value);
+    return [];
+  }
+
+  private _isSummaryItemDismissed(item: any): boolean {
+    return Boolean(
+      item?.dismissed ||
+      item?.ignored ||
+      item?.is_ignored ||
+      item?.status === 'ignored' ||
+      item?.status === 'dismissed'
+    );
+  }
+
+  private _countDiscoveryItems(value: any): number {
+    if (!value) return 0;
+
+    if (Array.isArray(value)) {
+      return value.filter(item => !this._isSummaryItemDismissed(item)).length;
+    }
+
+    if (typeof value !== 'object') return 0;
+
+    if (this._looksLikeDiscoveryItem(value)) {
+      return this._isSummaryItemDismissed(value) ? 0 : 1;
+    }
+
+    const explicitCollection = value.discovered ?? value.discovery ?? value.flows ?? value.entries ?? value.items;
+    if (explicitCollection) return this._countDiscoveryItems(explicitCollection);
+
+    return (Object.values(value) as any[]).reduce<number>(
+      (total, child) => total + this._countDiscoveryItems(child),
+      0
+    );
+  }
+
+  private _looksLikeDiscoveryItem(value: any): boolean {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+    return Boolean(
+      value.flow_id ||
+      value.handler ||
+      value.source ||
+      value.context ||
+      value.integration ||
+      value.domain
+    );
+  }
+
   private _closeMobileNav() {
     this._mobileNavOpen = false;
   }
@@ -11442,7 +11993,10 @@ export class DwainsLayoutCard extends LitElement {
   };
 
   private _openNotifications = () => {
+    if (!this._showNotificationsUi()) return;
+
     this._notificationsOpen = true;
+    this._persistentNotificationsLoaded = true;
     void this._loadPersistentNotifications(true);
     void this._ensurePersistentNotificationsSubscription();
   };
@@ -11452,7 +12006,7 @@ export class DwainsLayoutCard extends LitElement {
   };
 
   private async _loadPersistentNotifications(showError = true): Promise<void> {
-    if (!this.hass) return;
+    if (!this.hass || !this._showNotificationsUi()) return;
 
     this._notificationsLoading = true;
     if (showError) this._notificationsError = '';
@@ -11476,7 +12030,7 @@ export class DwainsLayoutCard extends LitElement {
   }
 
   private async _ensurePersistentNotificationsSubscription(): Promise<void> {
-    if (this._persistentNotificationsUnsub || !this.hass) return;
+    if (!this._showNotificationsUi() || this._persistentNotificationsUnsub || !this.hass) return;
 
     const connection = (this.hass as any).connection;
     if (!connection?.subscribeMessage) return;
@@ -11497,6 +12051,8 @@ export class DwainsLayoutCard extends LitElement {
   }
 
   private _handlePersistentNotificationEvent(event: any): void {
+    if (!this._showNotificationsUi()) return;
+
     const type = event?.type;
     const notifications = this._normalizePersistentNotifications(event?.notifications);
 
