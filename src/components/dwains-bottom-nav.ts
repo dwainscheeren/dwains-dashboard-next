@@ -457,16 +457,22 @@ export class DwainsBottomNav extends LitElement {
     @media (max-width: 768px) {
       :host {
         display: block;
-        position: fixed;
-        left: 16px;
-        right: 16px;
-        bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+        position: fixed !important;
+        inset: 0 !important;
+        width: 100vw;
+        height: 100vh;
+        height: 100dvh;
         z-index: 140;
         pointer-events: none;
+        overflow: visible;
+        contain: layout style;
       }
     }
     .bar {
-      position: relative;
+      position: fixed;
+      left: 50%;
+      right: auto;
+      bottom: calc(4px + env(safe-area-inset-bottom, 0px));
       z-index: 3;
       display: flex;
       align-items: center;
@@ -481,6 +487,8 @@ export class DwainsBottomNav extends LitElement {
       user-select: none;
       -webkit-user-select: none;
       touch-action: manipulation;
+      transform: translate3d(-50%, 0, 0);
+      will-change: transform;
       border-radius: 999px;
       background:
         linear-gradient(180deg, rgba(255, 255, 255, 0.68), rgba(255, 255, 255, 0.44)),
@@ -784,10 +792,6 @@ export class DwainsBottomNav extends LitElement {
     }
 
     @media (max-width: 380px) {
-      :host {
-        left: 8px;
-        right: 8px;
-      }
       .bar {
         gap: 6px;
         max-width: calc(100vw - 16px);
@@ -952,24 +956,64 @@ function _hideNativeHeaderOnMobile(attempt = 0): void {
     return;
   }
 
+  const activeClass = MOBILE_NAV_ACTIVE_CLASS;
+  const headerSelectors = _nativeHeaderElementSelectors()
+    .split(',')
+    .map((selector) => selector.trim())
+    .filter(Boolean);
+  const hiddenHeaderSelectors = headerSelectors
+    .flatMap((selector) => [
+      `html.${activeClass} ${selector}`,
+      `body.${activeClass} ${selector}`,
+    ])
+    .join(',\n      ');
+  const shadowHiddenHeaderSelectors = headerSelectors
+    .map((selector) => `:host-context(.${activeClass}) ${selector}`)
+    .join(',\n      ');
+  const shellSelectors = [
+    'home-assistant',
+    'home-assistant-main',
+    'app-drawer-layout',
+    'app-header-layout',
+    'partial-panel-resolver',
+    'ha-panel-lovelace',
+    'ha-app-layout',
+    'hui-root',
+    '#view',
+    '.view',
+    'hui-view',
+    'hui-sections-view',
+    'hui-masonry-view',
+  ];
+  const collapsedShellSelectors = shellSelectors
+    .flatMap((selector) => [
+      `html.${activeClass} ${selector}`,
+      `body.${activeClass} ${selector}`,
+    ])
+    .join(',\n      ');
+  const shadowCollapsedShellSelectors = shellSelectors
+    .map((selector) => `:host-context(.${activeClass}) ${selector}`)
+    .join(',\n      ');
+
   const css = `
     @media (max-width: 768px) {
-      :host-context(.${MOBILE_NAV_ACTIVE_CLASS}) app-header,
-      :host-context(.${MOBILE_NAV_ACTIVE_CLASS}) app-toolbar,
-      :host-context(.${MOBILE_NAV_ACTIVE_CLASS}) ha-menu-button,
-      :host-context(.${MOBILE_NAV_ACTIVE_CLASS}) ha-icon-button,
-      :host-context(.${MOBILE_NAV_ACTIVE_CLASS}) ha-tabs,
-      :host-context(.${MOBILE_NAV_ACTIVE_CLASS}) ha-tab-group,
-      :host-context(.${MOBILE_NAV_ACTIVE_CLASS}) [role="tablist"],
-      :host-context(.${MOBILE_NAV_ACTIVE_CLASS}) .header,
-      :host-context(.${MOBILE_NAV_ACTIVE_CLASS}) .toolbar,
-      :host-context(.${MOBILE_NAV_ACTIVE_CLASS}) .main-toolbar,
-      :host-context(.${MOBILE_NAV_ACTIVE_CLASS}) .header-toolbar,
-      :host-context(.${MOBILE_NAV_ACTIVE_CLASS}) .view-header,
-      :host-context(.${MOBILE_NAV_ACTIVE_CLASS}) .toolbar-items,
-      :host-context(.${MOBILE_NAV_ACTIVE_CLASS}) .action-items,
-      :host-context(.${MOBILE_NAV_ACTIVE_CLASS}) #toolbar,
-      :host-context(.${MOBILE_NAV_ACTIVE_CLASS}) #tabs {
+      html.${activeClass},
+      body.${activeClass} {
+        overflow-x: hidden !important;
+      }
+
+      html.${activeClass} dwains-dashboard-next-bottom-nav,
+      body.${activeClass} dwains-dashboard-next-bottom-nav {
+        position: fixed !important;
+        inset: 0 !important;
+        width: 100vw !important;
+        height: 100vh !important;
+        height: 100dvh !important;
+        pointer-events: none !important;
+        z-index: 140 !important;
+      }
+
+      ${hiddenHeaderSelectors} {
         display: none !important;
         visibility: hidden !important;
         height: 0 !important;
@@ -980,12 +1024,31 @@ function _hideNativeHeaderOnMobile(attempt = 0): void {
         margin: 0 !important;
         border: 0 !important;
       }
-      :host-context(.${MOBILE_NAV_ACTIVE_CLASS}) ha-app-layout,
-      :host-context(.${MOBILE_NAV_ACTIVE_CLASS}) #view,
-      :host-context(.${MOBILE_NAV_ACTIVE_CLASS}) .view,
-      :host-context(.${MOBILE_NAV_ACTIVE_CLASS}) hui-view,
-      :host-context(.${MOBILE_NAV_ACTIVE_CLASS}) hui-sections-view,
-      :host-context(.${MOBILE_NAV_ACTIVE_CLASS}) hui-masonry-view {
+
+      ${shadowHiddenHeaderSelectors} {
+        display: none !important;
+        visibility: hidden !important;
+        height: 0 !important;
+        min-height: 0 !important;
+        max-height: 0 !important;
+        overflow: hidden !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        border: 0 !important;
+      }
+
+      ${collapsedShellSelectors} {
+        --app-header-height: 0px !important;
+        --header-height: 0px !important;
+        --mdc-top-app-bar-row-height: 0px !important;
+        padding-top: 0 !important;
+        margin-top: 0 !important;
+      }
+
+      ${shadowCollapsedShellSelectors} {
+        --app-header-height: 0px !important;
+        --header-height: 0px !important;
+        --mdc-top-app-bar-row-height: 0px !important;
         padding-top: 0 !important;
         margin-top: 0 !important;
       }
@@ -1012,6 +1075,8 @@ function _nativeHeaderStyleRoots(): (Document | ShadowRoot)[] {
   [
     'home-assistant',
     'home-assistant-main',
+    'app-drawer-layout',
+    'app-header-layout',
     'partial-panel-resolver',
     'ha-panel-lovelace',
     'hui-root',
@@ -1028,12 +1093,16 @@ function _nativeHeaderElementSelectors(): string {
   return [
     'app-header',
     'app-toolbar',
+    'mwc-top-app-bar',
+    'ha-top-app-bar',
     'ha-menu-button',
     'ha-tabs',
     'ha-tab-group',
     '[role="tablist"]',
     '.header',
     '.toolbar',
+    '.app-toolbar',
+    '.top-app-bar',
     '.main-toolbar',
     '.header-toolbar',
     '.view-header',
