@@ -12,76 +12,7 @@ See this as Dwains Dashboard v4: totally rebuilt from scratch, with a completely
 
 ## Status
 
-Current release: `1.3.0`
-
-## What's New In 1.3.0
-
-- Added an Indoor climate card to House information with average temperature and humidity from visible room sensors.
-- Added settings to show or hide individual House information cards: People, Indoor climate, House power usage and Device groups.
-- Replaced the static "Welcome Back" header text with a live home snapshot for people, notifications, attention items and weather.
-- Improved House power usage so the card is hidden when no live power data is available.
-- Improved the Energy view with Home Assistant statistics graph cards for whole-house and area power history.
-- Removed redundant "See all" action from the House power usage card because the card itself opens the Energy view.
-
-## What's New In 1.2.0
-
-- Added a House power usage card with total live power usage and the top consuming rooms.
-- Added an Energy view on the Devices page with area totals, live power entities and usage distribution.
-- Moved full device visibility management into Dashboard settings, grouped by device type and area.
-- Added stricter area-based filtering: devices and entities without a Dwains Dashboard area are not shown in DD.
-- Added settings to control which device types are visible on the Devices page.
-- Improved unavailable and unknown entity handling on the Devices page, with Maintenance still showing issues separately.
-- Improved House information active-state counting for media players, vacuums, alarms and cameras.
-- Improved mobile navigation context, bottom-sheet behavior and Home Assistant header handling.
-- Added release policy documentation for consistent future versioning.
-
-## What's New In 1.1.4
-
-- Added Home Assistant-style summary cards for repairs, updates and discovered devices.
-- Added a Maintenance view for low batteries and unavailable devices.
-- Added suggested favorites using Home Assistant usage prediction, with a setting to turn suggestions on or off.
-- Added settings to show or hide Dwains Dashboard notifications and home page sections.
-- Improved mobile Home Assistant header and drawer handling inside Dwains Dashboard Next.
-- Improved Devices page visibility controls and active status counting.
-
-## What's New In 1.1.3
-
-- Redesigned the dashboard settings screen into clear sections for dashboard, home, header, devices, people, areas, replacements, permissions and support.
-- Added device type visibility settings for the Devices page.
-- Added a resizable and collapsible desktop area sidebar with saved preferences.
-- Improved the mobile Home Assistant shell handling so drawer/header changes only apply inside Dwains Dashboard Next and reset when leaving the dashboard.
-- Improved active status counting for media players, vacuums, alarms and cameras.
-- Only shows available camera entities in camera shortcuts and camera sections.
-- Added troubleshooting notes for Home Assistant setups that use YAML-managed Lovelace resources.
-
-## What's New In 1.1.2
-
-- Uses a Next-specific dashboard strategy ID: `dwains-dashboard-next`.
-- Prefixes internal custom elements and events so older Dwains Dashboard resources can run side by side.
-- Fixes Dwains Dashboard Next not appearing in the Home Assistant Add dashboard dialog when an older Dwains Dashboard resource is still loaded.
-- Keeps safe legacy aliases for early Next test installs when those names are not already used.
-- Uses a raw GitHub logo URL in the README so HACS can render the project image correctly.
-
-## What's New In 1.1.1
-
-- Added Dwains Dashboard logo assets.
-- Added the logo to the README for HACS plugin image validation.
-- Removed the HACS image validation ignore now that the README includes a project image.
-
-## What's New In 1.1.0
-
-- App-style mobile bottom navigation.
-- Mobile Home and Devices switchers that open as bottom sheets.
-- Reworked mobile room headers with compact controls.
-- Quick room controls for lights, switches and covers.
-- New devices view for recently added Home Assistant devices.
-- Device visibility controls to quickly hide or show devices in DD.
-- DD3-style blueprint replacement management for standard area and device cards.
-- Blueprint gallery support through a GitHub `blueprints.json` registry.
-- Blueprint source tracking and update-check support.
-- Cleaner mobile dialog layouts and dashboard settings.
-- Improved status cards, room headers, home sections and mobile spacing.
-- Discord, Buy Me a Coffee and PayPal links for support and feedback.
+Current release: `1.4.0`
 
 ## Community And Support
 

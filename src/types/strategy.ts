@@ -71,11 +71,19 @@ export interface EntitiesDisplay {
   order?: string[];
 }
 
+export type AreaCustomCardPlacement = 'top' | 'bottom' | string;
+
+export interface AreaCustomCard {
+  id: string;
+  placement: AreaCustomCardPlacement;
+  card: LovelaceCardConfig;
+}
+
 export interface AreaOptions {
   card_size?: 'small' | 'large';
   groups_options?: Record<string, EntitiesDisplay>;
-  // Eigen Lovelace-kaarten die de gebruiker aan deze ruimte toevoegt
-  cards?: LovelaceCardConfig[];
+  // Custom Lovelace cards placed around the area sections.
+  custom_cards?: AreaCustomCard[];
 }
 
 export interface AreasDisplay {

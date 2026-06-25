@@ -5,12 +5,11 @@ import { repeat } from 'lit/directives/repeat.js';
 import { ifDefined } from 'lit/directives/if-defined.js';
 
 import type { HomeAssistant } from '../types/home-assistant';
-import type { DwainsDashboardConfig, AreaConfig, EntityConfig, AreaData, HomeInformationCardKey, HomeSectionKey } from '../types/strategy';
+import type { DwainsDashboardConfig, AreaConfig, EntityConfig, AreaData, AreaCustomCard, HomeInformationCardKey, HomeSectionKey } from '../types/strategy';
 import { getAreaData, clearAreaDataCache } from '../utils/area';
 import { getAreaIcon, getDeviceClassIcon, getDomainColor, getDomainIcon } from '../utils/icons';
 import { getStatusDomains, getTotalWattage, type DomainCount as StatusDomainCount } from '../utils/header-status-domains';
 import { getDeviceClassName, getDomainName } from '../utils/domain-names';
-import { resolveEntityCardConfig } from '../utils/blueprint-replacements';
 import { filterHiddenDeviceEntities } from '../utils/device-admission';
 import { restrictNonAdminDashboardSettings } from '../utils/security';
 import { sortAreas } from '../utils/area-entities';
@@ -33,6 +32,9 @@ type PictureTextTone = 'light' | 'dark';
 type PictureContrastCacheValue = PictureTextTone | 'pending';
 const SIDEBAR_WIDTH_STORAGE_KEY = 'dd-next-area-sidebar-width';
 const SIDEBAR_COLLAPSED_STORAGE_KEY = 'dd-next-area-sidebar-collapsed';
+const AREA_EDIT_MODE_STORAGE_KEY = 'dd-next-area-edit-mode';
+const AREA_EDIT_MODE_RESTORE_MS = 30000;
+const OPTIMISTIC_ENTITY_STATE_TTL = 5000;
 const SIDEBAR_DEFAULT_WIDTH = 250;
 const SIDEBAR_MIN_WIDTH = 240;
 const SIDEBAR_MAX_WIDTH = 660;
@@ -114,6 +116,17 @@ interface HomeSummaryCard {
   path: string;
 }
 
+interface NormalizedAreaCustomCard {
+  id: string;
+  placement: string;
+  card: any;
+}
+
+interface OptimisticEntityState {
+  state: string;
+  expiresAt: number;
+}
+
 @customElement('dwains-dashboard-next-layout-card')
 export class DwainsLayoutCard extends LitElement {
   @property({ attribute: false }) public hass!: HomeAssistant;
@@ -149,16 +162,17 @@ export class DwainsLayoutCard extends LitElement {
   @state() private _repairsIssueCount = 0;
   @state() private _discoveredDeviceCount = 0;
   @state() private _suggestedFavoriteEntities: string[] = [];
+  @state() private _customCardDrag: { areaId: string; cardId: string } | null = null;
+  @state() private _customCardDragOver: { areaId: string; placement: string; index: number } | null = null;
+  @state() private _optimisticEntityStates: Record<string, OptimisticEntityState> = {};
 
   // Performance optimizations
   private _areaEntitiesCache = new Map<string, { entities: EntityConfig[], timestamp: number }>();
   private _areaDataCache = new Map<string, CachedAreaData>();
-  private _entityCardsCache = new Map<string, TemplateResult>();
   private _domainCountsCache = new Map<string, DomainCount[]>();
 
   private _CACHE_DURATION = 5000; // 5 seconds
   private _timeInterval?: number;
-  private _cardObserver?: IntersectionObserver;
   private _resizeObserver?: ResizeObserver;
   private _persistentNotificationsUnsub?: () => void;
   private _persistentNotificationsLoaded = false;
@@ -168,6 +182,7 @@ export class DwainsLayoutCard extends LitElement {
   private _favoriteSuggestionsLoading = false;
   private _mobileDomainMenuPortal?: HTMLElement;
   private _areaHeaderScrollRaf?: number;
+  private _optimisticCleanupTimer?: number;
   private _lastAreaScrollTop = 0;
   private _areaScrollUpDistance = 0;
   private _pictureContrastCache = new Map<string, PictureContrastCacheValue>();
@@ -193,6 +208,7 @@ export class DwainsLayoutCard extends LitElement {
         this._selectedView = 'home';
       }
     }
+    this._restoreAreaEditMode();
   }
 
   private _getUrlArea(): string | null {
@@ -228,6 +244,53 @@ export class DwainsLayoutCard extends LitElement {
 
   private _canManageDashboard(): boolean {
     return !restrictNonAdminDashboardSettings(this.hass, this.config?.settings);
+  }
+
+  private _areaEditModeStorageKey(): string {
+    return `${AREA_EDIT_MODE_STORAGE_KEY}:${this._getDashboardUrlPath() || 'default'}`;
+  }
+
+  private _rememberAreaEditMode(areaId: string | null): void {
+    try {
+      const key = this._areaEditModeStorageKey();
+      if (!areaId) {
+        window.sessionStorage.removeItem(key);
+        return;
+      }
+      window.sessionStorage.setItem(key, JSON.stringify({
+        areaId,
+        updatedAt: Date.now(),
+      }));
+    } catch {
+      /* ignore storage failures */
+    }
+  }
+
+  private _restoreAreaEditMode(): void {
+    if (!this._canManageDashboard()) {
+      this._editMode = false;
+      this._rememberAreaEditMode(null);
+      return;
+    }
+
+    try {
+      const raw = window.sessionStorage.getItem(this._areaEditModeStorageKey());
+      if (!raw) return;
+      const stored = JSON.parse(raw) as { areaId?: string; updatedAt?: number };
+      const isFresh = typeof stored.updatedAt === 'number' &&
+        Date.now() - stored.updatedAt <= AREA_EDIT_MODE_RESTORE_MS;
+
+      if (!stored.areaId || !isFresh) {
+        this._rememberAreaEditMode(null);
+        return;
+      }
+
+      if (this._selectedView === 'area' && this._selectedArea === stored.areaId) {
+        this._editMode = true;
+      }
+    } catch {
+      this._rememberAreaEditMode(null);
+    }
   }
 
   private _showNotificationsUi(): boolean {
@@ -1340,6 +1403,15 @@ export class DwainsLayoutCard extends LitElement {
       font-weight: 600;
     }
 
+    .weather-label {
+      font-size: 12px;
+      font-weight: 750;
+      line-height: 1;
+      opacity: 0.82;
+      text-transform: uppercase;
+      letter-spacing: 0;
+    }
+
     /* Mobile Responsive Design */
     @media (max-width: 768px) {
       .home-welcome {
@@ -1468,6 +1540,10 @@ export class DwainsLayoutCard extends LitElement {
       .weather-temp {
         font-size: 15px;
       }
+
+      .weather-label {
+        font-size: 11px;
+      }
     }
 
     @media (max-width: 480px) {
@@ -1508,6 +1584,10 @@ export class DwainsLayoutCard extends LitElement {
       .alarm-text,
       .weather-temp {
         font-size: 14px;
+      }
+
+      .weather-label {
+        font-size: 10px;
       }
     }
 
@@ -2672,6 +2752,12 @@ export class DwainsLayoutCard extends LitElement {
       display: none;
     }
 
+    .area-view .mobile-entities-section {
+      display: grid;
+      position: relative;
+      z-index: 2;
+    }
+
     .area-header-metrics {
       display: none;
     }
@@ -3075,6 +3161,7 @@ export class DwainsLayoutCard extends LitElement {
     }
 
       .mobile-entity-more,
+      .mobile-scene-action,
       .mobile-lock-action {
         width: 30px;
         height: 30px;
@@ -3091,6 +3178,7 @@ export class DwainsLayoutCard extends LitElement {
       }
 
       .mobile-entity-more ha-icon,
+      .mobile-scene-action ha-icon,
       .mobile-lock-action ha-icon {
         --mdc-icon-size: 17px;
       }
@@ -3206,6 +3294,197 @@ export class DwainsLayoutCard extends LitElement {
         white-space: nowrap;
       }
 
+      .mobile-entity-content {
+        min-width: 0;
+      }
+
+      .mobile-entity-card.has-inline-select {
+        min-height: 170px;
+        justify-content: flex-start;
+        gap: 10px;
+      }
+
+      .mobile-entity-card.has-inline-select .mobile-entity-content {
+        margin-top: auto;
+      }
+
+      .mobile-entity-card.has-inline-select .mobile-entity-status {
+        display: none;
+      }
+
+      .mobile-entity-select {
+        position: relative;
+        display: block;
+        width: 100%;
+      }
+
+      .mobile-entity-select select {
+        width: 100%;
+        height: 34px;
+        padding: 0 34px 0 12px;
+        border: 0;
+        border-radius: 999px;
+        outline: none;
+        appearance: none;
+        -webkit-appearance: none;
+        color: var(--primary-text-color);
+        background: color-mix(in srgb, var(--entity-color) 10%, var(--secondary-background-color));
+        font: inherit;
+        font-size: 12px;
+        font-weight: 850;
+        line-height: 34px;
+        cursor: pointer;
+        box-shadow:
+          inset 0 0 0 1px color-mix(in srgb, var(--entity-color) 16%, transparent),
+          0 8px 18px rgba(15, 23, 42, 0.06);
+      }
+
+      .mobile-entity-select select:focus {
+        box-shadow:
+          inset 0 0 0 2px color-mix(in srgb, var(--entity-color) 72%, transparent),
+          0 10px 22px color-mix(in srgb, var(--entity-color) 14%, transparent);
+      }
+
+      .mobile-entity-select select:disabled {
+        opacity: 0.55;
+        cursor: not-allowed;
+      }
+
+      .mobile-entity-select ha-icon {
+        position: absolute;
+        top: 50%;
+        right: 10px;
+        transform: translateY(-50%);
+        color: color-mix(in srgb, var(--entity-color) 72%, var(--primary-text-color));
+        pointer-events: none;
+        --mdc-icon-size: 18px;
+      }
+
+    @media (min-width: 769px) {
+      .area-view .mobile-entities-section {
+        gap: 28px;
+        margin-top: 20px;
+      }
+
+      .area-view .mobile-domain-group {
+        min-width: 0;
+      }
+
+      .area-view .mobile-domain-header {
+        padding: 0;
+        margin-bottom: 12px;
+      }
+
+      .area-view .mobile-layout-toggle {
+        display: none;
+      }
+
+      .area-view .mobile-domain-title {
+        gap: 0;
+      }
+
+      .area-view .mobile-domain-title-label {
+        font-size: 20px;
+      }
+
+      .area-view .mobile-domain-count {
+        font-size: 12px;
+      }
+
+      .area-view .mobile-domain-more {
+        background: transparent;
+      }
+
+      .area-view .mobile-entity-rail,
+      .area-view .mobile-entities-section.layout-grid .mobile-entity-rail {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(178px, 1fr));
+        gap: 14px;
+        margin: 0;
+        padding: 0;
+        overflow: visible;
+        scroll-padding: 0;
+        scroll-snap-type: none;
+        align-items: stretch;
+      }
+
+      .area-view .mobile-entity-card,
+      .area-view .mobile-entities-section.layout-grid .mobile-entity-card {
+        width: 100%;
+        min-width: 0;
+        min-height: 152px;
+        flex: none;
+        padding: 16px;
+        border-radius: 12px;
+        scroll-snap-align: none;
+      }
+
+      .area-view .mobile-entity-card:hover {
+        transform: translateY(-1px);
+        box-shadow:
+          0 16px 32px rgba(15, 23, 42, 0.08),
+          inset 0 0 0 1px rgba(15, 23, 42, 0.045);
+      }
+
+      .area-view .mobile-entity-card.has-inline-select {
+        min-height: 178px;
+      }
+
+      .area-view .mobile-entity-icon,
+      .area-view .mobile-entities-section.layout-grid .mobile-entity-icon {
+        width: 38px;
+        height: 38px;
+        border-radius: 11px;
+      }
+
+      .area-view .mobile-entity-icon ha-icon {
+        --mdc-icon-size: 21px;
+      }
+
+      .area-view .mobile-entity-name {
+        font-size: 15px;
+      }
+
+      .area-view .mobile-entity-status {
+        font-size: 11px;
+      }
+
+      .area-view .mobile-cover-actions,
+      .area-view .mobile-entities-section.layout-grid .mobile-cover-actions {
+        min-height: 32px;
+        padding: 3px;
+        gap: 3px;
+      }
+
+      .area-view .mobile-cover-action,
+      .area-view .mobile-entities-section.layout-grid .mobile-cover-action {
+        width: 26px;
+        height: 26px;
+      }
+
+      .area-view .mobile-cover-action ha-icon,
+      .area-view .mobile-entities-section.layout-grid .mobile-cover-action ha-icon {
+        --mdc-icon-size: 16px;
+      }
+
+      .area-view .mobile-entity-rail .dd-custom-card-wrap,
+      .area-view .mobile-entity-rail .dd-domain-add-card,
+      .area-view .mobile-entities-section.layout-grid .mobile-entity-rail .dd-custom-card-wrap,
+      .area-view .mobile-entities-section.layout-grid .mobile-entity-rail .dd-domain-add-card {
+        width: 100%;
+        min-width: 0;
+        flex: none;
+        scroll-snap-align: none;
+      }
+    }
+
+    @media (min-width: 1200px) {
+      .area-view .mobile-entity-rail,
+      .area-view .mobile-entities-section.layout-grid .mobile-entity-rail {
+        grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+      }
+    }
+
     /* Bewerk-toggle in de area-header */
     .area-header { display: flex; align-items: center; gap: 8px; }
     .dd-edit-toggle {
@@ -3255,14 +3534,87 @@ export class DwainsLayoutCard extends LitElement {
     .dd-page-card { margin-top: 8px; }
     .dd-page-card dwains-dashboard-next-card-host { display: block; }
 
-    /* Eigen kaarten sectie */
-    .dd-custom-section { margin-top: 16px; }
+    /* Area custom card slots */
+    .dd-custom-section {
+      margin: 12px 0;
+      min-width: 0;
+    }
+
+    .dd-custom-section.after-domain {
+      margin: 12px 0 2px;
+    }
+
+    .dd-custom-section.editing {
+      padding: 10px;
+      border: 1px dashed color-mix(in srgb, var(--primary-color) 28%, transparent);
+      border-radius: 12px;
+      background: color-mix(in srgb, var(--primary-color) 4%, transparent);
+    }
+
+    .dd-custom-section.drag-over {
+      border-color: var(--primary-color);
+      background: color-mix(in srgb, var(--primary-color) 10%, transparent);
+      box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary-color) 22%, transparent);
+    }
+
+    .dd-custom-slot-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 8px;
+      color: color-mix(in srgb, var(--primary-text-color) 60%, transparent);
+      font-size: 12px;
+      font-weight: 800;
+      line-height: 1.2;
+    }
+
+    .dd-custom-slot-title {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+    }
+
+    .dd-custom-slot-title ha-icon {
+      --mdc-icon-size: 16px;
+      color: var(--primary-color);
+    }
+
+    .dd-custom-slot-title span {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
     .dd-custom-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
       gap: 12px;
     }
-    .dd-custom-card-wrap { position: relative; min-width: 0; }
+
+    .dd-custom-card-wrap {
+      position: relative;
+      min-width: 0;
+      border-radius: 12px;
+    }
+
+    .dd-custom-card-wrap.editing {
+      outline: 1px solid color-mix(in srgb, var(--divider-color) 78%, transparent);
+      outline-offset: 2px;
+      cursor: grab;
+    }
+
+    .dd-custom-card-wrap.dragging {
+      opacity: 0.48;
+      cursor: grabbing;
+    }
+
+    .dd-custom-card-wrap.drag-over {
+      outline-color: var(--primary-color);
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary-color) 12%, transparent);
+    }
+
     .dd-card-toolbar {
       position: absolute; top: 6px; right: 6px; z-index: 4;
       display: none; gap: 4px;
@@ -3278,6 +3630,16 @@ export class DwainsLayoutCard extends LitElement {
     .dd-card-toolbar button.del:hover { color: var(--error-color, #f44336); }
     .dd-card-toolbar ha-icon { --mdc-icon-size: 18px; }
 
+    .dd-card-toolbar button.drag {
+      cursor: grab;
+      color: var(--primary-color);
+    }
+
+    .dd-card-toolbar button.drag:active {
+      cursor: grabbing;
+    }
+
+    .dd-add-card-inline,
     .dd-add-card {
       display: flex; align-items: center; justify-content: center; gap: 8px;
       min-height: 72px; width: 100%;
@@ -3290,7 +3652,66 @@ export class DwainsLayoutCard extends LitElement {
       border-color: var(--primary-color); color: var(--primary-color);
       background: rgba(var(--rgb-primary-color, 3,169,244), .06);
     }
+
+    .dd-add-card-inline {
+      min-height: 32px;
+      width: auto;
+      padding: 0 12px;
+      border-radius: 999px;
+      border-width: 1px;
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .dd-add-card-inline ha-icon {
+      --mdc-icon-size: 16px;
+    }
+
     .dd-add-card ha-icon { --mdc-icon-size: 22px; }
+
+    .dd-domain-add-card {
+      min-height: 72px;
+      border-width: 1px;
+      background: color-mix(in srgb, var(--secondary-background-color) 54%, transparent);
+      opacity: 0.82;
+    }
+
+    .dd-domain-add-card:hover,
+    .dd-domain-add-card.drag-over {
+      opacity: 1;
+      border-color: var(--primary-color);
+      color: var(--primary-color);
+      background: color-mix(in srgb, var(--primary-color) 8%, var(--card-background-color));
+      box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary-color) 18%, transparent);
+    }
+
+    .entities-grid .dd-custom-card-wrap,
+    .entities-grid .dd-domain-add-card {
+      min-width: 0;
+    }
+
+    .mobile-entity-rail .dd-custom-card-wrap,
+    .mobile-entity-rail .dd-domain-add-card {
+      box-sizing: border-box;
+      flex: 0 0 164px;
+      min-width: 0;
+      scroll-snap-align: start;
+    }
+
+    .mobile-entity-rail .dd-domain-add-card {
+      min-height: 128px;
+    }
+
+    .mobile-entities-section.layout-grid .mobile-entity-rail .dd-custom-card-wrap,
+    .mobile-entities-section.layout-grid .mobile-entity-rail .dd-domain-add-card {
+      width: 100%;
+      flex: none;
+      scroll-snap-align: none;
+    }
+
+    .mobile-entities-section.layout-grid .mobile-entity-rail .dd-domain-add-card {
+      min-height: 138px;
+    }
 
     .entity-card-wrapper.loading {
       background: var(--secondary-background-color);
@@ -5510,21 +5931,21 @@ export class DwainsLayoutCard extends LitElement {
       position: relative;
       isolation: isolate;
       z-index: 0;
-      min-height: 132px;
+      min-height: 138px;
       margin-bottom: 18px;
-      padding: 20px;
+      padding: 18px;
       display: flex;
       flex-direction: column;
       align-items: stretch;
-      gap: 18px;
+      gap: 12px;
       overflow: hidden;
-      border-radius: 8px;
-      border: 1px solid rgba(0, 0, 0, 0.07);
+      border-radius: 12px;
+      border: 1px solid color-mix(in srgb, var(--primary-color) 12%, rgba(0, 0, 0, 0.06));
       background:
         linear-gradient(135deg,
           var(--card-background-color) 0%,
-          color-mix(in srgb, var(--primary-color) 6%, var(--card-background-color)) 100%);
-      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.08);
+          color-mix(in srgb, var(--primary-color) 5%, var(--card-background-color)) 100%);
+      box-shadow: 0 12px 30px rgba(15, 23, 42, 0.07);
     }
 
     .area-header::before {
@@ -5585,8 +6006,8 @@ export class DwainsLayoutCard extends LitElement {
       position: relative;
       z-index: 2;
       display: flex;
-      align-items: flex-start;
-      justify-content: space-between;
+      align-items: center;
+      justify-content: flex-start;
       gap: 16px;
       min-width: 0;
     }
@@ -5599,7 +6020,227 @@ export class DwainsLayoutCard extends LitElement {
     }
 
     .area-mobile-toolbar {
+      position: relative;
+      z-index: 3;
+      display: grid;
+      grid-template-columns: auto minmax(0, max-content) auto;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .area-mobile-round {
+      width: 42px;
+      height: 42px;
+      padding: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex: 0 0 auto;
+      border: 0;
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--card-background-color) 88%, #ffffff);
+      color: #182044;
+      cursor: pointer;
+      box-shadow:
+        0 10px 24px rgba(15, 23, 42, 0.12),
+        inset 0 0 0 1px rgba(15, 23, 42, 0.06);
+      transition:
+        transform 0.18s ease,
+        box-shadow 0.18s ease,
+        background-color 0.18s ease,
+        color 0.18s ease;
+    }
+
+    .area-mobile-round:hover {
+      transform: translateY(-1px);
+      box-shadow:
+        0 14px 28px rgba(15, 23, 42, 0.16),
+        inset 0 0 0 1px rgba(15, 23, 42, 0.08);
+    }
+
+    .area-mobile-round ha-icon {
+      --mdc-icon-size: 22px;
+    }
+
+    .area-mobile-home {
       display: none;
+      background: #182044;
+      color: #ffffff;
+    }
+
+    .layout-container.sidebar-collapsed .area-mobile-home {
+      display: inline-flex;
+    }
+
+    .area-mobile-quick-controls {
+      grid-column: 2;
+      justify-self: start;
+      max-width: 100%;
+      min-height: 40px;
+      padding: 4px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--card-background-color) 92%, transparent);
+      box-shadow:
+        0 10px 24px rgba(15, 23, 42, 0.1),
+        inset 0 0 0 1px rgba(15, 23, 42, 0.05);
+    }
+
+    .area-mobile-quick-controls.empty {
+      visibility: hidden;
+    }
+
+    .area-quick-control {
+      min-width: 60px;
+      height: 34px;
+      padding: 0 7px 0 9px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      border: 0;
+      border-radius: 999px;
+      background: transparent;
+      color: color-mix(in srgb, var(--primary-text-color) 62%, transparent);
+      cursor: pointer;
+      transition:
+        background-color 0.18s ease,
+        color 0.18s ease,
+        transform 0.18s ease;
+    }
+
+    .area-quick-control:active {
+      transform: scale(0.96);
+    }
+
+    .area-quick-main {
+      min-width: 0;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .area-quick-control ha-icon {
+      --mdc-icon-size: 17px;
+      flex: 0 0 auto;
+    }
+
+    .area-quick-count {
+      color: currentColor;
+      font-size: 11px;
+      font-weight: 850;
+      line-height: 1;
+      white-space: nowrap;
+    }
+
+    .area-quick-switch {
+      position: relative;
+      width: 26px;
+      height: 16px;
+      flex: 0 0 auto;
+      border-radius: 999px;
+      background: rgba(15, 23, 42, 0.12);
+      box-shadow:
+        inset 0 0 0 1px rgba(15, 23, 42, 0.05),
+        inset 0 1px 3px rgba(15, 23, 42, 0.12);
+      transition:
+        background-color 0.18s ease,
+        box-shadow 0.18s ease;
+    }
+
+    .area-quick-switch::after {
+      content: "";
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #ffffff;
+      box-shadow: 0 1px 4px rgba(15, 23, 42, 0.24);
+      transition: transform 0.18s ease;
+    }
+
+    .area-quick-control.active {
+      background: #182044;
+      color: #ffffff;
+    }
+
+    .area-quick-control.light.active {
+      color: #ffd047;
+    }
+
+    .area-quick-control.switch.active {
+      color: #58a9ff;
+    }
+
+    .area-quick-control.cover.active {
+      color: #b984ff;
+    }
+
+    .area-quick-control.active .area-quick-switch {
+      background: currentColor;
+    }
+
+    .area-quick-control.active .area-quick-switch::after {
+      transform: translateX(10px);
+    }
+
+    .area-quick-direction {
+      width: 22px;
+      height: 22px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex: 0 0 auto;
+      border-radius: 999px;
+      background: rgba(15, 23, 42, 0.08);
+      color: currentColor;
+    }
+
+    .area-quick-direction ha-icon {
+      --mdc-icon-size: 16px;
+    }
+
+    .area-mobile-actions {
+      grid-column: 3;
+      justify-self: end;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .area-mobile-edit {
+      position: relative;
+    }
+
+    .area-mobile-edit.active {
+      background: var(--primary-color);
+      color: var(--text-primary-color);
+    }
+
+    .area-mobile-dot {
+      position: absolute;
+      top: 2px;
+      right: 2px;
+      width: 8px;
+      height: 8px;
+      display: block;
+      border-radius: 50%;
+      background: #3b73ff;
+      box-shadow: 0 0 0 2px color-mix(in srgb, var(--card-background-color) 88%, #ffffff);
+    }
+
+    .area-mobile-actions .unavailable-entities-icon {
+      width: 42px;
+      height: 42px;
+      margin: 0;
+      border-radius: 999px;
     }
 
     .area-desktop-back {
@@ -5640,7 +6281,7 @@ export class DwainsLayoutCard extends LitElement {
     }
 
     .layout-container.sidebar-collapsed .area-desktop-back {
-      display: inline-flex;
+      display: none;
     }
 
     .area-title-copy {
@@ -5648,13 +6289,19 @@ export class DwainsLayoutCard extends LitElement {
     }
 
     .area-subtitle {
-      display: none;
+      display: block;
+      margin-top: 5px;
+      color: color-mix(in srgb, var(--primary-text-color) 55%, transparent);
+      font-size: 13px;
+      font-weight: 800;
+      line-height: 1.2;
+      white-space: nowrap;
     }
 
     .area-header-icon {
-      width: 52px;
-      height: 52px;
-      border-radius: 8px;
+      width: 48px;
+      height: 48px;
+      border-radius: 10px;
       display: inline-flex;
       align-items: center;
       justify-content: center;
@@ -5665,7 +6312,7 @@ export class DwainsLayoutCard extends LitElement {
     }
 
     .area-header-icon ha-icon {
-      --mdc-icon-size: 28px;
+      --mdc-icon-size: 26px;
     }
 
     .area-header.has-picture .area-header-icon {
@@ -5677,11 +6324,15 @@ export class DwainsLayoutCard extends LitElement {
     .area-title {
       margin: 0;
       color: var(--primary-text-color);
-      font-size: clamp(30px, 4vw, 48px);
+      font-size: clamp(30px, 3.1vw, 44px);
       font-weight: 800;
       letter-spacing: 0;
       line-height: 1;
       overflow-wrap: anywhere;
+    }
+
+    .area-header.has-picture .area-subtitle {
+      color: var(--area-header-picture-muted-text-color, rgba(255, 255, 255, 0.76));
     }
 
     .area-header.has-picture .area-title {
@@ -5689,7 +6340,7 @@ export class DwainsLayoutCard extends LitElement {
     }
 
     .area-header-actions {
-      display: inline-flex;
+      display: none;
       align-items: center;
       gap: 10px;
       flex: 0 0 auto;
@@ -5736,17 +6387,188 @@ export class DwainsLayoutCard extends LitElement {
       color: var(--area-header-picture-text-color, #ffffff);
     }
 
+    .area-header.has-picture .area-mobile-round,
+    .area-header.has-picture .area-mobile-quick-controls,
+    .area-header.has-picture .area-mobile-actions .unavailable-entities-icon {
+      background: var(--area-header-picture-control-bg);
+      color: var(--area-header-picture-text-color, #ffffff);
+      box-shadow:
+        0 12px 28px rgba(0, 0, 0, 0.18),
+        inset 0 0 0 1px var(--area-header-picture-control-border);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+    }
+
     .area-header .area-badges {
-      position: relative;
-      z-index: 2;
-      margin: 0;
-      padding: 0;
+      display: none;
     }
 
     .area-header.has-picture .area-badge:not(.light-toggle):not(.switch-toggle) {
       background: var(--area-header-picture-control-bg);
       border-color: var(--area-header-picture-control-border);
       color: var(--area-header-picture-text-color, #ffffff);
+    }
+
+    @media (min-width: 769px) {
+      .area-header {
+        min-height: 166px;
+        padding: 20px 22px 22px;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        grid-template-areas:
+          "nav actions"
+          "title metrics"
+          "controls metrics";
+        align-items: start;
+        column-gap: 24px;
+        row-gap: 8px;
+        border-color: color-mix(in srgb, var(--divider-color) 70%, transparent);
+        background:
+          linear-gradient(180deg,
+            color-mix(in srgb, var(--card-background-color) 98%, transparent) 0%,
+            color-mix(in srgb, var(--primary-color) 4%, var(--card-background-color)) 100%);
+        box-shadow: 0 12px 30px rgba(15, 23, 42, 0.06);
+      }
+
+      .area-header::before {
+        opacity: 0;
+      }
+
+      .area-header-content {
+        grid-area: title;
+        align-self: start;
+        margin-top: 2px;
+      }
+
+      .area-mobile-toolbar {
+        display: contents;
+      }
+
+      .area-mobile-home {
+        grid-area: nav;
+        display: inline-flex;
+        align-self: start;
+        justify-self: start;
+        width: 44px;
+        height: 44px;
+        background: #182044;
+        color: #ffffff;
+        box-shadow:
+          0 12px 26px rgba(15, 23, 42, 0.2),
+          inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+      }
+
+      .area-mobile-quick-controls {
+        grid-area: controls;
+        min-height: 42px;
+        width: min(520px, 100%);
+        max-width: 100%;
+        margin-top: 4px;
+        margin-left: 0;
+        align-self: start;
+        justify-self: start;
+      }
+
+      .area-mobile-quick-controls.count-1 {
+        width: min(420px, 100%);
+      }
+
+      .area-mobile-quick-controls.count-1 .area-quick-control {
+        flex: 1 1 auto;
+        justify-content: space-between;
+      }
+
+      .area-mobile-quick-controls.empty {
+        min-height: 0;
+        margin: 0;
+      }
+
+      .area-mobile-actions {
+        grid-area: actions;
+        position: relative;
+        top: auto;
+        right: auto;
+        z-index: 5;
+        align-self: start;
+        justify-self: end;
+      }
+
+      .area-header-metrics {
+        grid-area: metrics;
+        position: relative;
+        z-index: 3;
+        min-width: 0;
+        max-width: min(34vw, 360px);
+        margin: 2px 56px 0 0;
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .area-header-metric {
+        min-width: 132px;
+        min-height: 44px;
+        padding: 8px 12px;
+        gap: 8px;
+        border-radius: 999px;
+      }
+
+      .area-header-metric .metric-ring {
+        width: 30px;
+        height: 30px;
+      }
+
+      .area-header-metric .metric-ring::after {
+        inset: 4px;
+      }
+
+      .area-header-metric .metric-ring.metric-icon ha-icon {
+        --mdc-icon-size: 17px;
+      }
+
+      .area-header-metric .metric-label {
+        font-size: 10px;
+        letter-spacing: 0.02em;
+        text-transform: uppercase;
+      }
+
+      .area-header-metric .metric-reading {
+        margin-top: 2px;
+        font-size: 13px;
+      }
+
+      .area-title-group {
+        gap: 0;
+      }
+
+      .area-header-icon {
+        display: none;
+      }
+
+      .area-title {
+        font-size: clamp(24px, 2.4vw, 34px);
+        line-height: 1.04;
+      }
+
+      .area-subtitle {
+        margin-top: 3px;
+      }
+
+      .layout-container.sidebar-collapsed .area-mobile-home {
+        position: relative;
+        top: auto;
+        left: auto;
+      }
+
+      .layout-container.sidebar-collapsed .area-header-content {
+        padding-left: 0;
+      }
+
+      .layout-container.sidebar-collapsed .area-mobile-quick-controls {
+        margin-left: 0;
+      }
     }
 
     @media (max-width: 768px) {
@@ -7117,6 +7939,70 @@ export class DwainsLayoutCard extends LitElement {
         --mdc-icon-size: 14px;
       }
 
+      .area-content-area .area-header.has-picture:not(.is-stuck) .area-mobile-home {
+        background: rgba(10, 16, 38, 0.86);
+        color: #ffffff;
+        box-shadow:
+          0 14px 30px rgba(0, 0, 0, 0.28),
+          inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+        backdrop-filter: blur(18px) saturate(1.25);
+        -webkit-backdrop-filter: blur(18px) saturate(1.25);
+      }
+
+      .area-content-area .area-header.has-picture:not(.is-stuck) .area-mobile-home ha-icon {
+        color: #ffffff;
+        opacity: 1;
+      }
+
+      .area-content-area .area-header.has-picture:not(.is-stuck) .area-mobile-actions .area-mobile-round {
+        background: rgba(255, 255, 255, 0.86);
+        color: #0f172a;
+        box-shadow:
+          0 14px 30px rgba(0, 0, 0, 0.22),
+          inset 0 0 0 1px rgba(255, 255, 255, 0.34);
+        backdrop-filter: blur(18px) saturate(1.22);
+        -webkit-backdrop-filter: blur(18px) saturate(1.22);
+      }
+
+      .area-content-area .area-header.has-picture:not(.is-stuck) .area-mobile-quick-controls,
+      .area-content-area .area-header.has-picture:not(.is-stuck).has-metrics .area-mobile-quick-controls {
+        background: rgba(255, 255, 255, 0.9);
+        box-shadow:
+          0 16px 32px rgba(0, 0, 0, 0.2),
+          inset 0 0 0 1px rgba(255, 255, 255, 0.42);
+        backdrop-filter: blur(18px) saturate(1.18);
+        -webkit-backdrop-filter: blur(18px) saturate(1.18);
+      }
+
+      .area-content-area .area-header.has-picture:not(.is-stuck) .area-quick-control {
+        color: rgba(15, 23, 42, 0.66);
+      }
+
+      .area-content-area .area-header.has-picture:not(.is-stuck) .area-quick-control.active {
+        background: color-mix(in srgb, var(--domain-color, #182044) 16%, rgba(15, 23, 42, 0.06));
+        color: var(--domain-color, #182044);
+      }
+
+      .area-content-area .area-header.has-picture:not(.is-stuck) .area-quick-control.light {
+        --domain-color: #d99a12;
+      }
+
+      .area-content-area .area-header.has-picture:not(.is-stuck) .area-quick-control.switch {
+        --domain-color: #2f73d6;
+      }
+
+      .area-content-area .area-header.has-picture:not(.is-stuck) .area-quick-control.cover {
+        --domain-color: #7c4fc7;
+      }
+
+      .area-content-area .area-header.has-picture:not(.is-stuck) .area-quick-switch {
+        background: rgba(15, 23, 42, 0.16);
+      }
+
+      .area-content-area .area-header.has-picture:not(.is-stuck) .area-quick-control.active .area-quick-switch {
+        background: var(--domain-color, #182044);
+      }
+
       .area-content-area .area-header {
         position: relative;
         top: auto;
@@ -7952,7 +8838,10 @@ export class DwainsLayoutCard extends LitElement {
 
     if (changedProps.has('config') && this.hass) {
       ensureBottomNav(this.hass, this.config?.settings);
-      if (!this._canManageDashboard() && this._editMode) this._editMode = false;
+      if (!this._canManageDashboard() && this._editMode) {
+        this._editMode = false;
+        this._rememberAreaEditMode(null);
+      }
     }
 
     // Handle hass updates for live entity state changes
@@ -7960,7 +8849,11 @@ export class DwainsLayoutCard extends LitElement {
       // Houd de mobiele onderbalk levend en up-to-date.
       ensureBottomNav(this.hass, this.config?.settings);
       this._syncBottomNavAreaContext();
-      if (!this._canManageDashboard() && this._editMode) this._editMode = false;
+      this._reconcileOptimisticEntityStates();
+      if (!this._canManageDashboard() && this._editMode) {
+        this._editMode = false;
+        this._rememberAreaEditMode(null);
+      }
 
       const oldHass = changedProps.get('hass') as HomeAssistant | undefined;
 
@@ -7994,6 +8887,10 @@ export class DwainsLayoutCard extends LitElement {
     if (this._areaHeaderScrollRaf) {
       cancelAnimationFrame(this._areaHeaderScrollRaf);
       this._areaHeaderScrollRaf = undefined;
+    }
+    if (this._optimisticCleanupTimer !== undefined) {
+      window.clearTimeout(this._optimisticCleanupTimer);
+      this._optimisticCleanupTimer = undefined;
     }
   }
 
@@ -8342,29 +9239,6 @@ export class DwainsLayoutCard extends LitElement {
   };
 
   private _initializeObservers() {
-    // Intersection Observer for lazy loading
-    this._cardObserver = new IntersectionObserver(
-      (entries) => {
-        entries.forEach(entry => {
-          if (entry.isIntersecting) {
-            const wrapper = entry.target as HTMLElement;
-
-            // Safety check: ensure wrapper exists and is connected
-            if (!wrapper || !wrapper.isConnected) {
-              return;
-            }
-
-            const entityId = wrapper.dataset.entityId;
-            if (entityId && !wrapper.dataset.loaded) {
-              wrapper.dataset.loaded = 'true';
-              this._loadEntityCard(wrapper, entityId);
-            }
-          }
-        });
-      },
-      { rootMargin: '50px' }
-    );
-
     // Resize Observer for responsive updates
     this._resizeObserver = new ResizeObserver(() => {
       this._debouncedUpdate();
@@ -8376,9 +9250,6 @@ export class DwainsLayoutCard extends LitElement {
   }
 
   private _cleanupObservers() {
-    if (this._cardObserver) {
-      this._cardObserver.disconnect();
-    }
     if (this._resizeObserver) {
       this._resizeObserver.disconnect();
     }
@@ -8491,20 +9362,6 @@ export class DwainsLayoutCard extends LitElement {
       }
     }
 
-    // Re-observe entity card wrappers after update
-    if (this._cardObserver && this.shadowRoot) {
-      try {
-        this.shadowRoot.querySelectorAll('.entity-card-wrapper[data-entity-id]:not([data-loaded])')
-        .forEach(wrapper => {
-            // Safety check: ensure wrapper is a valid element before observing
-            if (wrapper && wrapper instanceof HTMLElement && wrapper.isConnected) {
-          this._cardObserver!.observe(wrapper);
-            }
-        });
-      } catch (error) {
-        console.warn('Error re-observing entity card wrappers:', error);
-      }
-    }
   }
 
   private _getRelevantEntities(): string[] {
@@ -8989,21 +9846,25 @@ export class DwainsLayoutCard extends LitElement {
   }
 
   private _renderWeatherDisplay() {
-    if (this.config?.settings?.show_weather === false) return nothing;
+    if (!this._weatherDisplayEnabled()) return nothing;
 
     const weatherEntity = this._getWeatherEntity();
     if (!weatherEntity) return nothing;
+    const temperature = this._formatWeatherTemperature(weatherEntity);
+    if (!temperature) return nothing;
 
     return html`
       <div
         class="weather-compact"
+        title=${this._weatherTitle(weatherEntity)}
+        aria-label=${this._weatherTitle(weatherEntity)}
         @click=${() => this._showMoreInfo(weatherEntity.entity_id)}
       >
         <div class="weather-icon-compact">
           <ha-icon icon=${weatherEntity.attributes.icon || 'mdi:weather-cloudy'}></ha-icon>
         </div>
         <div class="weather-temp-compact">
-          ${weatherEntity.attributes.temperature}${weatherEntity.attributes.temperature_unit}
+          ${temperature}
         </div>
       </div>
     `;
@@ -9024,6 +9885,8 @@ export class DwainsLayoutCard extends LitElement {
                 style=${this._domainStatusStyle(domain.domain, domain.deviceClass)}
                 @click=${() => this._handleStatusCardClick(domain)}
                 data-domain=${domain.domain}
+                title=${this._statusCardTitle(domain)}
+                aria-label=${this._statusCardTitle(domain)}
               >
                 <div class="status-card-icon-compact">
                   <ha-icon icon=${domain.icon}></ha-icon>
@@ -9065,12 +9928,68 @@ export class DwainsLayoutCard extends LitElement {
   }
 
   private _statusCardTitle(domain: DomainCount): string {
+    const activeLabel = this._statusCardActiveLabel(domain);
+    if (activeLabel) {
+      if (domain.count === 1 && domain.entities?.length === 1) {
+        const areaName = this._entityAreaName(domain.entities[0]!);
+        return areaName ? `${activeLabel.singular} in ${areaName}` : activeLabel.singular;
+      }
+      return activeLabel.plural;
+    }
+
     // Bij precies 1 actief: toon de ruimte ("Motion in Slaapkamer").
     if (domain.domain !== 'person' && domain.count === 1 && domain.entities?.length === 1) {
       const areaName = this._entityAreaName(domain.entities[0]!);
       if (areaName) return `${domain.name} in ${areaName}`;
     }
     return domain.name;
+  }
+
+  private _statusCardActiveLabel(domain: DomainCount): { singular: string; plural: string } | undefined {
+    if (domain.domain === 'person') return undefined;
+
+    if (domain.domain === 'light') return { singular: 'Light on', plural: 'Lights on' };
+    if (domain.domain === 'switch') return { singular: 'Switch on', plural: 'Switches on' };
+    if (domain.domain === 'cover') return { singular: 'Cover open', plural: 'Covers open' };
+    if (domain.domain === 'fan') return { singular: 'Fan on', plural: 'Fans on' };
+    if (domain.domain === 'lock') return { singular: 'Lock unlocked', plural: 'Locks unlocked' };
+    if (domain.domain === 'climate') return { singular: 'Climate active', plural: 'Climate active' };
+    if (domain.domain === 'media_player') return { singular: 'Media player playing', plural: 'Media players playing' };
+    if (domain.domain === 'vacuum') return { singular: 'Vacuum cleaning', plural: 'Vacuums cleaning' };
+    if (domain.domain === 'alarm_control_panel') return { singular: 'Alarm armed', plural: 'Alarms armed' };
+
+    if (domain.domain === 'binary_sensor') {
+      switch (domain.deviceClass) {
+        case 'door':
+          return { singular: 'Door open', plural: 'Doors open' };
+        case 'window':
+          return { singular: 'Window open', plural: 'Windows open' };
+        case 'opening':
+          return { singular: 'Opening open', plural: 'Openings open' };
+        case 'motion':
+          return { singular: 'Motion detected', plural: 'Motion detected' };
+        case 'smoke':
+          return { singular: 'Smoke detected', plural: 'Smoke detected' };
+        case 'gas':
+          return { singular: 'Gas detected', plural: 'Gas detected' };
+        case 'moisture':
+          return { singular: 'Moisture detected', plural: 'Moisture detected' };
+        case 'occupancy':
+          return { singular: 'Occupancy detected', plural: 'Occupancy detected' };
+        case 'presence':
+          return { singular: 'Presence detected', plural: 'Presence detected' };
+        case 'tamper':
+          return { singular: 'Tamper detected', plural: 'Tamper detected' };
+        case 'vibration':
+          return { singular: 'Vibration detected', plural: 'Vibration detected' };
+        case 'safety':
+          return { singular: 'Safety active', plural: 'Safety active' };
+        default:
+          return { singular: `${domain.name} active`, plural: `${domain.name} active` };
+      }
+    }
+
+    return undefined;
   }
 
   private _entityAreaName(entityId: string): string | undefined {
@@ -9232,7 +10151,8 @@ export class DwainsLayoutCard extends LitElement {
   private _renderHomeWelcome() {
     const userName = this.hass?.user?.name || 'User';
     const greeting = this._getGreeting();
-    const weatherEntity = this._getWeatherEntity();
+    const weatherEntity = this._weatherDisplayEnabled() ? this._getWeatherEntity() : undefined;
+    const weatherTemperature = this._formatWeatherTemperature(weatherEntity);
     const userPicture = this._getWelcomeUserPicture(userName);
     const alarmContent = this._renderHomeAlarm();
 
@@ -9291,13 +10211,19 @@ export class DwainsLayoutCard extends LitElement {
               <div class="welcome-date">${this._currentDate}</div>
             </div>
           </div>
-          ${alarmContent !== nothing || weatherEntity ? html`
+          ${alarmContent !== nothing || weatherTemperature ? html`
             <div class="welcome-subheader">
               ${alarmContent}
-              ${weatherEntity ? html`
-                <div class="welcome-weather" @click=${() => this._showMoreInfo(weatherEntity.entity_id)}>
+              ${weatherEntity && weatherTemperature ? html`
+                <div
+                  class="welcome-weather"
+                  title=${this._weatherTitle(weatherEntity)}
+                  aria-label=${this._weatherTitle(weatherEntity)}
+                  @click=${() => this._showMoreInfo(weatherEntity.entity_id)}
+                >
                   <ha-icon icon=${weatherEntity.attributes.icon || 'mdi:weather-cloudy'}></ha-icon>
-                  <span class="weather-temp">${weatherEntity.attributes.temperature}${weatherEntity.attributes.temperature_unit}</span>
+                  <span class="weather-temp">${weatherTemperature}</span>
+                  <span class="weather-label">Outside</span>
                 </div>
               ` : nothing}
             </div>
@@ -9327,6 +10253,8 @@ export class DwainsLayoutCard extends LitElement {
           style=${this._domainStatusStyle(domain.domain, domain.deviceClass)}
           @click=${() => this._handleStatusCardClick(domain)}
           data-domain=${domain.domain}
+          title=${this._statusCardTitle(domain)}
+          aria-label=${this._statusCardTitle(domain)}
         >
           <div class="status-card-icon">
             <ha-icon icon=${domain.icon}></ha-icon>
@@ -9783,11 +10711,51 @@ export class DwainsLayoutCard extends LitElement {
   }
 
   private _formatWeatherSnapshot(weatherEntity?: any): string {
-    const temperature = weatherEntity?.attributes?.temperature;
+    const temperature = this._formatWeatherTemperature(weatherEntity);
+    if (!temperature) return '';
+
+    return `${temperature} outside`;
+  }
+
+  private _weatherDisplayEnabled(): boolean {
+    return this.config?.settings?.show_weather !== false &&
+      this.config?.global_options?.show_weather !== false;
+  }
+
+  private _formatWeatherTemperature(weatherEntity?: any): string {
+    if (!weatherEntity) return '';
+
+    const attributes = weatherEntity.attributes || {};
+    const temperature = attributes.temperature ??
+      attributes.current_temperature ??
+      attributes.apparent_temperature ??
+      attributes.native_temperature;
+
     if (temperature === undefined || temperature === null || temperature === '') return '';
 
-    const unit = weatherEntity.attributes?.temperature_unit || this.hass?.config?.unit_system?.temperature || '';
-    return `${temperature}${unit ? ` ${unit}` : ''} outside`;
+    const unit = attributes.temperature_unit ||
+      attributes.native_temperature_unit ||
+      this.hass?.config?.unit_system?.temperature ||
+      '';
+
+    return `${temperature}${unit}`;
+  }
+
+  private _weatherTitle(weatherEntity?: any): string {
+    const temperature = this._formatWeatherTemperature(weatherEntity);
+    const condition = this._formatWeatherCondition(weatherEntity?.state);
+
+    if (temperature && condition) return `${temperature} outside, ${condition}`;
+    if (temperature) return `${temperature} outside`;
+    return condition || 'Outside weather';
+  }
+
+  private _formatWeatherCondition(state?: string): string {
+    if (!state || state === 'unknown' || state === 'unavailable') return '';
+
+    return state
+      .replace(/_/g, ' ')
+      .replace(/\b\w/g, letter => letter.toUpperCase());
   }
 
   private _getHousePowerUsage(): HousePowerUsage {
@@ -10056,10 +11024,11 @@ export class DwainsLayoutCard extends LitElement {
   }
 
   private _renderFavoriteCard(entityId: string) {
-    const state = this.hass.states[entityId];
+    const rawState = this.hass.states[entityId];
     const registry = this.hass.entities?.[entityId];
-    if (!state || registry?.hidden_by) return nothing;
+    if (!rawState || registry?.hidden_by) return nothing;
 
+    const state = this._getEffectiveEntityState(rawState);
     const domain = entityId.split('.')[0] || 'unknown';
     const deviceClass = state.attributes?.device_class;
     const name = state.attributes?.friendly_name || registry?.name || entityId;
@@ -10114,11 +11083,104 @@ export class DwainsLayoutCard extends LitElement {
   }
 
   private _formatFavoriteState(state: any): string {
+    const effectiveState = this._getEffectiveEntityState(state);
+
     try {
-      return this.hass.formatEntityState(state);
+      return this.hass.formatEntityState(effectiveState);
     } catch {
-      return String(state?.state || '');
+      return String(effectiveState?.state || '');
     }
+  }
+
+  private _getEffectiveEntityState<T extends { entity_id?: string; state?: string } | null | undefined>(state: T): T {
+    const entityId = state?.entity_id;
+    if (!entityId) return state;
+
+    const optimistic = this._optimisticEntityStates[entityId];
+    if (!optimistic || optimistic.expiresAt <= Date.now()) return state;
+
+    const actualState = String(state?.state || '').toLowerCase();
+    if (actualState === optimistic.state.toLowerCase()) return state;
+
+    return {
+      ...(state as NonNullable<T>),
+      state: optimistic.state,
+    } as T;
+  }
+
+  private _setOptimisticEntityState(entityId: string, state: string): void {
+    this._setOptimisticEntityStates([entityId], state);
+  }
+
+  private _setOptimisticEntityStates(entityIds: string[], state: string): void {
+    const uniqueEntityIds = [...new Set(entityIds.filter(Boolean))];
+    if (!uniqueEntityIds.length) return;
+
+    const expiresAt = Date.now() + OPTIMISTIC_ENTITY_STATE_TTL;
+    const next = { ...this._optimisticEntityStates };
+    uniqueEntityIds.forEach((entityId) => {
+      next[entityId] = { state, expiresAt };
+    });
+    this._optimisticEntityStates = next;
+    this._scheduleOptimisticCleanup();
+  }
+
+  private _clearOptimisticEntityStates(entityIds: string[]): void {
+    const uniqueEntityIds = [...new Set(entityIds.filter(Boolean))];
+    if (!uniqueEntityIds.length) return;
+
+    const next = { ...this._optimisticEntityStates };
+    let changed = false;
+    uniqueEntityIds.forEach((entityId) => {
+      if (next[entityId]) {
+        delete next[entityId];
+        changed = true;
+      }
+    });
+
+    if (changed) this._optimisticEntityStates = next;
+  }
+
+  private _reconcileOptimisticEntityStates(): void {
+    const entries = Object.entries(this._optimisticEntityStates);
+    if (!entries.length) return;
+
+    const now = Date.now();
+    const next = { ...this._optimisticEntityStates };
+    let changed = false;
+
+    entries.forEach(([entityId, optimistic]) => {
+      const actual = this.hass?.states?.[entityId]?.state;
+      if (
+        !actual ||
+        optimistic.expiresAt <= now ||
+        String(actual).toLowerCase() === optimistic.state.toLowerCase()
+      ) {
+        delete next[entityId];
+        changed = true;
+      }
+    });
+
+    if (changed) this._optimisticEntityStates = next;
+  }
+
+  private _scheduleOptimisticCleanup(): void {
+    if (this._optimisticCleanupTimer !== undefined) return;
+
+    const expiries = Object.values(this._optimisticEntityStates).map(entry => entry.expiresAt);
+    if (!expiries.length) return;
+
+    const nextExpiry = Math.min(...expiries);
+    if (!Number.isFinite(nextExpiry)) return;
+
+    const delay = Math.max(80, nextExpiry - Date.now() + 50);
+    this._optimisticCleanupTimer = window.setTimeout(() => {
+      this._optimisticCleanupTimer = undefined;
+      this._reconcileOptimisticEntityStates();
+      if (Object.keys(this._optimisticEntityStates).length) {
+        this._scheduleOptimisticCleanup();
+      }
+    }, delay);
   }
 
   private _favoriteActiveState(state: any, domain: string): string {
@@ -10158,24 +11220,32 @@ export class DwainsLayoutCard extends LitElement {
     event.stopPropagation();
     const entityId = state?.entity_id;
     if (!entityId) return;
+    const affectedEntityIds = [entityId];
 
     try {
       if (['light', 'switch', 'fan', 'input_boolean'].includes(domain)) {
-        await this.hass.callService('homeassistant', 'toggle', { entity_id: entityId });
+        const turnOn = !this._isEntityActiveForUi(state, domain);
+        this._setOptimisticEntityState(entityId, turnOn ? 'on' : 'off');
+        await this.hass.callService(domain, turnOn ? 'turn_on' : 'turn_off', { entity_id: entityId });
         return;
       }
       if (domain === 'cover') {
         const open = ['open', 'opening'].includes(String(state.state).toLowerCase());
+        this._setOptimisticEntityState(entityId, open ? 'closed' : 'open');
         await this.hass.callService('cover', open ? 'close_cover' : 'open_cover', { entity_id: entityId });
         return;
       }
       if (domain === 'lock') {
         const unlocked = String(state.state).toLowerCase() === 'unlocked';
+        this._setOptimisticEntityState(entityId, unlocked ? 'locked' : 'unlocked');
         await this.hass.callService('lock', unlocked ? 'lock' : 'unlock', { entity_id: entityId });
         return;
       }
     } catch (err) {
+      this._clearOptimisticEntityStates(affectedEntityIds);
       console.warn(`Failed to run favorite quick action for ${entityId}:`, err);
+      this._showToast('Could not update entity');
+      return;
     }
 
     this._showMoreInfo(entityId);
@@ -10276,9 +11346,9 @@ export class DwainsLayoutCard extends LitElement {
           ${this._renderAreaBadges(area, areaEntities, areaData)}
         </div>
 
+        ${this._renderCustomCardSlot(area.area_id, 'top', this._t('layout.custom_cards_top'))}
         ${this._renderMobileEntitiesSection(area, areaEntities)}
-        ${this._renderEntitiesSection(areaEntities)}
-        ${this._renderCustomCards(area)}
+        ${this._renderCustomCardSlot(area.area_id, 'bottom', this._t('layout.custom_cards_bottom'))}
       </div>
     `;
   }
@@ -10286,33 +11356,65 @@ export class DwainsLayoutCard extends LitElement {
   private _toggleEditMode = () => {
     if (!this._canManageDashboard()) {
       this._editMode = false;
+      this._rememberAreaEditMode(null);
       return;
     }
     this._editMode = !this._editMode;
+    this._rememberAreaEditMode(
+      this._editMode && this._selectedView === 'area' ? this._selectedArea : null
+    );
   };
 
-  // Eigen kaarten van de gebruiker per ruimte (read + edit affordances)
-  private _renderCustomCards(area: AreaConfig) {
-    const cards = this.config?.areas_options?.[area.area_id]?.cards || [];
+  // Area custom cards, grouped by placement around the standard area sections.
+  private _renderCustomCardSlot(areaId: string, placement: string, label: string, afterDomain = false) {
     const canEdit = this._canManageDashboard();
     if (!canEdit && this._editMode) this._editMode = false;
+
+    const cards = this._getAreaCustomCards(areaId).filter(entry => entry.placement === placement);
     if (cards.length === 0 && !this._editMode) return nothing;
 
+    const dragOver = this._customCardDragOver?.areaId === areaId &&
+      this._customCardDragOver.placement === placement &&
+      this._customCardDragOver.index === cards.length;
+
+    const classes = {
+      'dd-custom-section': true,
+      'after-domain': afterDomain,
+      editing: this._editMode && canEdit,
+      'drag-over': Boolean(dragOver),
+    };
+
     return html`
-      <div class="dd-custom-section">
-        ${cards.length
+      <div
+        class=${classMap(classes)}
+        @dragover=${(event: DragEvent) => this._handleCustomSlotDragOver(event, areaId, placement, cards.length)}
+        @drop=${(event: DragEvent) => this._handleCustomCardDrop(event, areaId, placement, cards.length)}
+      >
+        ${(this._editMode && canEdit) || cards.length
           ? html`
-              <div class="domain-header">
-                <ha-icon icon="mdi:cards-outline"></ha-icon>
-                <span>${this._t('layout.custom_cards')}</span>
+              <div class="dd-custom-slot-head">
+                <div class="dd-custom-slot-title">
+                  <ha-icon icon="mdi:cards-outline"></ha-icon>
+                  <span>${this._editMode && canEdit ? label : this._t('layout.custom_cards')}</span>
+                </div>
+                ${this._editMode && canEdit ? html`
+                  <button class="dd-add-card-inline" @click=${() => this._addCard(areaId, placement, cards.length)}>
+                    <ha-icon icon="mdi:plus"></ha-icon>
+                    <span>${this._t('layout.add_card')}</span>
+                  </button>
+                ` : nothing}
               </div>
             `
           : nothing}
         <div class="dd-custom-grid">
-          ${cards.map((card, i) => this._renderCustomCard(area.area_id, card, i))}
-          ${this._editMode && canEdit
+          ${repeat(
+            cards,
+            entry => entry.id,
+            (entry, index) => this._renderCustomCard(areaId, entry, index)
+          )}
+          ${this._editMode && canEdit && cards.length === 0
             ? html`
-                <button class="dd-add-card" @click=${() => this._addCard(area.area_id)}>
+                <button class="dd-add-card" @click=${() => this._addCard(areaId, placement, 0)}>
                   <ha-icon icon="mdi:plus"></ha-icon>
                   <span>${this._t('layout.add_card')}</span>
                 </button>
@@ -10323,21 +11425,116 @@ export class DwainsLayoutCard extends LitElement {
     `;
   }
 
-  private _renderCustomCard(areaId: string, card: any, index: number) {
-    // dwains-dashboard-next-card-host is een normaal custom element dat de hui-card imperatief in
-    // z'n eigen light-DOM beheert → géén rauw element in Lit's repeat → geen crash.
+  private _renderCustomCard(areaId: string, entry: NormalizedAreaCustomCard, index: number) {
+    const dragging = this._customCardDrag?.areaId === areaId && this._customCardDrag.cardId === entry.id;
+    const dragOver = this._customCardDragOver?.areaId === areaId &&
+      this._customCardDragOver.placement === entry.placement &&
+      this._customCardDragOver.index === index;
+
+    const classes = {
+      'dd-custom-card-wrap': true,
+      editing: this._editMode,
+      dragging,
+      'drag-over': dragOver,
+    };
+
+    // dwains-dashboard-next-card-host manages the HA card in its own light DOM.
     return html`
-      <div class="dd-custom-card-wrap ${this._editMode ? 'editing' : ''}">
+      <div
+        class=${classMap(classes)}
+        .draggable=${this._editMode}
+        @dragstart=${(event: DragEvent) => this._handleCustomCardDragStart(event, areaId, entry.id)}
+        @dragover=${(event: DragEvent) => this._handleCustomSlotDragOver(event, areaId, entry.placement, index)}
+        @drop=${(event: DragEvent) => this._handleCustomCardDrop(event, areaId, entry.placement, index)}
+        @dragend=${this._clearCustomCardDragState}
+      >
         <div class="dd-card-toolbar">
-          <button title=${this._t('common.edit')} @click=${() => this._editCard(areaId, index)}>
+          <button class="drag" title=${this._t('layout.drag_card')} aria-label=${this._t('layout.drag_card')}>
+            <ha-icon icon="mdi:drag"></ha-icon>
+          </button>
+          <button title=${this._t('common.edit')} @click=${() => this._editCard(areaId, entry.id)}>
             <ha-icon icon="mdi:pencil"></ha-icon>
           </button>
-          <button class="del" title=${this._t('common.delete')} @click=${() => this._deleteCard(areaId, index)}>
+          <button class="del" title=${this._t('common.delete')} @click=${() => this._deleteCard(areaId, entry.id)}>
             <ha-icon icon="mdi:delete"></ha-icon>
           </button>
         </div>
-        <dwains-dashboard-next-card-host .hass=${this.hass} .config=${card}></dwains-dashboard-next-card-host>
+        <dwains-dashboard-next-card-host .hass=${this.hass} .config=${entry.card}></dwains-dashboard-next-card-host>
       </div>
+    `;
+  }
+
+  private _getDomainSlotCustomCards(
+    areaId: string,
+    groupKey: string,
+    slotIndex: number,
+    entityCount: number
+  ): NormalizedAreaCustomCard[] {
+    const placement = this._customCardPlacementInDomain(groupKey, slotIndex);
+    const legacyAfterPlacement = this._customCardPlacementAfter(groupKey);
+
+    return this._getAreaCustomCards(areaId).filter(entry => {
+      if (entry.placement === placement) return true;
+      const domainPlacementIndex = this._domainCustomCardPlacementIndex(entry.placement, groupKey);
+      if (slotIndex === entityCount && domainPlacementIndex !== undefined && domainPlacementIndex > entityCount) {
+        return true;
+      }
+      return slotIndex === entityCount && entry.placement === legacyAfterPlacement;
+    });
+  }
+
+  private _domainCustomCardPlacementIndex(placement: string, groupKey: string): number | undefined {
+    const prefix = `domain:${groupKey}:`;
+    if (!placement.startsWith(prefix)) return undefined;
+    const index = Number(placement.slice(prefix.length));
+    return Number.isFinite(index) && index >= 0 ? index : undefined;
+  }
+
+  private _placementIndexForCard(
+    entry: NormalizedAreaCustomCard,
+    placementCounts: Map<string, number>
+  ): number {
+    const index = placementCounts.get(entry.placement) || 0;
+    placementCounts.set(entry.placement, index + 1);
+    return index;
+  }
+
+  private _renderDomainCustomCardSlot(
+    areaId: string,
+    groupKey: string,
+    slotIndex: number,
+    entityCount: number
+  ) {
+    const canEdit = this._canManageDashboard();
+    if (!canEdit && this._editMode) this._editMode = false;
+
+    const placement = this._customCardPlacementInDomain(groupKey, slotIndex);
+    const cards = this._getDomainSlotCustomCards(areaId, groupKey, slotIndex, entityCount);
+    const domainPlacementCardCount = cards.filter(entry => entry.placement === placement).length;
+    const placementCounts = new Map<string, number>();
+    const dragOver = this._customCardDragOver?.areaId === areaId &&
+      this._customCardDragOver.placement === placement &&
+      this._customCardDragOver.index === domainPlacementCardCount;
+
+    if (cards.length === 0 && !this._editMode) return nothing;
+
+    return html`
+      ${cards.map(entry => this._renderCustomCard(
+        areaId,
+        entry,
+        this._placementIndexForCard(entry, placementCounts)
+      ))}
+      ${this._editMode && canEdit ? html`
+        <button
+          class="dd-add-card dd-domain-add-card ${dragOver ? 'drag-over' : ''}"
+          @click=${() => this._addCard(areaId, placement, domainPlacementCardCount)}
+          @dragover=${(event: DragEvent) => this._handleCustomSlotDragOver(event, areaId, placement, domainPlacementCardCount)}
+          @drop=${(event: DragEvent) => this._handleCustomCardDrop(event, areaId, placement, domainPlacementCardCount)}
+        >
+          <ha-icon icon="mdi:plus"></ha-icon>
+          <span>${this._t('layout.add_card')}</span>
+        </button>
+      ` : nothing}
     `;
   }
 
@@ -10351,7 +11548,84 @@ export class DwainsLayoutCard extends LitElement {
     }));
   }
 
-  private _addCard(areaId: string) {
+  private _customCardPlacementAfter(groupKey: string): string {
+    return `after:${groupKey}`;
+  }
+
+  private _customCardPlacementInDomain(groupKey: string, index: number): string {
+    return `domain:${groupKey}:${Math.max(0, index)}`;
+  }
+
+  private _customCardId(): string {
+    return `area-card-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  }
+
+  private _getAreaCustomCards(areaId: string): NormalizedAreaCustomCard[] {
+    const options: any = this.config?.areas_options?.[areaId] || {};
+    return Array.isArray(options.custom_cards)
+      ? options.custom_cards
+          .map((entry: any, index: number) => ({
+            id: String(entry?.id || `generated-${index}`),
+            placement: String(entry?.placement || 'bottom'),
+            card: entry?.card,
+          }))
+          .filter((entry: NormalizedAreaCustomCard) => entry.card && typeof entry.card === 'object')
+      : [];
+  }
+
+  private _getPersistableAreaCustomCards(areaId: string): AreaCustomCard[] {
+    return this._getAreaCustomCards(areaId).map(entry => ({
+      id: entry.id,
+      placement: entry.placement || 'bottom',
+      card: entry.card,
+    }));
+  }
+
+  private _normalizeAreaCustomCardsForSave(customCards: AreaCustomCard[]): AreaCustomCard[] {
+    return customCards.map(entry => ({
+      id: entry.id.startsWith('generated-') ? this._customCardId() : entry.id,
+      placement: entry.placement || 'bottom',
+      card: entry.card,
+    }));
+  }
+
+  private _insertIndexForPlacement(cards: AreaCustomCard[], placement: string, placementIndex: number): number {
+    let seenInPlacement = 0;
+    let lastInPlacement = -1;
+
+    for (let index = 0; index < cards.length; index += 1) {
+      const candidate = cards[index];
+      if (!candidate || candidate.placement !== placement) continue;
+      if (seenInPlacement >= placementIndex) return index;
+      seenInPlacement += 1;
+      lastInPlacement = index;
+    }
+
+    return lastInPlacement >= 0 ? lastInPlacement + 1 : cards.length;
+  }
+
+  private _insertAreaCustomCard(areaId: string, card: any, placement: string, placementIndex: number): void {
+    const cards = this._getPersistableAreaCustomCards(areaId);
+    const insertAt = this._insertIndexForPlacement(cards, placement, placementIndex);
+    cards.splice(insertAt, 0, {
+      id: this._customCardId(),
+      placement,
+      card,
+    });
+    void this._saveAreaCustomCards(areaId, cards);
+  }
+
+  private _replaceAreaCustomCard(areaId: string, cardId: string, card: any): void {
+    const cards = this._getPersistableAreaCustomCards(areaId);
+    const index = cards.findIndex(entry => entry.id === cardId);
+    if (index < 0) return;
+    const existing = cards[index];
+    if (!existing) return;
+    cards[index] = { ...existing, card };
+    void this._saveAreaCustomCards(areaId, cards);
+  }
+
+  private _addCard(areaId: string, placement = 'bottom', placementIndex = Number.POSITIVE_INFINITY) {
     if (!this._canManageDashboard()) return;
     // Probeer HA's eigen kaart-picker (+ visuele editor). Die is geladen zodra
     // je 'm één keer in een normaal dashboard hebt gebruikt.
@@ -10364,20 +11638,18 @@ export class DwainsLayoutCard extends LitElement {
           const newCards = newConfig?.views?.[0]?.cards || [];
           const added = newCards[newCards.length - 1];
           if (added) {
-            const cards = [...(this.config?.areas_options?.[areaId]?.cards || [])];
-            cards.push(added);
-            this._saveAreaCards(areaId, cards);
+            this._insertAreaCustomCard(areaId, added, placement, placementIndex);
           }
         },
       });
     } else {
-      this._addCardYaml(areaId);
+      this._addCardYaml(areaId, placement, placementIndex);
     }
   }
 
-  private _editCard(areaId: string, index: number) {
+  private _editCard(areaId: string, cardId: string) {
     if (!this._canManageDashboard()) return;
-    const existing = this.config?.areas_options?.[areaId]?.cards?.[index];
+    const existing = this._getAreaCustomCards(areaId).find(entry => entry.id === cardId)?.card;
     if (!existing) return;
 
     // Probeer HA's eigen visuele kaart-editor (formulier + code-toggle).
@@ -10388,52 +11660,107 @@ export class DwainsLayoutCard extends LitElement {
         saveConfig: (newConfig: any) => {
           const newCard = newConfig?.views?.[0]?.cards?.[0];
           if (newCard) {
-            const cards = [...(this.config?.areas_options?.[areaId]?.cards || [])];
-            cards[index] = newCard;
-            this._saveAreaCards(areaId, cards);
+            this._replaceAreaCustomCard(areaId, cardId, newCard);
           }
         },
       });
     } else {
-      this._editCardYaml(areaId, index);
+      this._editCardYaml(areaId, cardId);
     }
   }
 
-  private _addCardYaml(areaId: string) {
+  private _addCardYaml(areaId: string, placement = 'bottom', placementIndex = Number.POSITIVE_INFINITY) {
     if (!this._canManageDashboard()) return;
     showCardEditorDialog(this, {
       areaName: this.config?.areas?.find(a => a.area_id === areaId)?.name,
       onSave: (card) => {
-        const cards = [...(this.config?.areas_options?.[areaId]?.cards || [])];
-        cards.push(card);
-        this._saveAreaCards(areaId, cards);
+        this._insertAreaCustomCard(areaId, card, placement, placementIndex);
       },
     });
   }
 
-  private _editCardYaml(areaId: string, index: number) {
+  private _editCardYaml(areaId: string, cardId: string) {
     if (!this._canManageDashboard()) return;
-    const existing = this.config?.areas_options?.[areaId]?.cards?.[index];
+    const existing = this._getAreaCustomCards(areaId).find(entry => entry.id === cardId)?.card;
     if (!existing) return;
     showCardEditorDialog(this, {
       card: existing,
       areaName: this.config?.areas?.find(a => a.area_id === areaId)?.name,
       onSave: (card) => {
-        const cards = [...(this.config?.areas_options?.[areaId]?.cards || [])];
-        cards[index] = card;
-        this._saveAreaCards(areaId, cards);
+        this._replaceAreaCustomCard(areaId, cardId, card);
       },
     });
   }
 
-  private _deleteCard(areaId: string, index: number) {
+  private _deleteCard(areaId: string, cardId: string) {
     if (!this._canManageDashboard()) return;
     if (!confirm(this._t('layout.delete_card_confirm'))) return;
-    const cards = [...(this.config?.areas_options?.[areaId]?.cards || [])];
-    if (index < 0 || index >= cards.length) return;
-    cards.splice(index, 1);
-    this._saveAreaCards(areaId, cards);
+    const cards = this._getPersistableAreaCustomCards(areaId).filter(entry => entry.id !== cardId);
+    void this._saveAreaCustomCards(areaId, cards);
   }
+
+  private _handleCustomCardDragStart(event: DragEvent, areaId: string, cardId: string): void {
+    if (!this._editMode || !this._canManageDashboard()) {
+      event.preventDefault();
+      return;
+    }
+
+    this._customCardDrag = { areaId, cardId };
+    this._customCardDragOver = null;
+    event.dataTransfer?.setData('text/plain', cardId);
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = 'move';
+    }
+  }
+
+  private _handleCustomSlotDragOver(event: DragEvent, areaId: string, placement: string, index: number): void {
+    if (!this._editMode || !this._customCardDrag || this._customCardDrag.areaId !== areaId) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = 'move';
+    }
+    this._customCardDragOver = { areaId, placement, index };
+  }
+
+  private _handleCustomCardDrop(event: DragEvent, areaId: string, placement: string, placementIndex: number): void {
+    if (!this._customCardDrag || this._customCardDrag.areaId !== areaId) return;
+    event.preventDefault();
+    event.stopPropagation();
+
+    this._moveAreaCustomCard(areaId, this._customCardDrag.cardId, placement, placementIndex);
+    this._clearCustomCardDragState();
+  }
+
+  private _moveAreaCustomCard(areaId: string, cardId: string, placement: string, placementIndex: number): void {
+    const cards = this._getPersistableAreaCustomCards(areaId);
+    const currentIndex = cards.findIndex(entry => entry.id === cardId);
+    if (currentIndex < 0) return;
+
+    const currentCard = cards[currentIndex];
+    if (!currentCard) return;
+    const currentPlacement = currentCard.placement || 'bottom';
+    const currentPlacementIndex = cards
+      .slice(0, currentIndex)
+      .filter(entry => entry.placement === currentPlacement)
+      .length;
+    const [card] = cards.splice(currentIndex, 1);
+    if (!card) return;
+    let nextPlacementIndex = placementIndex;
+    if (currentPlacement === placement && currentPlacementIndex < placementIndex) {
+      nextPlacementIndex = Math.max(0, placementIndex - 1);
+    }
+
+    card.placement = placement;
+    const insertAt = this._insertIndexForPlacement(cards, placement, nextPlacementIndex);
+    cards.splice(insertAt, 0, card);
+    void this._saveAreaCustomCards(areaId, cards);
+  }
+
+  private _clearCustomCardDragState = (): void => {
+    this._customCardDrag = null;
+    this._customCardDragOver = null;
+  };
 
   private _getDashboardUrlPath(): string | undefined {
     const seg = window.location.pathname.split('/')[1];
@@ -10441,17 +11768,22 @@ export class DwainsLayoutCard extends LitElement {
     return seg;
   }
 
-  private async _saveAreaCards(areaId: string, cards: any[]): Promise<void> {
+  private async _saveAreaCustomCards(areaId: string, customCards: AreaCustomCard[]): Promise<void> {
     if (!this._canManageDashboard()) return;
-    // Lokale config immutabel bijwerken (HA bevriest config-objecten)
+    const keepEditing = this._editMode && this._selectedView === 'area' && this._selectedArea === areaId;
+    if (keepEditing) this._rememberAreaEditMode(areaId);
+
+    const cardsToSave = this._normalizeAreaCustomCardsForSave(customCards);
+    // Update local config immutably (HA freezes config objects).
     const prevOptions: any = this.config.areas_options || {};
     this.config = {
       ...this.config,
       areas_options: {
         ...prevOptions,
-        [areaId]: { ...(prevOptions[areaId] || {}), cards },
+        [areaId]: { ...(prevOptions[areaId] || {}), custom_cards: cardsToSave },
       },
     };
+    if (keepEditing) this._editMode = true;
     this.requestUpdate();
 
     try {
@@ -10467,7 +11799,7 @@ export class DwainsLayoutCard extends LitElement {
             ...strat,
             areas_options: {
               ...stratOptions,
-              [areaId]: { ...(stratOptions[areaId] || {}), cards },
+              [areaId]: { ...(stratOptions[areaId] || {}), custom_cards: cardsToSave },
             },
           },
         };
@@ -10812,17 +12144,21 @@ export class DwainsLayoutCard extends LitElement {
                     <ha-icon icon="mdi:dots-horizontal"></ha-icon>
                   </button>
                 ` : nothing}
-              </div>
-              <div class="mobile-entity-rail">
-                ${repeat(
-                  group.entities,
-                  entity => entity.entity_id,
-                  entity => this._renderMobileEntityCard(area, entity)
-                )}
-              </div>
-            </div>
-          `;
-        })}
+	              </div>
+	              <div class="mobile-entity-rail">
+	                ${this._renderDomainCustomCardSlot(area.area_id, group.key, 0, group.entities.length)}
+	                ${repeat(
+	                  group.entities,
+	                  entity => entity.entity_id,
+	                  (entity, index) => html`
+                      ${this._renderMobileEntityCard(area, entity)}
+                      ${this._renderDomainCustomCardSlot(area.area_id, group.key, index + 1, group.entities.length)}
+                    `
+	                )}
+	              </div>
+	            </div>
+	          `;
+	        })}
       </section>
     `;
   }
@@ -11018,7 +12354,7 @@ export class DwainsLayoutCard extends LitElement {
       return acc;
     }, {} as Record<string, EntityConfig[]>);
 
-    const order = ['light', 'switch', 'cover', 'climate', 'motion', 'binary_sensor', 'sensor', 'media_player', 'fan', 'lock', 'camera', 'vacuum'];
+    const order = ['light', 'switch', 'cover', 'climate', 'scene', 'event', 'motion', 'binary_sensor', 'sensor', 'media_player', 'fan', 'lock', 'camera', 'vacuum'];
 
     return Object.entries(grouped)
       .sort(([a], [b]) => {
@@ -11060,9 +12396,10 @@ export class DwainsLayoutCard extends LitElement {
   }
 
   private _renderMobileEntityCard(area: AreaConfig, entity: EntityConfig) {
-    const state = this.hass.states[entity.entity_id];
-    if (!state) return nothing;
+    const rawState = this.hass.states[entity.entity_id];
+    if (!rawState) return nothing;
 
+    const state = this._getEffectiveEntityState(rawState);
     const domain = entity.entity_id.split('.')[0] || 'unknown';
     const deviceClass = state.attributes?.device_class;
     const icon = this.hass.entities?.[entity.entity_id]?.icon || state.attributes?.icon || getDeviceClassIcon(domain, deviceClass) || getDomainIcon(domain);
@@ -11070,12 +12407,15 @@ export class DwainsLayoutCard extends LitElement {
     const active = this._isEntityActiveForUi(state, domain);
     const actionKind = this._mobileEntityActionKind(domain);
     const unavailable = ['unavailable', 'unknown'].includes(String(state.state).toLowerCase());
+    const unknownIsNormal = domain === 'scene' || domain === 'event';
+    const hasInlineSelect = this._mobileEntityHasInlineSelect(domain, state);
     const classes = [
       'mobile-entity-card',
       `mobile-entity-${domain}`,
       `action-${actionKind}`,
       active ? 'is-active' : 'is-off',
-      unavailable ? 'is-unavailable' : '',
+      hasInlineSelect ? 'has-inline-select' : '',
+      unavailable && !unknownIsNormal ? 'is-unavailable' : '',
     ].join(' ');
 
     return html`
@@ -11094,19 +12434,64 @@ export class DwainsLayoutCard extends LitElement {
           </div>
           ${this._renderMobileEntityActions(state, domain, active)}
         </div>
-        <div>
+        <div class="mobile-entity-content">
           <div class="mobile-entity-meta">${area.name}</div>
           <div class="mobile-entity-name">${name}</div>
           <div class="mobile-entity-status">${this._mobileEntityStatusText(state, domain)}</div>
         </div>
+        ${hasInlineSelect ? this._renderMobileEntitySelect(state, domain) : nothing}
       </article>
     `;
   }
 
   private _handleMobileEntityKeydown(event: KeyboardEvent, entityId: string): void {
+    const target = event.target as HTMLElement | null;
+    if (target?.closest?.('button, select, input, textarea, a')) return;
     if (event.key !== 'Enter' && event.key !== ' ') return;
     event.preventDefault();
     this._showMoreInfo(entityId);
+  }
+
+  private _mobileEntityHasInlineSelect(domain: string, state: any): boolean {
+    return ['select', 'input_select'].includes(domain) && Array.isArray(state?.attributes?.options);
+  }
+
+  private _renderMobileEntitySelect(state: any, domain: string) {
+    const options = this._mobileEntitySelectOptions(state);
+    const selected = String(state?.state || '');
+    const unavailable = ['unavailable', 'unknown'].includes(selected.toLowerCase()) || options.length === 0;
+
+    return html`
+      <label
+        class="mobile-entity-select"
+        @click=${(event: Event) => event.stopPropagation()}
+        @keydown=${(event: KeyboardEvent) => event.stopPropagation()}
+      >
+        <select
+          aria-label="Select option"
+          ?disabled=${unavailable}
+          @change=${(event: Event) => this._handleMobileSelectChange(event, state, domain)}
+        >
+          ${options.map(option => html`
+            <option value=${option} ?selected=${option === selected}>${option}</option>
+          `)}
+        </select>
+        <ha-icon icon="mdi:chevron-down"></ha-icon>
+      </label>
+    `;
+  }
+
+  private _mobileEntitySelectOptions(state: any): string[] {
+    const selected = String(state?.state || '');
+    const options = Array.isArray(state?.attributes?.options)
+      ? state.attributes.options.map((option: unknown) => String(option))
+      : [];
+
+    if (selected && !['unknown', 'unavailable'].includes(selected.toLowerCase()) && !options.includes(selected)) {
+      return [selected, ...options];
+    }
+
+    return options;
   }
 
   private _renderMobileEntityActions(state: any, domain: string, active: boolean) {
@@ -11143,6 +12528,20 @@ export class DwainsLayoutCard extends LitElement {
           @click=${(event: Event) => this._handleMobileLockAction(event, state)}
         >
           <ha-icon icon=${unlocked ? 'mdi:lock-open-variant-outline' : 'mdi:lock-outline'}></ha-icon>
+        </button>
+      `;
+    }
+
+    if (actionKind === 'scene') {
+      return html`
+        <button
+          class="mobile-entity-action mobile-scene-action"
+          type="button"
+          title="Activate"
+          aria-label="Activate"
+          @click=${(event: Event) => this._handleMobileSceneAction(event, state)}
+        >
+          <ha-icon icon="mdi:play"></ha-icon>
         </button>
       `;
     }
@@ -11216,14 +12615,40 @@ export class DwainsLayoutCard extends LitElement {
 
     try {
       if (['light', 'switch', 'fan', 'input_boolean'].includes(domain)) {
-        await this.hass.callService('homeassistant', 'toggle', { entity_id: entityId });
+        const turnOn = !this._isEntityActiveForUi(state, domain);
+        this._setOptimisticEntityState(entityId, turnOn ? 'on' : 'off');
+        await this.hass.callService(domain, turnOn ? 'turn_on' : 'turn_off', { entity_id: entityId });
         return;
       }
     } catch (err) {
+      this._clearOptimisticEntityStates([entityId]);
       console.warn(`Failed to toggle mobile entity ${entityId}:`, err);
+      this._showToast('Could not update entity');
+      return;
     }
 
     this._showMoreInfo(entityId);
+  }
+
+  private async _handleMobileSelectChange(event: Event, state: any, domain: string): Promise<void> {
+    event.stopPropagation();
+    const target = event.currentTarget as HTMLSelectElement | null;
+    const entityId = state?.entity_id;
+    const option = target?.value;
+    if (!entityId || option === undefined) return;
+
+    this._setOptimisticEntityState(entityId, option);
+
+    try {
+      await this.hass.callService(domain === 'input_select' ? 'input_select' : 'select', 'select_option', {
+        entity_id: entityId,
+        option,
+      });
+    } catch (err) {
+      this._clearOptimisticEntityStates([entityId]);
+      console.warn(`Failed to select option for ${entityId}:`, err);
+      this._showToast('Could not update selector');
+    }
   }
 
   private async _handleMobileCoverAction(event: Event, state: any, action: 'open' | 'stop' | 'close'): Promise<void> {
@@ -11232,12 +12657,15 @@ export class DwainsLayoutCard extends LitElement {
     if (!entityId) return;
 
     const service = action === 'open' ? 'open_cover' : action === 'close' ? 'close_cover' : 'stop_cover';
+    const optimisticState = action === 'open' ? 'open' : action === 'close' ? 'closed' : undefined;
+    if (optimisticState) this._setOptimisticEntityState(entityId, optimisticState);
 
     try {
       await this.hass.callService('cover', service, { entity_id: entityId });
     } catch (err) {
+      this._clearOptimisticEntityStates([entityId]);
       console.warn(`Failed to ${action} cover ${entityId}:`, err);
-      this._showMoreInfo(entityId);
+      this._showToast('Could not update cover');
     }
   }
 
@@ -11248,9 +12676,25 @@ export class DwainsLayoutCard extends LitElement {
 
     try {
       const unlocked = this._isEntityActiveForUi(state, 'lock');
+      this._setOptimisticEntityState(entityId, unlocked ? 'locked' : 'unlocked');
       await this.hass.callService('lock', unlocked ? 'lock' : 'unlock', { entity_id: entityId });
     } catch (err) {
+      this._clearOptimisticEntityStates([entityId]);
       console.warn(`Failed to toggle lock ${entityId}:`, err);
+      this._showToast('Could not update lock');
+    }
+  }
+
+  private async _handleMobileSceneAction(event: Event, state: any): Promise<void> {
+    event.stopPropagation();
+    const entityId = state?.entity_id;
+    if (!entityId) return;
+
+    try {
+      await this.hass.callService('scene', 'turn_on', { entity_id: entityId });
+      this._showToast('Scene activated');
+    } catch (err) {
+      console.warn(`Failed to activate scene ${entityId}:`, err);
       this._showMoreInfo(entityId);
     }
   }
@@ -11277,23 +12721,31 @@ export class DwainsLayoutCard extends LitElement {
 
     this._closeMobileDomainMenu();
 
+    const affectedEntityIds: string[] = [];
+
     try {
       await Promise.all(Object.entries(grouped).map(([domain, entityIds]) => {
         if (!entityIds.length) return Promise.resolve();
 
         if (['light', 'switch', 'fan', 'input_boolean'].includes(domain)) {
+          affectedEntityIds.push(...entityIds);
+          this._setOptimisticEntityStates(entityIds, turnOn ? 'on' : 'off');
           return this.hass.callService(domain, turnOn ? 'turn_on' : 'turn_off', {
             entity_id: entityIds,
           });
         }
 
         if (domain === 'cover') {
+          affectedEntityIds.push(...entityIds);
+          this._setOptimisticEntityStates(entityIds, turnOn ? 'open' : 'closed');
           return this.hass.callService('cover', turnOn ? 'open_cover' : 'close_cover', {
             entity_id: entityIds,
           });
         }
 
         if (domain === 'lock') {
+          affectedEntityIds.push(...entityIds);
+          this._setOptimisticEntityStates(entityIds, turnOn ? 'unlocked' : 'locked');
           return this.hass.callService('lock', turnOn ? 'unlock' : 'lock', {
             entity_id: entityIds,
           });
@@ -11305,6 +12757,7 @@ export class DwainsLayoutCard extends LitElement {
       const count = Object.values(grouped).reduce((total, entityIds) => total + entityIds.length, 0);
       if (count) this._showToast(`${count} ${count === 1 ? 'entity' : 'entities'} turned ${turnOn ? 'on' : 'off'}`);
     } catch (err) {
+      this._clearOptimisticEntityStates(affectedEntityIds);
       console.warn('Failed to run mobile group action:', err);
       this._showToast('Could not update group');
     }
@@ -11314,10 +12767,11 @@ export class DwainsLayoutCard extends LitElement {
     return ['light', 'switch', 'fan', 'input_boolean', 'cover', 'lock'].includes(domain);
   }
 
-  private _mobileEntityActionKind(domain: string): 'toggle' | 'cover' | 'lock' | 'more' {
+  private _mobileEntityActionKind(domain: string): 'toggle' | 'cover' | 'lock' | 'scene' | 'more' {
     if (['light', 'switch', 'fan', 'input_boolean'].includes(domain)) return 'toggle';
     if (domain === 'cover') return 'cover';
     if (domain === 'lock') return 'lock';
+    if (domain === 'scene') return 'scene';
     return 'more';
   }
 
@@ -11332,6 +12786,14 @@ export class DwainsLayoutCard extends LitElement {
   private _mobileEntityStatusText(state: any, domain: string): string {
     if (!state) return '';
     const formatted = this._formatFavoriteState(state);
+
+    if (domain === 'scene') {
+      return this._sceneLastActivatedText(state);
+    }
+
+    if (domain === 'event') {
+      return this._eventLastTriggeredText(state);
+    }
 
     if (domain === 'light' && state.state === 'on' && typeof state.attributes?.brightness === 'number') {
       return `${Math.round((state.attributes.brightness / 255) * 100)}% brightness`;
@@ -11354,6 +12816,61 @@ export class DwainsLayoutCard extends LitElement {
     }
 
     return formatted;
+  }
+
+  private _sceneLastActivatedText(state: any): string {
+    const value = String(state?.state || '').toLowerCase();
+    const candidate = value && !['unknown', 'unavailable'].includes(value)
+      ? state.state
+      : state?.last_changed || state?.last_updated;
+    const timestamp = Date.parse(candidate);
+
+    if (!Number.isFinite(timestamp)) {
+      return 'Not activated yet';
+    }
+
+    return this._formatRelativeTime(timestamp);
+  }
+
+  private _eventLastTriggeredText(state: any): string {
+    const value = String(state?.state || '').toLowerCase();
+    if (value === 'unavailable') return 'Unavailable';
+
+    const timestamp = Date.parse(state?.last_changed || state?.last_updated || '');
+    if (!Number.isFinite(timestamp)) {
+      return 'No events yet';
+    }
+
+    if (value && value !== 'unknown') {
+      return `${this._formatFavoriteState(state)} · ${this._formatRelativeTime(timestamp)}`;
+    }
+
+    return this._formatRelativeTime(timestamp);
+  }
+
+  private _formatRelativeTime(timestamp: number): string {
+    const diffSeconds = Math.round((timestamp - Date.now()) / 1000);
+    const absSeconds = Math.abs(diffSeconds);
+    const units: Array<[Intl.RelativeTimeFormatUnit, number]> = [
+      ['year', 365 * 24 * 60 * 60],
+      ['month', 30 * 24 * 60 * 60],
+      ['week', 7 * 24 * 60 * 60],
+      ['day', 24 * 60 * 60],
+      ['hour', 60 * 60],
+      ['minute', 60],
+      ['second', 1],
+    ];
+    const [unit, unitSeconds] = units.find(([, seconds]) => absSeconds >= seconds) || ['second', 1];
+    const value = Math.round(diffSeconds / unitSeconds);
+
+    try {
+      const language = (this.hass as any)?.locale?.language || navigator.language || undefined;
+      return new Intl.RelativeTimeFormat(language, { numeric: 'auto' }).format(value, unit);
+    } catch {
+      if (absSeconds < 60) return 'just now';
+      const count = Math.abs(value);
+      return `${count} ${unit}${count === 1 ? '' : 's'} ${value < 0 ? 'ago' : 'from now'}`;
+    }
   }
 
   private _isEntityActiveForUi(state: any, domain: string): boolean {
@@ -11381,147 +12898,6 @@ export class DwainsLayoutCard extends LitElement {
     if (!match) return null;
     const parsed = Number(match[0]);
     return Number.isFinite(parsed) ? parsed : null;
-  }
-
-  private _renderEntitiesSection(entities: EntityConfig[]) {
-    if (entities.length === 0) return nothing;
-
-    // Group entities by domain and device class for binary sensors
-    const grouped = entities.reduce((acc, entity) => {
-      const domain = entity.entity_id.split('.')[0];
-
-      if (domain === 'binary_sensor') {
-        // For binary sensors, group by device class
-        const state = this.hass.states[entity.entity_id];
-        const deviceClass = state?.attributes?.device_class || 'generic';
-
-        // Special handling for motion sensors
-        if (deviceClass === 'motion') {
-          if (!acc['motion']) acc['motion'] = [];
-          acc['motion'].push(entity);
-        } else {
-          // Other binary sensors stay in binary_sensor group
-          if (!acc['binary_sensor']) acc['binary_sensor'] = [];
-          acc['binary_sensor'].push(entity);
-        }
-      } else {
-        // All other domains work as before
-        if (domain && !acc[domain]) acc[domain] = [];
-        if (domain && acc[domain]) acc[domain].push(entity);
-      }
-      return acc;
-    }, {} as Record<string, EntityConfig[]>);
-
-    return html`
-      <div class="entities-section">
-        ${Object.entries(grouped).map(([groupKey, domainEntities]) => {
-          // Determine display name and icon based on group key
-          let displayName: string;
-          let displayIcon: string;
-
-          if (groupKey === 'motion') {
-            displayName = 'Motion';
-            displayIcon = 'mdi:motion-sensor';
-          } else {
-            displayName = getDomainName(this.hass, groupKey);
-            displayIcon = getDomainIcon(groupKey);
-          }
-
-          return html`
-          <div class="domain-group">
-            <div class="domain-header">
-                <ha-icon icon=${displayIcon}></ha-icon>
-                <span>${displayName}</span>
-            </div>
-            <div class=${this._entitiesGridClass(groupKey)}>
-              ${repeat(
-                domainEntities,
-                e => e.entity_id,
-                entity => this._renderEntityCard(entity)
-              )}
-            </div>
-          </div>
-          `;
-        })}
-      </div>
-    `;
-  }
-
-  private _renderEntityCard(entity: EntityConfig) {
-    const state = this.hass.states[entity.entity_id];
-    if (!state) return nothing;
-
-    // Via dwains-dashboard-next-card-host (eigen light-DOM) i.p.v. een rauw element + observer die
-    // de Lit-beheerde wrapper direct manipuleert → geen 'nextSibling'-crash.
-    return html`
-      <div class=${this._entityWrapperClass(entity.entity_id)}>
-        <dwains-dashboard-next-card-host
-          .hass=${this.hass}
-          .config=${this._entityCardConfig(entity.entity_id)}
-        ></dwains-dashboard-next-card-host>
-      </div>
-    `;
-  }
-
-  private _entitiesGridClass(groupKey: string): string {
-    return [
-      'entities-grid',
-      groupKey === 'cover' ? 'cover-entities-grid' : '',
-      groupKey === 'light' ? 'light-entities-grid' : '',
-      groupKey === 'sensor' ? 'sensor-entities-grid' : '',
-      groupKey === 'motion' ? 'motion-entities-grid' : '',
-    ].filter(Boolean).join(' ');
-  }
-
-  private _entityWrapperClass(entityId: string): string {
-    const domain = entityId.split('.')[0] || '';
-    const deviceClass = this.hass.states?.[entityId]?.attributes?.device_class;
-    return [
-      'entity-card-wrapper',
-      `${domain}-entity-card`,
-      domain === 'binary_sensor' && ['motion', 'occupancy', 'presence'].includes(String(deviceClass))
-        ? 'motion-entity-card'
-        : '',
-    ].filter(Boolean).join(' ');
-  }
-
-  private _entityCardConfig(entityId: string): any {
-    return resolveEntityCardConfig({
-      hass: this.hass,
-      config: this.config,
-      entity: entityId,
-      surface: 'area_cards',
-    });
-  }
-
-  private _loadEntityCard(wrapper: HTMLElement, entityId: string) {
-    // Safety check: ensure wrapper still exists and is connected to DOM
-    if (!wrapper || !wrapper.isConnected || !wrapper.parentNode) {
-      return;
-    }
-
-    const state = this.hass.states[entityId];
-    if (!state) return;
-
-    const cardConfig = this._entityCardConfig(entityId);
-
-    try {
-    const card = document.createElement('hui-card') as any;
-    card.hass = this.hass;
-    card.config = cardConfig;
-
-    // Cache the rendered card
-    this._entityCardsCache.set(entityId, html`${card}`);
-
-      // Safety check before DOM manipulation
-      if (wrapper && wrapper.isConnected) {
-    // Replace skeleton with actual card
-    wrapper.innerHTML = '';
-    wrapper.appendChild(card);
-      }
-    } catch (error) {
-      console.warn(`Error loading entity card for ${entityId}:`, error);
-    }
   }
 
   private _renderToast() {
@@ -11650,7 +13026,11 @@ export class DwainsLayoutCard extends LitElement {
         if (entity.area_id === areaId ||
             (entity.device_id && areaDevices.has(entity.device_id))) {
           const registry = this.hass.entities?.[entity.entity_id];
-          if (registry?.hidden_by || registry?.entity_category === 'diagnostic' || registry?.entity_category === 'config') {
+          if (!this.hass.states[entity.entity_id] ||
+              registry?.hidden_by ||
+              (registry as any)?.disabled_by ||
+              registry?.entity_category === 'diagnostic' ||
+              registry?.entity_category === 'config') {
             return;
           }
           entities.push(entity);
@@ -11664,7 +13044,10 @@ export class DwainsLayoutCard extends LitElement {
       if (!processedEntities.has(state.entity_id) &&
           state.attributes?.area_id === areaId) {
         const registry = this.hass.entities?.[state.entity_id];
-        if (registry?.hidden_by || registry?.entity_category === 'diagnostic' || registry?.entity_category === 'config') {
+        if (registry?.hidden_by ||
+            (registry as any)?.disabled_by ||
+            registry?.entity_category === 'diagnostic' ||
+            registry?.entity_category === 'config') {
           return;
         }
         entities.push({
@@ -11692,7 +13075,11 @@ export class DwainsLayoutCard extends LitElement {
     // Always respect HA entity registry visibility and categories
     filteredEntities = filteredEntities.filter(entity => {
       const registry = this.hass.entities?.[entity.entity_id];
-      return !(registry?.hidden_by || registry?.entity_category === 'diagnostic' || registry?.entity_category === 'config');
+      return Boolean(this.hass.states[entity.entity_id]) &&
+        !(registry?.hidden_by ||
+          (registry as any)?.disabled_by ||
+          registry?.entity_category === 'diagnostic' ||
+          registry?.entity_category === 'config');
     });
 
     // Filter hidden entities if configured
@@ -11892,7 +13279,10 @@ export class DwainsLayoutCard extends LitElement {
   // Note: getDomainTitle is now handled by the header-status-domains utility
 
   private _countActiveEntities(entities: EntityConfig[], domain: string): number {
-    return entities.filter(entity => this._isEntityActiveForUi(this.hass.states[entity.entity_id], domain)).length;
+    return entities.filter(entity => {
+      const state = this._getEffectiveEntityState(this.hass.states[entity.entity_id]);
+      return this._isEntityActiveForUi(state, domain);
+    }).length;
   }
 
   private _areAllEntitiesOff(entities: EntityConfig[], domain: string): boolean {
@@ -11907,6 +13297,7 @@ export class DwainsLayoutCard extends LitElement {
     if (view === 'home') {
       this._selectedArea = null;
       this._editMode = false;
+      this._rememberAreaEditMode(null);
       this._updateUrlArea(null);
     }
     this._syncBottomNavAreaContext();
@@ -11919,6 +13310,7 @@ export class DwainsLayoutCard extends LitElement {
     this._selectedArea = areaId;
     this._selectedView = 'area';
     this._editMode = false;
+    this._rememberAreaEditMode(null);
     this._closeMobileNav();
     this._updateUrlArea(areaId);
     this._syncBottomNavAreaContext();
@@ -11950,6 +13342,7 @@ export class DwainsLayoutCard extends LitElement {
     this._selectedArea = null;
     this._resetAreaHeaderScrollState(false);
     this._editMode = false;
+    this._rememberAreaEditMode(null);
     this._updateUrlArea(null);
     this._mobileNavOpen = true;
   };
@@ -12456,8 +13849,6 @@ export class DwainsLayoutCard extends LitElement {
   }
 
   private _clearEntityCardsCache(): void {
-    // Clear the entity cards cache to force re-rendering with new data
-    this._entityCardsCache.clear();
     this._areaDataCache.clear();
     // Also clear domain counts cache to prevent stale data
     this._domainCountsCache.clear();
@@ -12513,11 +13904,19 @@ export class DwainsLayoutCard extends LitElement {
     const service = allOff ? 'turn_on' : 'turn_off';
     const entityIds = lights.map(e => e.entity_id);
 
-    await this.hass.callService('light', service, {
-      entity_id: entityIds
-    });
+    this._setOptimisticEntityStates(entityIds, allOff ? 'on' : 'off');
 
-    this._showToast(`All lights turned ${allOff ? 'on' : 'off'}`);
+    try {
+      await this.hass.callService('light', service, {
+        entity_id: entityIds
+      });
+
+      this._showToast(`All lights turned ${allOff ? 'on' : 'off'}`);
+    } catch (err) {
+      this._clearOptimisticEntityStates(entityIds);
+      console.warn(`Failed to toggle lights in area ${areaId}:`, err);
+      this._showToast('Could not update lights');
+    }
   }
 
   private async _toggleAreaSwitches(areaId: string, confirmAction = true) {
@@ -12539,17 +13938,26 @@ export class DwainsLayoutCard extends LitElement {
     const service = allOff ? 'turn_on' : 'turn_off';
     const entityIds = switches.map(e => e.entity_id);
 
-    await this.hass.callService('switch', service, {
-      entity_id: entityIds
-    });
+    this._setOptimisticEntityStates(entityIds, allOff ? 'on' : 'off');
 
-    this._showToast(`All switches turned ${allOff ? 'on' : 'off'}`);
+    try {
+      await this.hass.callService('switch', service, {
+        entity_id: entityIds
+      });
+
+      this._showToast(`All switches turned ${allOff ? 'on' : 'off'}`);
+    } catch (err) {
+      this._clearOptimisticEntityStates(entityIds);
+      console.warn(`Failed to toggle switches in area ${areaId}:`, err);
+      this._showToast('Could not update switches');
+    }
   }
 
   private _hasOpenCovers(covers: EntityConfig[]): boolean {
     return covers.some(entity => {
-      const state = this.hass.states[entity.entity_id]?.state;
-      return state === 'open' || state === 'opening';
+      const state = this._getEffectiveEntityState(this.hass.states[entity.entity_id]);
+      const value = String(state?.state || '').toLowerCase();
+      return value === 'open' || value === 'opening';
     });
   }
 
@@ -12572,11 +13980,19 @@ export class DwainsLayoutCard extends LitElement {
     const service = hasOpen ? 'close_cover' : 'open_cover';
     const entityIds = covers.map(e => e.entity_id);
 
-    await this.hass.callService('cover', service, {
-      entity_id: entityIds
-    });
+    this._setOptimisticEntityStates(entityIds, hasOpen ? 'closed' : 'open');
 
-    this._showToast(`All covers ${hasOpen ? 'closed' : 'opened'}`);
+    try {
+      await this.hass.callService('cover', service, {
+        entity_id: entityIds
+      });
+
+      this._showToast(`All covers ${hasOpen ? 'closed' : 'opened'}`);
+    } catch (err) {
+      this._clearOptimisticEntityStates(entityIds);
+      console.warn(`Failed to toggle covers in area ${areaId}:`, err);
+      this._showToast('Could not update covers');
+    }
   }
 
   private async _showConfirmation(title: string, message: string): Promise<boolean> {

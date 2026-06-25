@@ -16,6 +16,7 @@ export const getDomainIcon = (domain: string): string => {
     automation: 'mdi:robot',
     script: 'mdi:script-text',
     scene: 'mdi:palette',
+    event: 'mdi:gesture-tap-button',
     alarm_control_panel: 'mdi:security',
     button: 'mdi:gesture-tap-button',
     number: 'mdi:numeric',
@@ -71,6 +72,7 @@ export const getDomainColor = (domain: string, deviceClass?: string): string => 
     vacuum: '#7c67c7',
     alarm_control_panel: '#df5b63',
     button: '#7c67c7',
+    event: '#7c67c7',
     select: '#6d7891',
   };
 

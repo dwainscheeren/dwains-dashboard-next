@@ -30,6 +30,12 @@ interface GroupedEntities {
 }
 
 type BulkDomainAction = 'turn_on' | 'turn_off' | 'open_cover' | 'close_cover' | 'lock' | 'unlock';
+const OPTIMISTIC_ENTITY_STATE_TTL = 5000;
+
+interface OptimisticEntityState {
+  state: string;
+  expiresAt: number;
+}
 
 @customElement('dwains-dashboard-next-domain-entities-dialog')
 export class DwainsDomainEntitiesDialog extends LitElement {
@@ -38,10 +44,12 @@ export class DwainsDomainEntitiesDialog extends LitElement {
   @state() private _params?: DomainEntitiesDialogParams;
   @state() private _groupedEntities: GroupedEntities = {};
   @state() private _loading = true;
+  @state() private _optimisticEntityStates: Record<string, OptimisticEntityState> = {};
 
   private _entityCards = new Map<string, HTMLElement>();
   private _updateInterval?: number;
   private _mobileSheetAnimated = false;
+  private _optimisticCleanupTimer?: number;
 
   static override styles = css`
     :host {
@@ -555,11 +563,16 @@ export class DwainsDomainEntitiesDialog extends LitElement {
   public closeDialog(): void {
     this._params = undefined;
     this._groupedEntities = {};
+    this._optimisticEntityStates = {};
     this._entityCards.clear();
     this._mobileSheetAnimated = false;
     if (this._updateInterval) {
       clearInterval(this._updateInterval);
       this._updateInterval = undefined;
+    }
+    if (this._optimisticCleanupTimer !== undefined) {
+      window.clearTimeout(this._optimisticCleanupTimer);
+      this._optimisticCleanupTimer = undefined;
     }
     fireEvent(this, 'dialog-closed', { dialog: this.localName });
   }
@@ -568,10 +581,19 @@ export class DwainsDomainEntitiesDialog extends LitElement {
     super.updated(changedProps);
 
     if (changedProps.has('hass') && this.hass && this._params && !this._loading) {
+      this._reconcileOptimisticEntityStates();
       this._updateEntityCards();
     }
 
     this._animateMobileSheetIn();
+  }
+
+  disconnectedCallback(): void {
+    super.disconnectedCallback();
+    if (this._optimisticCleanupTimer !== undefined) {
+      window.clearTimeout(this._optimisticCleanupTimer);
+      this._optimisticCleanupTimer = undefined;
+    }
   }
 
   private _animateMobileSheetIn(): void {
@@ -1031,9 +1053,10 @@ export class DwainsDomainEntitiesDialog extends LitElement {
   }
 
   private _renderEntityCard(entity: EntityConfig, fallbackMeta?: string) {
-    const state = this.hass.states[entity.entity_id];
-    if (!state) return nothing;
+    const rawState = this.hass.states[entity.entity_id];
+    if (!rawState) return nothing;
 
+    const state = this._getEffectiveEntityState(rawState);
     const domain = entity.entity_id.split('.')[0] || 'unknown';
     const deviceClass = state.attributes?.device_class;
     const icon = this.hass.entities?.[entity.entity_id]?.icon ||
@@ -1182,6 +1205,21 @@ export class DwainsDomainEntitiesDialog extends LitElement {
 
     if (!confirmed) return;
 
+    const optimisticState = action === 'turn_on'
+      ? 'on'
+      : action === 'turn_off'
+        ? 'off'
+        : action === 'open_cover'
+          ? 'open'
+          : action === 'close_cover'
+            ? 'closed'
+            : action === 'unlock'
+              ? 'unlocked'
+              : action === 'lock'
+                ? 'locked'
+                : undefined;
+    if (optimisticState) this._setOptimisticEntityStates(entityIds, optimisticState);
+
     try {
       if (['light', 'switch', 'fan', 'input_boolean'].includes(domain)) {
         await this.hass.callService(domain, action, { entity_id: entityIds });
@@ -1197,6 +1235,7 @@ export class DwainsDomainEntitiesDialog extends LitElement {
         await this.hass.callService('lock', action, { entity_id: entityIds });
       }
     } catch (err) {
+      this._clearOptimisticEntityStates(entityIds);
       console.warn(`Failed to run ${action} for ${domain}:`, err);
     }
   }
@@ -1215,11 +1254,15 @@ export class DwainsDomainEntitiesDialog extends LitElement {
 
     try {
       if (['light', 'switch', 'fan', 'input_boolean'].includes(domain)) {
-        await this.hass.callService('homeassistant', 'toggle', { entity_id: entityId });
+        const turnOn = !this._isEntityActiveForUi(state, domain);
+        this._setOptimisticEntityStates([entityId], turnOn ? 'on' : 'off');
+        await this.hass.callService(domain, turnOn ? 'turn_on' : 'turn_off', { entity_id: entityId });
         return;
       }
     } catch (err) {
+      this._clearOptimisticEntityStates([entityId]);
       console.warn(`Failed to toggle entity ${entityId}:`, err);
+      return;
     }
 
     this._showMoreInfo(entityId);
@@ -1231,12 +1274,14 @@ export class DwainsDomainEntitiesDialog extends LitElement {
     if (!entityId) return;
 
     const service = action === 'open' ? 'open_cover' : action === 'close' ? 'close_cover' : 'stop_cover';
+    const optimisticState = action === 'open' ? 'open' : action === 'close' ? 'closed' : undefined;
+    if (optimisticState) this._setOptimisticEntityStates([entityId], optimisticState);
 
     try {
       await this.hass.callService('cover', service, { entity_id: entityId });
     } catch (err) {
+      this._clearOptimisticEntityStates([entityId]);
       console.warn(`Failed to ${action} cover ${entityId}:`, err);
-      this._showMoreInfo(entityId);
     }
   }
 
@@ -1247,10 +1292,11 @@ export class DwainsDomainEntitiesDialog extends LitElement {
 
     try {
       const unlocked = this._isEntityActiveForUi(state, 'lock');
+      this._setOptimisticEntityStates([entityId], unlocked ? 'locked' : 'unlocked');
       await this.hass.callService('lock', unlocked ? 'lock' : 'unlock', { entity_id: entityId });
     } catch (err) {
+      this._clearOptimisticEntityStates([entityId]);
       console.warn(`Failed to toggle lock ${entityId}:`, err);
-      this._showMoreInfo(entityId);
     }
   }
 
@@ -1287,29 +1333,117 @@ export class DwainsDomainEntitiesDialog extends LitElement {
 
   private _entityStatusText(state: any, domain: string): string {
     if (!state) return '';
-    const formatted = this.hass.formatEntityState(state);
+    const effectiveState = this._getEffectiveEntityState(state);
+    const formatted = this.hass.formatEntityState(effectiveState);
 
-    if (domain === 'light' && state.state === 'on' && typeof state.attributes?.brightness === 'number') {
-      return `${Math.round((state.attributes.brightness / 255) * 100)}% brightness`;
+    if (domain === 'light' && effectiveState.state === 'on' && typeof effectiveState.attributes?.brightness === 'number') {
+      return `${Math.round((effectiveState.attributes.brightness / 255) * 100)}% brightness`;
     }
 
-    if (domain === 'cover' && typeof state.attributes?.current_position === 'number') {
-      return `${formatted} · ${state.attributes.current_position}%`;
+    if (domain === 'cover' && typeof effectiveState.attributes?.current_position === 'number') {
+      return `${formatted} · ${effectiveState.attributes.current_position}%`;
     }
 
     if (domain === 'climate') {
-      const current = state.attributes?.current_temperature;
-      const target = state.attributes?.temperature;
+      const current = effectiveState.attributes?.current_temperature;
+      const target = effectiveState.attributes?.temperature;
       const unit = this.hass?.config?.unit_system?.temperature || '°C';
       if (current !== undefined && target !== undefined) return `${current}${unit} · set ${target}${unit}`;
       if (current !== undefined) return `${current}${unit}`;
     }
 
-    if (domain === 'media_player' && state.attributes?.media_title) {
-      return `${formatted} · ${state.attributes.media_title}`;
+    if (domain === 'media_player' && effectiveState.attributes?.media_title) {
+      return `${formatted} · ${effectiveState.attributes.media_title}`;
     }
 
     return formatted;
+  }
+
+  private _getEffectiveEntityState<T extends { entity_id?: string; state?: string } | null | undefined>(state: T): T {
+    const entityId = state?.entity_id;
+    if (!entityId) return state;
+
+    const optimistic = this._optimisticEntityStates[entityId];
+    if (!optimistic || optimistic.expiresAt <= Date.now()) return state;
+
+    const actualState = String(state?.state || '').toLowerCase();
+    if (actualState === optimistic.state.toLowerCase()) return state;
+
+    return {
+      ...(state as NonNullable<T>),
+      state: optimistic.state,
+    } as T;
+  }
+
+  private _setOptimisticEntityStates(entityIds: string[], state: string): void {
+    const uniqueEntityIds = [...new Set(entityIds.filter(Boolean))];
+    if (!uniqueEntityIds.length) return;
+
+    const expiresAt = Date.now() + OPTIMISTIC_ENTITY_STATE_TTL;
+    const next = { ...this._optimisticEntityStates };
+    uniqueEntityIds.forEach(entityId => {
+      next[entityId] = { state, expiresAt };
+    });
+    this._optimisticEntityStates = next;
+    this._scheduleOptimisticCleanup();
+  }
+
+  private _clearOptimisticEntityStates(entityIds: string[]): void {
+    const uniqueEntityIds = [...new Set(entityIds.filter(Boolean))];
+    if (!uniqueEntityIds.length) return;
+
+    const next = { ...this._optimisticEntityStates };
+    let changed = false;
+    uniqueEntityIds.forEach(entityId => {
+      if (next[entityId]) {
+        delete next[entityId];
+        changed = true;
+      }
+    });
+
+    if (changed) this._optimisticEntityStates = next;
+  }
+
+  private _reconcileOptimisticEntityStates(): void {
+    const entries = Object.entries(this._optimisticEntityStates);
+    if (!entries.length) return;
+
+    const now = Date.now();
+    const next = { ...this._optimisticEntityStates };
+    let changed = false;
+
+    entries.forEach(([entityId, optimistic]) => {
+      const actual = this.hass?.states?.[entityId]?.state;
+      if (
+        !actual ||
+        optimistic.expiresAt <= now ||
+        String(actual).toLowerCase() === optimistic.state.toLowerCase()
+      ) {
+        delete next[entityId];
+        changed = true;
+      }
+    });
+
+    if (changed) this._optimisticEntityStates = next;
+  }
+
+  private _scheduleOptimisticCleanup(): void {
+    if (this._optimisticCleanupTimer !== undefined) return;
+
+    const expiries = Object.values(this._optimisticEntityStates).map(entry => entry.expiresAt);
+    if (!expiries.length) return;
+
+    const nextExpiry = Math.min(...expiries);
+    if (!Number.isFinite(nextExpiry)) return;
+
+    const delay = Math.max(80, nextExpiry - Date.now() + 50);
+    this._optimisticCleanupTimer = window.setTimeout(() => {
+      this._optimisticCleanupTimer = undefined;
+      this._reconcileOptimisticEntityStates();
+      if (Object.keys(this._optimisticEntityStates).length) {
+        this._scheduleOptimisticCleanup();
+      }
+    }, delay);
   }
 
   private _isUnavailable(state: any): boolean {
