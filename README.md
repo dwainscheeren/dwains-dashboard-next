@@ -12,7 +12,7 @@ See this as Dwains Dashboard v4: totally rebuilt from scratch, with a completely
 
 ## Status
 
-Current release: `1.4.0`
+Current release: `1.4.5`
 
 ## Community And Support
 

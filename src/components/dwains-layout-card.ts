@@ -19,8 +19,8 @@ import { buildHousePowerUsage } from '../utils/power-usage';
 import { showDomainEntitiesDialog } from './utils/show-domain-entities-dialog';
 import { showCardEditorDialog } from './utils/show-card-editor-dialog';
 import { ensureBottomNav } from './dwains-bottom-nav';
-import { openDashboardSettings } from './dwains-dashboard-settings-dialog';
 import { makeDialogManager } from './utils/make-dialog-manager';
+import './dwains-dashboard-strategy-editor';
 import './utils/dd-card-host';
 import './utils/dd-tile-host';
 import { fireEvent } from './utils/fire-event';
@@ -28,6 +28,7 @@ import { ddLocalize } from '../utils/localize';
 
 // Use DomainCount from header-status-domains utility
 type DomainCount = StatusDomainCount;
+type DwainsSelectedView = 'home' | 'area' | 'settings';
 type PictureTextTone = 'light' | 'dark';
 type PictureContrastCacheValue = PictureTextTone | 'pending';
 const SIDEBAR_WIDTH_STORAGE_KEY = 'dd-next-area-sidebar-width';
@@ -140,7 +141,7 @@ export class DwainsLayoutCard extends LitElement {
     ddLocalize(this.hass, key, vars);
 
   @state() private _selectedArea: string | null = null;
-  @state() private _selectedView: 'home' | 'area' | null = null;
+  @state() private _selectedView: DwainsSelectedView | null = null;
   @state() private _isMobile = false;
   @state() private _headerExpanded = false;
   @state() private _headerCompact = false;
@@ -173,6 +174,9 @@ export class DwainsLayoutCard extends LitElement {
   @state() private _optimisticEntityStates: Record<string, OptimisticEntityState> = {};
   @state() private _renderAllMobileHomeAreas = false;
   @state() private _renderAllMobileAreaEntities = false;
+  @state() private _settingsDirty = false;
+  @state() private _settingsSavePending = false;
+  @state() private _settingsSaveError = '';
 
   // Performance optimizations
   private _areaEntitiesCache = new Map<string, { entities: EntityConfig[], timestamp: number }>();
@@ -197,6 +201,8 @@ export class DwainsLayoutCard extends LitElement {
   private _pictureContrastCache = new Map<string, PictureContrastCacheValue>();
   private _sidebarResizePointerId?: number;
   private _progressiveRenderCancel?: () => void;
+  private _pendingSettingsConfig?: Partial<DwainsDashboardConfig>;
+  private _settingsEditorInitialized = false;
 
   // Debounce timers
   private _updateDebounceTimer?: number;
@@ -242,11 +248,12 @@ export class DwainsLayoutCard extends LitElement {
 
   private _syncBottomNavAreaContext(): void {
     const area = this.config?.areas?.find(a => a.area_id === this._selectedArea);
+    const settingsSelected = this._selectedView === 'settings';
     window.dispatchEvent(new CustomEvent('dwains-dashboard-next-area-context-changed', {
       detail: {
         areaId: this._selectedView === 'area' ? this._selectedArea : null,
-        icon: area ? getAreaIcon(area) : 'mdi:home',
-        name: area?.name || 'Home',
+        icon: settingsSelected ? 'mdi:cog-outline' : area ? getAreaIcon(area) : 'mdi:home',
+        name: settingsSelected ? 'Settings' : area?.name || 'Home',
         view: this._selectedView || 'home',
       },
     }));
@@ -1162,6 +1169,141 @@ export class DwainsLayoutCard extends LitElement {
       -webkit-overflow-scrolling: touch;
       padding: 16px;
     }
+
+    .content-area.settings-content-area {
+      padding: 0;
+      background:
+        linear-gradient(180deg,
+          color-mix(in srgb, var(--primary-color) 4%, transparent) 0,
+          transparent 220px),
+        var(--primary-background-color);
+    }
+
+    .settings-page-view {
+      width: min(1180px, calc(100% - 32px));
+      min-height: 100%;
+      margin: 0 auto;
+      padding: 18px 0 104px;
+      box-sizing: border-box;
+    }
+
+    .settings-page-header {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 16px;
+      margin: 0 0 16px;
+      padding: 16px 18px;
+      border: 1px solid color-mix(in srgb, var(--divider-color) 72%, transparent);
+      border-radius: 18px;
+      background:
+        linear-gradient(135deg,
+          color-mix(in srgb, var(--card-background-color) 96%, var(--primary-color)) 0%,
+          color-mix(in srgb, var(--card-background-color) 94%, var(--primary-color)) 100%);
+      box-shadow: 0 14px 36px rgba(15, 23, 42, 0.08);
+    }
+
+    .settings-page-back,
+    .settings-secondary,
+    .settings-primary {
+      appearance: none;
+      border: 0;
+      font: inherit;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .settings-page-back {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 44px;
+      height: 44px;
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--secondary-background-color) 74%, var(--card-background-color));
+      color: var(--primary-text-color);
+    }
+
+    .settings-page-title {
+      min-width: 0;
+    }
+
+    .settings-page-title h1 {
+      margin: 0;
+      font-size: clamp(22px, 2vw, 30px);
+      line-height: 1.08;
+      font-weight: 850;
+      color: var(--primary-text-color);
+      letter-spacing: 0;
+    }
+
+    .settings-page-title p {
+      margin: 5px 0 0;
+      color: var(--secondary-text-color);
+      font-size: 14px;
+      line-height: 1.35;
+    }
+
+    .settings-page-actions,
+    .settings-page-bottom-actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 10px;
+    }
+
+    .settings-secondary,
+    .settings-primary {
+      min-height: 40px;
+      padding: 0 18px;
+      border-radius: 999px;
+      font-size: 14px;
+      font-weight: 800;
+    }
+
+    .settings-secondary {
+      background: transparent;
+      color: var(--primary-color);
+    }
+
+    .settings-primary {
+      background: var(--primary-color);
+      color: var(--text-primary-color);
+      box-shadow: 0 10px 24px color-mix(in srgb, var(--primary-color) 24%, transparent);
+    }
+
+    .settings-primary:disabled {
+      opacity: 0.45;
+      cursor: default;
+      box-shadow: none;
+    }
+
+    .settings-save-error {
+      margin: 0 0 14px;
+      padding: 12px 14px;
+      border-radius: 14px;
+      background: color-mix(in srgb, var(--error-color) 12%, var(--card-background-color));
+      color: var(--error-color);
+      font-weight: 750;
+      font-size: 13px;
+    }
+
+    .settings-page-editor {
+      overflow: hidden;
+      border-radius: 18px;
+      background: var(--card-background-color);
+      border: 1px solid color-mix(in srgb, var(--divider-color) 72%, transparent);
+      box-shadow: 0 16px 46px rgba(15, 23, 42, 0.08);
+    }
+
+    .settings-page-editor dwains-dashboard-next-strategy-editor {
+      display: block;
+    }
+
+    .settings-page-bottom-actions {
+      display: none;
+    }
+
     /* Ruimte voor de mobiele onderbalk */
     @media (max-width: 768px) {
       .content-area {
@@ -6687,8 +6829,55 @@ export class DwainsLayoutCard extends LitElement {
         padding: 0 10px calc(128px + env(safe-area-inset-bottom, 0px));
       }
 
+      .content-area.settings-content-area {
+        padding: 0;
+      }
+
       .home-view {
         padding: 10px 10px calc(128px + env(safe-area-inset-bottom, 0px));
+      }
+
+      .settings-page-view {
+        width: 100%;
+        margin: 0;
+        padding: 10px 10px calc(164px + env(safe-area-inset-bottom, 0px));
+      }
+
+      .settings-page-header {
+        grid-template-columns: auto minmax(0, 1fr);
+        gap: 12px;
+        margin: 0 0 10px;
+        padding: 14px 14px;
+        border-radius: 0 0 18px 18px;
+        border-top: 0;
+      }
+
+      .settings-page-title h1 {
+        font-size: 22px;
+      }
+
+      .settings-page-actions {
+        display: none;
+      }
+
+      .settings-page-editor {
+        border-radius: 18px;
+      }
+
+      .settings-page-bottom-actions {
+        position: sticky;
+        bottom: calc(88px + env(safe-area-inset-bottom, 0px));
+        z-index: 5;
+        display: flex;
+        justify-content: flex-end;
+        margin: 12px 0 0;
+        padding: 10px;
+        border: 1px solid color-mix(in srgb, var(--divider-color) 62%, transparent);
+        border-radius: 18px;
+        background: color-mix(in srgb, var(--card-background-color) 92%, transparent);
+        box-shadow: 0 18px 38px rgba(15, 23, 42, 0.14);
+        backdrop-filter: blur(18px) saturate(170%);
+        -webkit-backdrop-filter: blur(18px) saturate(170%);
       }
 
       .global-header.mobile {
@@ -8941,6 +9130,8 @@ export class DwainsLayoutCard extends LitElement {
     this._checkMobile();
     this._setupEventListeners();
     window.addEventListener('dwains-dashboard-next-toggle-area-nav', this._handleAreaNavToggle);
+    window.addEventListener('dwains-dashboard-next-open-settings', this._handleOpenSettingsEvent);
+    window.addEventListener('dwains-dashboard-next-open-home', this._handleOpenHomeEvent);
     this._startTimeUpdate();
     this._initializeObservers();
     makeDialogManager(this);
@@ -8982,6 +9173,8 @@ export class DwainsLayoutCard extends LitElement {
   disconnectedCallback() {
     super.disconnectedCallback();
     window.removeEventListener('dwains-dashboard-next-toggle-area-nav', this._handleAreaNavToggle);
+    window.removeEventListener('dwains-dashboard-next-open-settings', this._handleOpenSettingsEvent);
+    window.removeEventListener('dwains-dashboard-next-open-home', this._handleOpenHomeEvent);
     window.removeEventListener('pointermove', this._handleSidebarResizeMove);
     window.removeEventListener('pointerup', this._handleSidebarResizeEnd);
     window.removeEventListener('pointercancel', this._handleSidebarResizeEnd);
@@ -9596,10 +9789,17 @@ export class DwainsLayoutCard extends LitElement {
       this._scheduleProgressiveMobileRender();
     }
 
+    if (this._selectedView === 'settings') {
+      this._syncSettingsEditor();
+    }
   }
 
   private _getRelevantEntities(): string[] {
     if (!this.config) return [];
+
+    if (this._selectedView === 'settings') {
+      return [];
+    }
 
     if (this._selectedView === 'area' && this._selectedArea) {
       const areaEntities = this._getAreaEntities(this._selectedArea);
@@ -9639,16 +9839,18 @@ export class DwainsLayoutCard extends LitElement {
         ${this._renderSidebar()}
         ${!this._isMobile ? this._renderSidebarResizeHandle() : nothing}
         <div class="main-content">
-          ${this._selectedView !== 'home' && !this._isMobile ? this._renderGlobalHeader() : nothing}
+          ${this._selectedView === 'area' && !this._isMobile ? this._renderGlobalHeader() : nothing}
           <div
-            class="content-area ${this._selectedView === 'home' ? 'home-content-area' : ''} ${this._selectedView === 'area' ? 'area-content-area' : ''}"
+            class="content-area ${this._selectedView === 'home' ? 'home-content-area' : ''} ${this._selectedView === 'area' ? 'area-content-area' : ''} ${this._selectedView === 'settings' ? 'settings-content-area' : ''}"
             @scroll=${this._handleContentScroll}
           >
             ${this._selectedView === 'home'
               ? this._renderHomeView()
               : this._selectedView === 'area' && this._selectedArea
                 ? this._renderAreaView()
-                : nothing}
+                : this._selectedView === 'settings'
+                  ? this._renderSettingsView()
+                  : nothing}
           </div>
         </div>
       </div>
@@ -13550,7 +13752,21 @@ export class DwainsLayoutCard extends LitElement {
   }
 
   // Event Handlers
-  private _selectView(view: 'home' | 'area') {
+  private _confirmDiscardSettings(): boolean {
+    if (this._selectedView !== 'settings' || !this._settingsDirty) return true;
+    return window.confirm('Discard unsaved dashboard settings?');
+  }
+
+  private _clearSettingsEditState(): void {
+    this._pendingSettingsConfig = undefined;
+    this._settingsDirty = false;
+    this._settingsSaveError = '';
+    this._settingsSavePending = false;
+    this._settingsEditorInitialized = false;
+  }
+
+  private _selectView(view: DwainsSelectedView) {
+    if (view !== 'settings' && !this._confirmDiscardSettings()) return;
     this._closeMobileDomainMenu();
     this._resetAreaHeaderScrollState(view === 'area');
     this._selectedView = view;
@@ -13559,18 +13775,30 @@ export class DwainsLayoutCard extends LitElement {
       this._editMode = false;
       this._rememberAreaEditMode(null);
       this._updateUrlArea(null);
+      this._clearSettingsEditState();
+    } else if (view === 'settings') {
+      this._selectedArea = null;
+      this._editMode = false;
+      this._rememberAreaEditMode(null);
+      this._updateUrlArea(null);
+      this._pendingSettingsConfig = undefined;
+      this._settingsDirty = false;
+      this._settingsSaveError = '';
+      this._settingsEditorInitialized = false;
     }
     this._syncBottomNavAreaContext();
     this._closeMobileNav();
   }
 
   private _selectArea(areaId: string) {
+    if (!this._confirmDiscardSettings()) return;
     this._closeMobileDomainMenu();
     this._resetAreaHeaderScrollState(true);
     this._selectedArea = areaId;
     this._selectedView = 'area';
     this._editMode = false;
     this._rememberAreaEditMode(null);
+    this._clearSettingsEditState();
     this._closeMobileNav();
     this._updateUrlArea(areaId);
     this._syncBottomNavAreaContext();
@@ -13596,14 +13824,24 @@ export class DwainsLayoutCard extends LitElement {
     this._toggleMobileNav();
   };
 
+  private _handleOpenSettingsEvent = () => {
+    this._openDashboardSettings();
+  };
+
+  private _handleOpenHomeEvent = () => {
+    this._selectView('home');
+  };
+
   private _openMobileAreaSwitcher = () => {
     if (!this._isMobile) return;
+    if (!this._confirmDiscardSettings()) return;
     this._selectedView = 'home';
     this._selectedArea = null;
     this._resetAreaHeaderScrollState(false);
     this._editMode = false;
     this._rememberAreaEditMode(null);
     this._updateUrlArea(null);
+    this._clearSettingsEditState();
     this._mobileNavOpen = true;
   };
 
@@ -13845,6 +14083,127 @@ export class DwainsLayoutCard extends LitElement {
     fireEvent(this, 'hass-more-info', { entityId });
   }
 
+  private _syncSettingsEditor(): void {
+    const editor = this.renderRoot?.querySelector('dwains-dashboard-next-strategy-editor') as any;
+    if (!editor || !this.hass || !this.config) return;
+
+    editor.hass = this.hass;
+    if (!this._settingsEditorInitialized) {
+      this._settingsEditorInitialized = true;
+      void editor.setConfig(this.config);
+    }
+  }
+
+  private _handleSettingsConfigChanged = (event: Event): void => {
+    event.stopPropagation();
+    const detail = (event as CustomEvent<{ config?: Partial<DwainsDashboardConfig> }>).detail;
+    this._pendingSettingsConfig = detail?.config;
+    this._settingsDirty = Boolean(this._pendingSettingsConfig);
+    this._settingsSaveError = '';
+  };
+
+  private _closeSettingsPage = (): void => {
+    if (!this._confirmDiscardSettings()) return;
+    this._clearSettingsEditState();
+    this._selectView('home');
+  };
+
+  private async _saveSettingsPage(): Promise<void> {
+    if (!this._pendingSettingsConfig || this._settingsSavePending || !this.hass) return;
+    if (!this._canManageDashboard()) return;
+
+    this._settingsSavePending = true;
+    this._settingsSaveError = '';
+
+    try {
+      const urlPath = this._getDashboardUrlPath();
+      const base = urlPath ? { url_path: urlPath } : {};
+      const lovelaceConfig: any = await this.hass.callWS({ type: 'lovelace/config', ...base });
+      const strategy = lovelaceConfig?.strategy || {};
+      const nextStrategy = {
+        ...strategy,
+        ...this._pendingSettingsConfig,
+      };
+      const nextConfig = {
+        ...lovelaceConfig,
+        strategy: nextStrategy,
+      };
+
+      await this.hass.callWS({ type: 'lovelace/config/save', ...base, config: nextConfig });
+
+      this.config = {
+        ...this.config,
+        ...this._pendingSettingsConfig,
+      };
+      this._pendingSettingsConfig = undefined;
+      this._settingsDirty = false;
+      this._settingsSaveError = '';
+      this._settingsEditorInitialized = false;
+      this.requestUpdate();
+    } catch (err) {
+      console.error('Failed to save Dwains Dashboard settings:', err);
+      this._settingsSaveError = `Could not save dashboard settings: ${String(err)}`;
+    } finally {
+      this._settingsSavePending = false;
+    }
+  }
+
+  private _renderSettingsView(): TemplateResult {
+    const canSave = this._settingsDirty && !this._settingsSavePending;
+
+    return html`
+      <section class="settings-page-view">
+        <header class="settings-page-header">
+          <button
+            class="settings-page-back"
+            type="button"
+            title="Back"
+            aria-label="Back"
+            @click=${this._closeSettingsPage}
+          >
+            <ha-icon icon="mdi:arrow-left"></ha-icon>
+          </button>
+          <div class="settings-page-title">
+            <h1>Dashboard settings</h1>
+            <p>Configure Dwains Dashboard Next.</p>
+          </div>
+          <div class="settings-page-actions">
+            <button type="button" class="settings-secondary" @click=${this._closeSettingsPage}>
+              Back
+            </button>
+            <button
+              type="button"
+              class="settings-primary"
+              ?disabled=${!canSave}
+              @click=${this._saveSettingsPage}
+            >
+              ${this._settingsSavePending ? 'Saving...' : 'Save'}
+            </button>
+          </div>
+        </header>
+        ${this._settingsSaveError
+          ? html`<div class="settings-save-error">${this._settingsSaveError}</div>`
+          : nothing}
+        <div class="settings-page-editor" @config-changed=${this._handleSettingsConfigChanged}>
+          <dwains-dashboard-next-strategy-editor></dwains-dashboard-next-strategy-editor>
+        </div>
+        <div class="settings-page-bottom-actions">
+          <button type="button" class="settings-secondary" @click=${this._closeSettingsPage}>
+            Back
+          </button>
+          <button
+            type="button"
+            class="settings-primary"
+            ?disabled=${!canSave}
+            @click=${this._saveSettingsPage}
+          >
+            ${this._settingsSavePending ? 'Saving...' : 'Save'}
+          </button>
+        </div>
+      </section>
+    `;
+  }
+
   private _getWelcomeUserPicture(userName: string): string | undefined {
     const normalizedUserName = userName.trim().toLowerCase();
     const personEntities = Object.values(this.hass?.states || {}).filter(
@@ -13859,7 +14218,20 @@ export class DwainsLayoutCard extends LitElement {
 
   private _openDashboardSettings = () => {
     if (!this._canManageDashboard()) return;
-    openDashboardSettings(this.hass, this.config?.settings);
+    this._closeMobileDomainMenu();
+    this._resetAreaHeaderScrollState(true);
+    this._selectedArea = null;
+    this._selectedView = 'settings';
+    this._editMode = false;
+    this._rememberAreaEditMode(null);
+    this._updateUrlArea(null);
+    this._pendingSettingsConfig = undefined;
+    this._settingsDirty = false;
+    this._settingsSaveError = '';
+    this._settingsEditorInitialized = false;
+    this._closeMobileNav();
+    this._syncBottomNavAreaContext();
+    this.updateComplete.then(() => this._scrollContentAreaToTop());
   };
 
   private _openProfileSettings = () => {

@@ -8,7 +8,6 @@ import { DwainsFlexboxCard } from './components/cards/dwains-flexbox-card';
 import './components/dwains-page-card';
 import './components/dwains-devices-card';
 import './components/dwains-bottom-nav';
-import './components/dwains-dashboard-settings-dialog';
 import './components/dwains-replacement-manager-dialog';
 import { DwainsDashboardCard } from './components/dwains-dashboard-card';
 import { DwainsDashboardCardEditor } from './components/dwains-dashboard-card-editor';

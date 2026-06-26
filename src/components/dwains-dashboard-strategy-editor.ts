@@ -1,4 +1,23 @@
-import { mdiArrowDown, mdiArrowLeft, mdiArrowUp, mdiDrag, mdiEye, mdiEyeOff, mdiThermometerWater } from "@mdi/js";
+import {
+  mdiArrowDown,
+  mdiArrowLeft,
+  mdiArrowUp,
+  mdiCardAccountDetailsStarOutline,
+  mdiChevronRight,
+  mdiDrag,
+  mdiEye,
+  mdiEyeOff,
+  mdiFloorPlan,
+  mdiFormatListBulletedType,
+  mdiHeartOutline,
+  mdiHomeEditOutline,
+  mdiPackageVariantClosedCheck,
+  mdiPuzzleEditOutline,
+  mdiShieldAccount,
+  mdiThermometerWater,
+  mdiTuneVariant,
+  mdiViewDashboardEdit,
+} from "@mdi/js";
 import { css, html, LitElement, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { repeat } from "lit/directives/repeat.js";
@@ -85,9 +104,29 @@ function rememberSettingsPage(page: SettingsPageKey): void {
   rememberedSettingsPageAt = Date.now();
 }
 
+const SETTINGS_ICON_PATHS: Record<string, string> = {
+  "mdi:card-account-details-star-outline": mdiCardAccountDetailsStarOutline,
+  "mdi:chevron-right": mdiChevronRight,
+  "mdi:floor-plan": mdiFloorPlan,
+  "mdi:format-list-bulleted-type": mdiFormatListBulletedType,
+  "mdi:heart-outline": mdiHeartOutline,
+  "mdi:home-edit-outline": mdiHomeEditOutline,
+  "mdi:package-variant-closed-check": mdiPackageVariantClosedCheck,
+  "mdi:puzzle-edit-outline": mdiPuzzleEditOutline,
+  "mdi:shield-account": mdiShieldAccount,
+  "mdi:tune-variant": mdiTuneVariant,
+  "mdi:view-dashboard-edit": mdiViewDashboardEdit,
+};
+
 @customElement("dwains-dashboard-next-strategy-editor")
 export class DwainsDashboardStrategyEditor extends LitElement {
   private _hass?: HomeAssistant;
+  private _fetchDataPromise?: Promise<void>;
+  private _registryData?: {
+    areas: Array<{ area_id: string; name: string; picture: string | null; icon: string | null }>;
+    devices: Array<{ id: string; name: string; name_by_user: string | null; area_id: string | null; created_at?: string | null }>;
+    entities: Array<{ entity_id: string; area_id: string | null; device_id: string | null; created_at?: string | null }>;
+  };
 
   @property({ attribute: false })
   public set hass(value: HomeAssistant | undefined) {
@@ -95,8 +134,8 @@ export class DwainsDashboardStrategyEditor extends LitElement {
     this._hass = value;
     // Always fetch fresh data when hass becomes available
     if (value && !oldValue) {
-      this._fetchData();
-      this._fetchDashboardInfo();
+      void this._fetchData();
+      void this._fetchDashboardInfo();
     }
   }
 
@@ -232,76 +271,63 @@ export class DwainsDashboardStrategyEditor extends LitElement {
       floors: []
     };
 
-    // Always fetch fresh data from Home Assistant
     if (this.hass) {
-      await this._fetchData();
+      this._loading = !this._registryData;
+      void this._fetchData();
     } else {
-      this._loading = false;
+      this._loading = true;
     }
   }
 
-  async connectedCallback() {
+  connectedCallback() {
     super.connectedCallback();
     // Always fetch fresh data when component connects
     if (this.hass) {
-      await this._fetchData();
+      void this._fetchData();
     }
   }
 
   private async _fetchData() {
     if (!this.hass) return;
 
+    if (this._registryData) {
+      this._applyRegistryData(this._registryData.areas, this._registryData.devices, this._registryData.entities);
+      this._loading = false;
+      return;
+    }
+
+    if (this._fetchDataPromise) {
+      return this._fetchDataPromise;
+    }
+
+    this._loading = true;
+    this._fetchDataPromise = this._loadRegistryData();
+    try {
+      await this._fetchDataPromise;
+    } finally {
+      this._fetchDataPromise = undefined;
+    }
+  }
+
+  private async _loadRegistryData() {
+    const hass = this.hass;
+    if (!hass) return;
+
     try {
       const [areas, devices, entities] = await Promise.all([
-        this.hass.callWS<{ area_id: string; name: string; picture: string | null; icon: string | null }[]>({
+        hass.callWS<{ area_id: string; name: string; picture: string | null; icon: string | null }[]>({
           type: 'config/area_registry/list'
         }),
-        this.hass.callWS<{ id: string; name: string; name_by_user: string | null; area_id: string | null; created_at?: string | null }[]>({
+        hass.callWS<{ id: string; name: string; name_by_user: string | null; area_id: string | null; created_at?: string | null }[]>({
           type: 'config/device_registry/list'
         }),
-        this.hass.callWS<{ entity_id: string; area_id: string | null; device_id: string | null; created_at?: string | null }[]>({
+        hass.callWS<{ entity_id: string; area_id: string | null; device_id: string | null; created_at?: string | null }[]>({
           type: 'config/entity_registry/list'
         })
       ]);
 
-      // Update hass objects
-      this.hass.areas = areas.reduce((acc: any, area: any) => {
-        acc[area.area_id] = area;
-        return acc;
-      }, {});
-
-      this.hass.entities = entities.reduce((acc: any, entity: any) => {
-        acc[entity.entity_id] = entity;
-        return acc;
-      }, {});
-
-      this.hass.devices = devices.reduce((acc: any, device: any) => {
-        acc[device.id] = device;
-        return acc;
-      }, {});
-
-      // Store the live data in internal state, but don't include it in config
-      this._config = {
-        ...this._config!,
-        areas: areas.map(area => ({
-          area_id: area.area_id,
-          name: area.name,
-          picture: area.picture,
-          icon: area.icon
-        })),
-        devices: devices.map(device => ({
-          device_id: device.id,
-          name: device.name_by_user || device.name,
-          area_id: device.area_id,
-          created_at: device.created_at
-        })),
-        entities: entities.map(entity => ({
-          entity_id: entity.entity_id,
-          area_id: entity.area_id,
-          device_id: entity.device_id,
-          created_at: entity.created_at
-        }))
-      };
+      this._registryData = { areas, devices, entities };
+      this._applyRegistryData(areas, devices, entities);
 
       this._loading = false;
       this.requestUpdate();
@@ -311,20 +337,94 @@ export class DwainsDashboardStrategyEditor extends LitElement {
     }
   }
 
+  private _applyRegistryData(
+    areas: Array<{ area_id: string; name: string; picture: string | null; icon: string | null }>,
+    devices: Array<{ id: string; name: string; name_by_user: string | null; area_id: string | null; created_at?: string | null }>,
+    entities: Array<{ entity_id: string; area_id: string | null; device_id: string | null; created_at?: string | null }>
+  ): void {
+    if (!this.hass) return;
+
+    this.hass.areas = areas.reduce((acc: any, area: any) => {
+      acc[area.area_id] = area;
+      return acc;
+    }, {});
+
+    this.hass.entities = entities.reduce((acc: any, entity: any) => {
+      acc[entity.entity_id] = entity;
+      return acc;
+    }, {});
+
+    this.hass.devices = devices.reduce((acc: any, device: any) => {
+      acc[device.id] = device;
+      return acc;
+    }, {});
+
+    this._config = {
+      ...(this._config || { type: "custom:dwains-dashboard-next" }),
+      areas: areas.map(area => ({
+        area_id: area.area_id,
+        name: area.name,
+        picture: area.picture,
+        icon: area.icon
+      })),
+      devices: devices.map(device => ({
+        device_id: device.id,
+        name: device.name_by_user || device.name,
+        area_id: device.area_id,
+        created_at: device.created_at
+      })),
+      entities: entities.map(entity => ({
+        entity_id: entity.entity_id,
+        area_id: entity.area_id,
+        device_id: entity.device_id,
+        created_at: entity.created_at
+      }))
+    };
+  }
+
   protected render() {
-    if (!this.hass || !this._config) {
-      return nothing;
+    if (!this._config) {
+      return this._renderLoadingShell();
     }
 
-    if (this._loading) {
-      return html`
-        <div class="loading">
-          <ha-circular-progress indeterminate></ha-circular-progress>
-        </div>
-      `;
+    if (!this.hass || this._loading) {
+      return this._renderLoadingShell();
     }
 
     return this._area ? this._renderAreaEditor() : this._renderAreasEditor();
+  }
+
+  private _renderLoadingShell() {
+    return html`
+      <div class="editor-container settings-loading-shell" aria-busy="true">
+        <div class="settings-overview-hero settings-overview-hero-skeleton">
+          <div>
+            <h2>Dwains Dashboard settings</h2>
+            <p>Loading dashboard data...</p>
+            <div class="settings-version-chip">
+              ${this._renderSettingsIcon("mdi:package-variant-closed-check")}
+              <span>Loaded version</span>
+              <strong>v${DD_NEXT_VERSION}</strong>
+            </div>
+          </div>
+          ${this._renderSettingsIcon("mdi:tune-variant", "settings-hero-icon")}
+        </div>
+        <section class="settings-nav-section">
+          <h3>Loading</h3>
+          <div class="settings-nav-list">
+            ${[0, 1, 2, 3].map(() => html`
+              <div class="settings-nav-item settings-nav-item-skeleton">
+                <span class="settings-nav-icon skeleton-block"></span>
+                <span class="settings-skeleton-copy">
+                  <span></span>
+                  <small></small>
+                </span>
+              </div>
+            `)}
+          </div>
+        </section>
+      </div>
+    `;
   }
 
   private _renderAreasEditor() {
@@ -352,12 +452,12 @@ export class DwainsDashboardStrategyEditor extends LitElement {
             <h2>Dwains Dashboard settings</h2>
             <p>Choose a section to configure. Changes are still saved with the Save button below.</p>
             <div class="settings-version-chip">
-              <ha-icon icon="mdi:package-variant-closed-check"></ha-icon>
+              ${this._renderSettingsIcon("mdi:package-variant-closed-check")}
               <span>Loaded version</span>
               <strong>v${DD_NEXT_VERSION}</strong>
             </div>
           </div>
-          <ha-icon icon="mdi:tune-variant"></ha-icon>
+          ${this._renderSettingsIcon("mdi:tune-variant", "settings-hero-icon")}
         </div>
 
         ${groups.map((group) => {
@@ -484,15 +584,28 @@ export class DwainsDashboardStrategyEditor extends LitElement {
         @click=${() => this._openSettingsPage(item.page)}
       >
         <div class="settings-nav-icon">
-          <ha-icon icon=${item.icon}></ha-icon>
+          ${this._renderSettingsIcon(item.icon)}
         </div>
         <div class="settings-nav-copy">
           <div class="settings-nav-title">${item.title}</div>
           <div class="settings-nav-description">${item.description}</div>
         </div>
         ${item.summary ? html`<span class="settings-nav-summary">${item.summary}</span>` : nothing}
-        <ha-icon class="settings-nav-chevron" icon="mdi:chevron-right"></ha-icon>
+        ${this._renderSettingsIcon("mdi:chevron-right", "settings-nav-chevron")}
       </button>
+    `;
+  }
+
+  private _renderSettingsIcon(icon: string, className = "") {
+    const path = SETTINGS_ICON_PATHS[icon];
+    if (!path) {
+      return html`<ha-icon class=${className} icon=${icon}></ha-icon>`;
+    }
+
+    return html`
+      <svg class=${className} viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d=${path}></path>
+      </svg>
     `;
   }
 
@@ -2968,7 +3081,11 @@ export class DwainsDashboardStrategyEditor extends LitElement {
         line-height: 1;
       }
 
-      .settings-version-chip ha-icon {
+      .settings-version-chip ha-icon,
+      .settings-version-chip svg {
+        width: 16px;
+        height: 16px;
+        fill: currentColor;
         --mdc-icon-size: 16px;
       }
 
@@ -2977,7 +3094,8 @@ export class DwainsDashboardStrategyEditor extends LitElement {
         font-weight: 800;
       }
 
-      .settings-overview-hero > ha-icon {
+      .settings-overview-hero > ha-icon,
+      .settings-overview-hero > svg {
         flex: 0 0 auto;
         width: 48px;
         height: 48px;
@@ -2987,7 +3105,13 @@ export class DwainsDashboardStrategyEditor extends LitElement {
         justify-content: center;
         color: var(--primary-color);
         background: color-mix(in srgb, var(--primary-color) 12%, transparent);
+        fill: currentColor;
         --mdc-icon-size: 26px;
+      }
+
+      .settings-overview-hero > svg {
+        padding: 11px;
+        box-sizing: border-box;
       }
 
       .settings-nav-section {
@@ -3047,7 +3171,11 @@ export class DwainsDashboardStrategyEditor extends LitElement {
         background: var(--settings-item-color);
       }
 
-      .settings-nav-icon ha-icon {
+      .settings-nav-icon ha-icon,
+      .settings-nav-icon svg {
+        width: 24px;
+        height: 24px;
+        fill: currentColor;
         --mdc-icon-size: 24px;
       }
 
@@ -3085,7 +3213,71 @@ export class DwainsDashboardStrategyEditor extends LitElement {
 
       .settings-nav-chevron {
         color: var(--secondary-text-color);
+        width: 22px;
+        height: 22px;
+        fill: currentColor;
         --mdc-icon-size: 22px;
+      }
+
+      .settings-loading-shell {
+        min-height: 420px;
+      }
+
+      .settings-overview-hero-skeleton {
+        opacity: 0.92;
+      }
+
+      .settings-nav-item-skeleton {
+        pointer-events: none;
+        cursor: default;
+      }
+
+      .skeleton-block,
+      .settings-skeleton-copy span,
+      .settings-skeleton-copy small {
+        position: relative;
+        overflow: hidden;
+        background: color-mix(in srgb, var(--secondary-text-color) 12%, transparent);
+      }
+
+      .skeleton-block::after,
+      .settings-skeleton-copy span::after,
+      .settings-skeleton-copy small::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        transform: translateX(-100%);
+        background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--card-background-color) 70%, transparent), transparent);
+        animation: settings-skeleton-shimmer 1.2s ease-in-out infinite;
+      }
+
+      .settings-skeleton-copy {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .settings-skeleton-copy span,
+      .settings-skeleton-copy small {
+        display: block;
+        border-radius: 999px;
+      }
+
+      .settings-skeleton-copy span {
+        width: 180px;
+        height: 14px;
+      }
+
+      .settings-skeleton-copy small {
+        width: 260px;
+        max-width: 100%;
+        height: 10px;
+      }
+
+      @keyframes settings-skeleton-shimmer {
+        to {
+          transform: translateX(100%);
+        }
       }
 
       .settings-detail-toolbar {
@@ -3178,10 +3370,15 @@ export class DwainsDashboardStrategyEditor extends LitElement {
           padding: 18px;
         }
 
-        .settings-overview-hero > ha-icon {
+        .settings-overview-hero > ha-icon,
+        .settings-overview-hero > svg {
           width: 40px;
           height: 40px;
           --mdc-icon-size: 22px;
+        }
+
+        .settings-overview-hero > svg {
+          padding: 9px;
         }
 
         .settings-nav-item {
@@ -3987,6 +4184,16 @@ export class DwainsDashboardStrategyEditor extends LitElement {
         gap: 8px;
       }
 
+      .device-admission-groups ha-expansion-panel,
+      .device-admission-area,
+      .device-admission-device {
+        content-visibility: auto;
+      }
+
+      .device-admission-groups ha-expansion-panel {
+        contain-intrinsic-size: auto 86px;
+      }
+
       .device-admission-panel-header {
         width: 100%;
         display: grid;
@@ -4037,6 +4244,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
         border: 1px solid var(--divider-color);
         border-radius: 12px;
         background: color-mix(in srgb, var(--card-background-color) 82%, var(--secondary-background-color));
+        contain-intrinsic-size: auto 180px;
       }
 
       .device-admission-area-header {
@@ -4076,6 +4284,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
         border-radius: 10px;
         background: var(--card-background-color);
         box-shadow: 0 4px 12px rgba(15, 23, 42, 0.04);
+        contain-intrinsic-size: auto 64px;
       }
 
       .device-admission-device.hidden {

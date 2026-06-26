@@ -7,7 +7,6 @@ import {
   restrictNonAdminDashboardSettings,
   restrictNonAdminHaSidebar,
 } from '../utils/security';
-import { openDashboardSettings } from './dwains-dashboard-settings-dialog';
 
 interface NavItem {
   path: string;
@@ -26,7 +25,7 @@ interface AreaContext {
   areaId: string | null;
   icon?: string;
   name?: string;
-  view: 'home' | 'area';
+  view: 'home' | 'area' | 'settings';
 }
 
 interface DeviceContext {
@@ -210,6 +209,13 @@ export class DwainsBottomNav extends LitElement {
 
   private _openHomeAreas(): void {
     this._pagesOpen = false;
+
+    if (this._areaContext.view === 'settings') {
+      this._active = 'home';
+      window.dispatchEvent(new CustomEvent('dwains-dashboard-next-open-home'));
+      return;
+    }
+
     const fire = () => {
       this._active = 'home';
       window.dispatchEvent(new CustomEvent('dwains-dashboard-next-toggle-area-nav'));
@@ -410,6 +416,17 @@ export class DwainsBottomNav extends LitElement {
   }
 
   private _displayItem(item: NavItem): Pick<NavItem, 'icon' | 'label'> {
+    if (
+      item.action === 'home' &&
+      this._active === item.path &&
+      this._areaContext.view === 'settings'
+    ) {
+      return {
+        icon: this._areaContext.icon || 'mdi:cog-outline',
+        label: this._areaContext.name || 'Settings',
+      };
+    }
+
     if (
       item.action === 'home' &&
       this._active === item.path &&
@@ -1180,6 +1197,17 @@ function _navigate(path: string): void {
   window.dispatchEvent(ev);
 }
 
+function _openDashboardSettingsPage(): void {
+  if (window.location.pathname.split('/')[2] !== 'home') {
+    _navigate('home');
+  }
+
+  const open = () => window.dispatchEvent(new CustomEvent('dwains-dashboard-next-open-settings'));
+  open();
+  window.setTimeout(open, 90);
+  window.setTimeout(open, 240);
+}
+
 function _navigateProfile(): void {
   navigateHomeAssistant('/profile/general');
 }
@@ -1400,7 +1428,7 @@ function _buildSidebarSection(
     wrap.appendChild(
       mkItem('mdi:cog', t('sidebar.dashboard_settings'), () => {
         _closeSidebar();
-        openDashboardSettings(hass, settings);
+        _openDashboardSettingsPage();
       })
     );
     wrap.appendChild(
