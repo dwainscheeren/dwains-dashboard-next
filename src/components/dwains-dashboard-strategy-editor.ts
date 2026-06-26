@@ -22,6 +22,7 @@ import {
   normalizeHiddenHomeSections,
   normalizeHomeSectionsOrder,
 } from "../utils/home-sections";
+import { DD_NEXT_VERSION } from "../version";
 
 // We'll create our own entity picker since ha-entity-picker is external
 type SettingsPageKey =
@@ -350,6 +351,11 @@ export class DwainsDashboardStrategyEditor extends LitElement {
           <div>
             <h2>Dwains Dashboard settings</h2>
             <p>Choose a section to configure. Changes are still saved with the Save button below.</p>
+            <div class="settings-version-chip">
+              <ha-icon icon="mdi:package-variant-closed-check"></ha-icon>
+              <span>Loaded version</span>
+              <strong>v${DD_NEXT_VERSION}</strong>
+            </div>
           </div>
           <ha-icon icon="mdi:tune-variant"></ha-icon>
         </div>
@@ -2945,6 +2951,30 @@ export class DwainsDashboardStrategyEditor extends LitElement {
         color: var(--secondary-text-color);
         font-size: 13px;
         line-height: 1.45;
+      }
+
+      .settings-version-chip {
+        width: fit-content;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        margin-top: 12px;
+        padding: 7px 10px;
+        border-radius: 999px;
+        color: var(--primary-color);
+        background: color-mix(in srgb, var(--primary-color) 10%, transparent);
+        font-size: 12px;
+        font-weight: 700;
+        line-height: 1;
+      }
+
+      .settings-version-chip ha-icon {
+        --mdc-icon-size: 16px;
+      }
+
+      .settings-version-chip strong {
+        color: var(--primary-text-color);
+        font-weight: 800;
       }
 
       .settings-overview-hero > ha-icon {

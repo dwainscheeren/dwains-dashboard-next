@@ -1163,7 +1163,7 @@ function _setDrawerPlacement(placement: 'start' | 'end'): void {
   });
 }
 
-// ---- DD-sectie bovenin het HA-zijmenu -------------------------------------
+// ---- DD-sectie in het HA-zijmenu ------------------------------------------
 
 let _sidebarObserver: MutationObserver | undefined;
 let _sidebarSettings: DwainsDashboardSettings | undefined;
@@ -1227,7 +1227,76 @@ function _removeSidebarSection(): void {
   sidebar?.shadowRoot?.querySelector('#dd-sidebar-section')?.remove();
 }
 
-/** (Her)bouw de DD-sectie en zet hem bovenaan de sidebar-shadow (alleen mobiel). */
+function _isSidebarBottomItem(el: Element): boolean {
+  const href = (el.getAttribute('href') || '').toLowerCase();
+  const text = (el.textContent || '').trim().toLowerCase();
+  return (
+    href.includes('/config') ||
+    href.includes('/profile') ||
+    href.includes('/notifications') ||
+    text === 'settings' ||
+    text === 'instellingen' ||
+    text === 'notifications' ||
+    text === 'meldingen'
+  );
+}
+
+function _findSidebarBottomAnchor(sr: ShadowRoot): Element | null {
+  const candidates = Array.from(
+    sr.querySelectorAll(
+      [
+        'a[href]',
+        'ha-sidebar-item',
+        'ha-md-list-item',
+        'mwc-list-item',
+        'paper-item',
+        'paper-icon-item',
+        '[role="listitem"]',
+        '[role="option"]',
+      ].join(',')
+    )
+  );
+  return candidates.find((el) => !el.closest('#dd-sidebar-section') && _isSidebarBottomItem(el)) || null;
+}
+
+function _findSidebarDefaultParent(sr: ShadowRoot): Element | ShadowRoot {
+  return (
+    sr.querySelector('.menu') ||
+    sr.querySelector('.items') ||
+    sr.querySelector('ha-md-list') ||
+    sr.querySelector('mwc-list') ||
+    sr.querySelector('paper-listbox') ||
+    sr.querySelector('nav') ||
+    sr
+  );
+}
+
+function _isSidebarFooterGroup(el: Element): boolean {
+  const children = Array.from(el.children).filter((child) => child.id !== 'dd-sidebar-section');
+  const bottomItems = children.filter((child) => _isSidebarBottomItem(child)).length;
+  const className = typeof el.className === 'string' ? el.className.toLowerCase() : '';
+  return (
+    bottomItems > 0 &&
+    (children.length <= 6 || className.includes('footer') || className.includes('bottom') || className.includes('profile'))
+  );
+}
+
+function _insertSidebarSection(sr: ShadowRoot, wrap: HTMLElement): void {
+  const anchor = _findSidebarBottomAnchor(sr);
+  if (anchor?.parentElement) {
+    const footerGroup = anchor.parentElement;
+    if (_isSidebarFooterGroup(footerGroup) && footerGroup.parentElement) {
+      footerGroup.parentElement.insertBefore(wrap, footerGroup);
+      return;
+    }
+    anchor.parentElement.insertBefore(wrap, anchor);
+    return;
+  }
+  const parent = _findSidebarDefaultParent(sr);
+  parent.appendChild(wrap);
+}
+
+/** (Her)bouw de DD-sectie in de sidebar-shadow (alleen mobiel). */
 function _buildSidebarSection(
   sidebar: Element,
   hass: any,
@@ -1254,31 +1323,41 @@ function _buildSidebarSection(
   const style = document.createElement('style');
   style.textContent = `
     #dd-sidebar-section {
-      padding: 8px 8px 6px;
-      border-bottom: 1px solid var(--divider-color);
+      margin: 10px 8px;
+      padding: 10px;
+      border-radius: 16px;
+      border: 1px solid rgba(var(--rgb-primary-color, 3, 169, 244), .16);
+      background: rgba(var(--rgb-primary-color, 3, 169, 244), .07);
+      box-sizing: border-box;
     }
     #dd-sidebar-section .dd-h {
       font-size: 11px;
       text-transform: uppercase;
       letter-spacing: .06em;
       color: var(--secondary-text-color);
-      padding: 6px 12px 2px;
+      padding: 2px 4px 8px;
     }
     #dd-sidebar-section .dd-item {
       display: flex;
       align-items: center;
       gap: 12px;
-      padding: 10px 12px;
-      border-radius: 8px;
+      min-height: 44px;
+      padding: 8px 10px;
+      border-radius: 12px;
       cursor: pointer;
       color: var(--sidebar-text-color, var(--primary-text-color));
+      background: var(--card-background-color, white);
+      box-sizing: border-box;
+    }
+    #dd-sidebar-section .dd-item + .dd-item {
+      margin-top: 6px;
     }
     #dd-sidebar-section .dd-item:hover {
-      background: rgba(var(--rgb-primary-color, 3, 169, 244), .12);
+      background: rgba(var(--rgb-primary-color, 3, 169, 244), .14);
     }
     #dd-sidebar-section .dd-item ha-icon {
-      color: var(--sidebar-icon-color, var(--primary-text-color));
-      --mdc-icon-size: 24px;
+      color: var(--primary-color);
+      --mdc-icon-size: 22px;
     }
     #dd-sidebar-section .dd-item span {
       font-size: 14px;
@@ -1313,21 +1392,21 @@ function _buildSidebarSection(
         _navigateProfile();
       })
     );
-    sr.insertBefore(wrap, sr.firstChild);
+    _insertSidebarSection(sr, wrap);
     return;
   }
 
   if (!dashboardEditingRestricted) {
     wrap.appendChild(
-      mkItem('mdi:puzzle-plus-outline', t('sidebar.add_blueprint'), () => {
-        _closeSidebar();
-        _navigate('add-blueprint');
-      })
-    );
-    wrap.appendChild(
       mkItem('mdi:cog', t('sidebar.dashboard_settings'), () => {
         _closeSidebar();
         openDashboardSettings(hass, settings);
+      })
+    );
+    wrap.appendChild(
+      mkItem('mdi:puzzle-plus-outline', t('sidebar.add_blueprint'), () => {
+        _closeSidebar();
+        _navigate('add-blueprint');
       })
     );
   } else {
@@ -1339,7 +1418,7 @@ function _buildSidebarSection(
     );
   }
 
-  sr.insertBefore(wrap, sr.firstChild);
+  _insertSidebarSection(sr, wrap);
 }
 
 function _applyHaSidebarRestriction(
@@ -1453,7 +1532,7 @@ function _applyHaSidebarRestriction(
 }
 
 /**
- * Injecteer de DD-sectie bovenin het HA-zijmenu (ha-sidebar). Een
+ * Injecteer de DD-sectie in het HA-zijmenu (ha-sidebar). Een
  * MutationObserver herstelt de sectie als HA bij een re-render z'n shadow
  * opnieuw opbouwt. Best-effort: lukt het niet, dan blijft de sidebar standaard.
  */
@@ -1484,7 +1563,7 @@ function _injectSidebarSection(
         _buildSidebarSection(sb, _sidebarHass, _sidebarSettings, _sidebarDashSegment);
       }
     });
-    _sidebarObserver.observe(sidebar.shadowRoot, { childList: true });
+    _sidebarObserver.observe(sidebar.shadowRoot, { childList: true, subtree: true });
   }
 
   if (!_sidebarMediaListenerAttached) {

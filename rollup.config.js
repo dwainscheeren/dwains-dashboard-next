@@ -2,6 +2,9 @@ import typescript from '@rollup/plugin-typescript';
 import { nodeResolve } from '@rollup/plugin-node-resolve';
 import commonjs from '@rollup/plugin-commonjs';
 import terser from '@rollup/plugin-terser';
+import { readFileSync } from 'node:fs';
+
+const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8'));
 
 // Simple banner plugin to stamp build time
 const buildStamp = () => {
@@ -10,6 +13,19 @@ const buildStamp = () => {
     renderChunk(code) {
       const stamp = `/* Dwains Dashboard Next build: ${new Date().toISOString()} */\n`;
       return { code: stamp + code, map: null };
+    }
+  };
+};
+
+const versionStamp = () => {
+  return {
+    name: 'version-stamp',
+    transform(code, id) {
+      if (!id.endsWith('/src/version.ts')) return null;
+      return {
+        code: code.replace('__DD_NEXT_VERSION__', String(pkg.version)),
+        map: null
+      };
     }
   };
 };
@@ -30,6 +46,7 @@ export default {
       preferBuiltins: false
     }),
     commonjs(),
+    versionStamp(),
     typescript({
       tsconfig: './tsconfig.json',
       sourceMap: !production

@@ -156,6 +156,8 @@ export class DwainsLayoutCard extends LitElement {
   @state() private _mobileEntityLayout: 'rail' | 'grid' = 'rail';
   @state() private _mobileHomeAreasLayout: 'rail' | 'grid' = 'rail';
   @state() private _mobileHomeDevicesLayout: 'rail' | 'grid' = 'rail';
+  @state() private _mobileHomeFavoritesLayout: 'rail' | 'grid' = 'rail';
+  @state() private _mobileHomeCamerasLayout: 'rail' | 'grid' = 'rail';
   @state() private _areaSidebarWidth = SIDEBAR_DEFAULT_WIDTH;
   @state() private _areaSidebarCollapsed = false;
   @state() private _isResizingSidebar = false;
@@ -1629,7 +1631,7 @@ export class DwainsLayoutCard extends LitElement {
       box-shadow: inset 0 0 0 1px color-mix(in srgb, #ef4444 8%, transparent);
     }
 
-    .home-camera-section .mobile-layout-toggle.active {
+    .home-camera-section .mobile-layout-toggle {
       color: #ef4444;
       background: color-mix(in srgb, #ef4444 12%, var(--card-background-color));
       box-shadow:
@@ -5309,12 +5311,27 @@ export class DwainsLayoutCard extends LitElement {
         display: none;
       }
 
+      .home-camera-section.layout-grid .home-camera-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 10px;
+        padding: 2px 18px 16px;
+        overflow: visible;
+        scroll-snap-type: none;
+      }
+
       .home-camera-card {
         flex: 0 0 226px;
         min-height: 146px;
         border-radius: 18px;
         scroll-snap-align: start;
         box-shadow: 0 12px 28px rgba(15, 23, 42, 0.11);
+      }
+
+      .home-camera-section.layout-grid .home-camera-card {
+        width: 100%;
+        flex: none;
+        scroll-snap-align: none;
       }
 
       .home-camera-content {
@@ -5826,37 +5843,64 @@ export class DwainsLayoutCard extends LitElement {
         }
       }
 
-      .favorites-section {
+      .home-favorites-section {
         box-sizing: border-box;
         width: 100%;
         max-width: 100%;
-        margin: 0 0 44px;
+        margin: 0 -10px 44px;
         padding: 0;
         overflow-x: clip;
       }
 
-      .favorites-header {
-        margin-bottom: 12px;
-        font-size: 16px;
-        font-weight: 850;
+      .home-favorites-section .favorites-header {
+        display: none;
       }
 
-      .favorites-grid {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+      .home-favorites-section .mobile-section-heading {
+        margin-bottom: 10px;
+      }
+
+      .home-favorites-section .favorites-grid {
+        display: flex;
+        grid-template-columns: none;
         gap: 10px;
+        padding: 2px 18px 0;
+        overflow-x: auto;
+        scroll-padding: 18px;
+        scroll-snap-type: x proximity;
+        scrollbar-width: none;
       }
 
-      .favorite-card-wrapper {
-        width: 100%;
+      .home-favorites-section .favorites-grid::-webkit-scrollbar {
+        display: none;
+      }
+
+      .home-favorites-section.layout-grid .favorites-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        overflow: visible;
+        scroll-snap-type: none;
+      }
+
+      .home-favorites-section .favorite-card-wrapper {
+        flex: 0 0 186px;
+        width: auto;
         min-width: 0;
         box-sizing: border-box;
         min-height: 116px;
         padding: 14px;
-        border-radius: 9px;
+        border-radius: 16px;
+        scroll-snap-align: start;
+      }
+
+      .home-favorites-section.layout-grid .favorite-card-wrapper {
+        width: 100%;
+        flex: none;
+        scroll-snap-align: none;
       }
 
       @media (max-width: 380px) {
-        .favorites-grid {
+        .home-favorites-section.layout-grid .favorites-grid {
           grid-template-columns: 1fr;
         }
       }
@@ -6573,7 +6617,7 @@ export class DwainsLayoutCard extends LitElement {
 
     @media (max-width: 768px) {
       .content-area {
-        padding: 10px 10px calc(108px + env(safe-area-inset-bottom, 0px));
+        padding: 0;
         background:
           linear-gradient(180deg,
             color-mix(in srgb, var(--primary-color) 5%, var(--primary-background-color)) 0%,
@@ -6581,11 +6625,15 @@ export class DwainsLayoutCard extends LitElement {
       }
 
       .content-area.home-content-area {
-        padding-bottom: calc(128px + env(safe-area-inset-bottom, 0px));
+        padding-bottom: 0;
       }
 
       .content-area.area-content-area {
         padding-top: 0;
+      }
+
+      .home-view {
+        padding: 10px 10px calc(128px + env(safe-area-inset-bottom, 0px));
       }
 
       .global-header.mobile {
@@ -8797,23 +8845,23 @@ export class DwainsLayoutCard extends LitElement {
         overflow-x: hidden !important;
       }
 
-      .home-view .favorites-section {
+      .home-view .home-favorites-section {
         box-sizing: border-box !important;
         width: 100% !important;
         max-width: 100% !important;
-        margin: 0 0 44px !important;
+        margin: 0 -10px 44px !important;
         padding: 0 !important;
         overflow-x: hidden !important;
       }
 
-      .home-view .favorites-grid {
+      .home-view .home-favorites-section .favorites-grid {
         box-sizing: border-box !important;
         width: 100% !important;
         max-width: 100% !important;
         min-width: 0 !important;
       }
 
-      .home-view .favorite-card-wrapper {
+      .home-view .home-favorites-section .favorite-card-wrapper {
         max-width: 100% !important;
         min-width: 0 !important;
       }
@@ -9075,9 +9123,13 @@ export class DwainsLayoutCard extends LitElement {
       const savedEntityLayout = window.localStorage.getItem('dd-next-mobile-entity-layout');
       const savedAreasLayout = window.localStorage.getItem('dd-next-mobile-home-areas-layout');
       const savedDevicesLayout = window.localStorage.getItem('dd-next-mobile-home-devices-layout');
+      const savedFavoritesLayout = window.localStorage.getItem('dd-next-mobile-home-favorites-layout');
+      const savedCamerasLayout = window.localStorage.getItem('dd-next-mobile-home-cameras-layout');
       if (savedEntityLayout === 'rail' || savedEntityLayout === 'grid') this._mobileEntityLayout = savedEntityLayout;
       if (savedAreasLayout === 'rail' || savedAreasLayout === 'grid') this._mobileHomeAreasLayout = savedAreasLayout;
       if (savedDevicesLayout === 'rail' || savedDevicesLayout === 'grid') this._mobileHomeDevicesLayout = savedDevicesLayout;
+      if (savedFavoritesLayout === 'rail' || savedFavoritesLayout === 'grid') this._mobileHomeFavoritesLayout = savedFavoritesLayout;
+      if (savedCamerasLayout === 'rail' || savedCamerasLayout === 'grid') this._mobileHomeCamerasLayout = savedCamerasLayout;
     } catch {
       // localStorage can be unavailable in private or restricted contexts.
     }
@@ -9233,6 +9285,26 @@ export class DwainsLayoutCard extends LitElement {
     this._mobileHomeDevicesLayout = this._mobileHomeDevicesLayout === 'rail' ? 'grid' : 'rail';
     try {
       window.localStorage.setItem('dd-next-mobile-home-devices-layout', this._mobileHomeDevicesLayout);
+    } catch {
+      // Preference persistence is best-effort only.
+    }
+  };
+
+  private _toggleMobileHomeFavoritesLayout = (event?: Event): void => {
+    event?.stopPropagation();
+    this._mobileHomeFavoritesLayout = this._mobileHomeFavoritesLayout === 'rail' ? 'grid' : 'rail';
+    try {
+      window.localStorage.setItem('dd-next-mobile-home-favorites-layout', this._mobileHomeFavoritesLayout);
+    } catch {
+      // Preference persistence is best-effort only.
+    }
+  };
+
+  private _toggleMobileHomeCamerasLayout = (event?: Event): void => {
+    event?.stopPropagation();
+    this._mobileHomeCamerasLayout = this._mobileHomeCamerasLayout === 'rail' ? 'grid' : 'rail';
+    try {
+      window.localStorage.setItem('dd-next-mobile-home-cameras-layout', this._mobileHomeCamerasLayout);
     } catch {
       // Preference persistence is best-effort only.
     }
@@ -10066,10 +10138,6 @@ export class DwainsLayoutCard extends LitElement {
             </button>
             <span class="mobile-section-title-label">Summaries</span>
           </div>
-          <span class="mobile-section-action" aria-label="${summaries.length} summaries">
-            <span>${summaries.length}</span>
-            <ha-icon icon="mdi:clipboard-list-outline"></ha-icon>
-          </span>
         </div>
         <div class="home-summary-list">
           ${repeat(
@@ -10308,9 +10376,10 @@ export class DwainsLayoutCard extends LitElement {
   private _renderHomeCameras() {
     const cameras = this._getHomeAreaCameras();
     if (!cameras.length) return nothing;
+    const gridMode = this._mobileHomeCamerasLayout === 'grid';
 
     return html`
-      <section class="home-camera-section">
+      <section class="home-camera-section layout-${this._mobileHomeCamerasLayout}">
         <div class="home-status-heading">
           <ha-icon icon="mdi:cctv"></ha-icon>
           <span>Cameras</span>
@@ -10318,19 +10387,16 @@ export class DwainsLayoutCard extends LitElement {
         <div class="mobile-section-heading">
           <div class="mobile-section-title">
             <button
-              class="mobile-layout-toggle active"
+              class="mobile-layout-toggle ${gridMode ? 'active' : ''}"
               type="button"
-              title="Area cameras"
-              aria-label="Area cameras"
+              title=${gridMode ? 'Swipe cameras' : 'Show all cameras'}
+              aria-label=${gridMode ? 'Switch cameras to swipe cards' : 'Show all cameras'}
+              @click=${this._toggleMobileHomeCamerasLayout}
             >
-              <ha-icon icon="mdi:cctv"></ha-icon>
+              <ha-icon icon=${gridMode ? 'mdi:view-carousel-outline' : 'mdi:view-grid-outline'}></ha-icon>
             </button>
             <span class="mobile-section-title-label">Cameras</span>
           </div>
-          <span class="mobile-section-action" aria-label="${cameras.length} camera areas">
-            <span>${cameras.length}</span>
-            <ha-icon icon="mdi:cctv"></ha-icon>
-          </span>
         </div>
         <div class="home-camera-grid">
           ${repeat(
@@ -11005,12 +11071,27 @@ export class DwainsLayoutCard extends LitElement {
   private _renderFavorites() {
     const available = this._getEffectiveFavoriteEntities();
     if (available.length === 0) return nothing;
+    const gridMode = this._mobileHomeFavoritesLayout === 'grid';
 
     return html`
-      <div class="favorites-section">
+      <div class="favorites-section home-favorites-section layout-${this._mobileHomeFavoritesLayout}">
         <div class="favorites-header">
           <ha-icon icon="mdi:star"></ha-icon>
           <span>${this._t('favorites.title')}</span>
+        </div>
+        <div class="mobile-section-heading">
+          <div class="mobile-section-title">
+            <button
+              class="mobile-layout-toggle ${gridMode ? 'active' : ''}"
+              type="button"
+              title=${gridMode ? 'Swipe favorites' : 'Show all favorites'}
+              aria-label=${gridMode ? 'Switch favorites to swipe cards' : 'Show all favorites'}
+              @click=${this._toggleMobileHomeFavoritesLayout}
+            >
+              <ha-icon icon=${gridMode ? 'mdi:view-carousel-outline' : 'mdi:view-grid-outline'}></ha-icon>
+            </button>
+            <span class="mobile-section-title-label">${this._t('favorites.title')}</span>
+          </div>
         </div>
         <div class="favorites-grid">
           ${repeat(
