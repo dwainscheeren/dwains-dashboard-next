@@ -6,7 +6,7 @@ import { ifDefined } from 'lit/directives/if-defined.js';
 
 import type { HomeAssistant } from '../types/home-assistant';
 import type { DwainsDashboardConfig, AreaConfig, EntityConfig, AreaData, AreaCustomCard, HomeInformationCardKey, HomeSectionKey } from '../types/strategy';
-import { getAreaData, clearAreaDataCache } from '../utils/area';
+import { getAreaData, clearAreaDataCache, clearAreaDataCacheForArea } from '../utils/area';
 import { getAreaIcon, getDeviceClassIcon, getDomainColor, getDomainIcon } from '../utils/icons';
 import { getStatusDomains, getTotalWattage, type DomainCount as StatusDomainCount } from '../utils/header-status-domains';
 import { getDeviceClassName, getDomainName } from '../utils/domain-names';
@@ -42,6 +42,9 @@ const SIDEBAR_COLLAPSE_THRESHOLD = 96;
 const AREA_HEADER_STICK_SCROLL = 76;
 const AREA_HEADER_UNSTICK_SCROLL = 38;
 const AREA_HEADER_REVEAL_SCROLL = 88;
+const MOBILE_INITIAL_HOME_AREAS = 12;
+const MOBILE_INITIAL_ENTITY_GROUPS = 4;
+const MOBILE_INITIAL_ENTITY_CARDS = 12;
 const ICON_ARROW_LEFT = 'M20,11V13H8L13.5,18.5L12.08,19.92L4.16,12L12.08,4.08L13.5,5.5L8,11H20Z';
 
 interface CachedAreaData {
@@ -168,6 +171,8 @@ export class DwainsLayoutCard extends LitElement {
   @state() private _customCardDrag: { areaId: string; cardId: string } | null = null;
   @state() private _customCardDragOver: { areaId: string; placement: string; index: number } | null = null;
   @state() private _optimisticEntityStates: Record<string, OptimisticEntityState> = {};
+  @state() private _renderAllMobileHomeAreas = false;
+  @state() private _renderAllMobileAreaEntities = false;
 
   // Performance optimizations
   private _areaEntitiesCache = new Map<string, { entities: EntityConfig[], timestamp: number }>();
@@ -191,6 +196,7 @@ export class DwainsLayoutCard extends LitElement {
   private _areaScrollUpDistance = 0;
   private _pictureContrastCache = new Map<string, PictureContrastCacheValue>();
   private _sidebarResizePointerId?: number;
+  private _progressiveRenderCancel?: () => void;
 
   // Debounce timers
   private _updateDebounceTimer?: number;
@@ -456,7 +462,22 @@ export class DwainsLayoutCard extends LitElement {
     .home-summary-card,
     .home-status-card,
     .favorite-card-wrapper {
-      contain: layout style;
+      contain: layout style paint;
+    }
+
+    .mobile-home-section,
+    .home-camera-section,
+    .home-status-section,
+    .home-favorites-section,
+    .home-summaries-section,
+    .mobile-domain-group {
+      content-visibility: auto;
+      contain-intrinsic-size: 1px 360px;
+    }
+
+    .mobile-entities-section.layout-grid .mobile-entity-card {
+      content-visibility: auto;
+      contain-intrinsic-size: 164px 150px;
     }
 
     /* Layout Container */
@@ -1136,6 +1157,7 @@ export class DwainsLayoutCard extends LitElement {
       min-height: 0;
       overflow-y: auto;
       overflow-x: hidden;
+      overflow-anchor: none;
       overscroll-behavior: contain;
       -webkit-overflow-scrolling: touch;
       padding: 16px;
@@ -2910,7 +2932,7 @@ export class DwainsLayoutCard extends LitElement {
     }
 
     .mobile-domain-group:not(.menu-open) {
-      contain: layout style;
+      contain: layout style paint;
     }
 
     .mobile-domain-group.menu-open {
@@ -8928,6 +8950,7 @@ export class DwainsLayoutCard extends LitElement {
     super.willUpdate(changedProps);
 
     if (changedProps.has('config') && this.hass) {
+      this._clearEntityCardsCache();
       ensureBottomNav(this.hass, this.config?.settings);
       if (!this._canManageDashboard() && this._editMode) {
         this._editMode = false;
@@ -8949,8 +8972,7 @@ export class DwainsLayoutCard extends LitElement {
       const oldHass = changedProps.get('hass') as HomeAssistant | undefined;
 
       if (oldHass && this._shouldUpdateEntities(oldHass, this.hass)) {
-        // Clear caches to force fresh data in render
-        this._clearEntityCardsCache();
+        this._invalidateChangedAreaCaches(oldHass, this.hass);
         // Mark component for re-render to show live updates
         this._hasRelevantStateChanges = true;
       }
@@ -8982,6 +9004,10 @@ export class DwainsLayoutCard extends LitElement {
     if (this._optimisticCleanupTimer !== undefined) {
       window.clearTimeout(this._optimisticCleanupTimer);
       this._optimisticCleanupTimer = undefined;
+    }
+    if (this._progressiveRenderCancel) {
+      this._progressiveRenderCancel();
+      this._progressiveRenderCancel = undefined;
     }
   }
 
@@ -9032,9 +9058,48 @@ export class DwainsLayoutCard extends LitElement {
 
   private _scrollContentAreaToTop(): void {
     const scrollContainer = this.shadowRoot?.querySelector('.content-area') as HTMLElement | null;
-    if (!scrollContainer) return;
-    scrollContainer.scrollTop = 0;
-    scrollContainer.scrollLeft = 0;
+    const scrollTargets = new Set<HTMLElement>();
+
+    if (scrollContainer) {
+      scrollTargets.add(scrollContainer);
+    }
+
+    const addScrollableAncestors = (start: Node | null) => {
+      let node: Node | null = start;
+
+      while (node) {
+        if (node instanceof HTMLElement) {
+          scrollTargets.add(node);
+        }
+
+        if (node.parentNode) {
+          node = node.parentNode;
+          continue;
+        }
+
+        const root = node.getRootNode();
+        node = root instanceof ShadowRoot ? root.host : null;
+      }
+    };
+
+    addScrollableAncestors(scrollContainer || this);
+
+    for (const target of scrollTargets) {
+      target.scrollTop = 0;
+      target.scrollLeft = 0;
+    }
+
+    const scrollingElement = document.scrollingElement as HTMLElement | null;
+    if (scrollingElement) {
+      scrollingElement.scrollTop = 0;
+      scrollingElement.scrollLeft = 0;
+    }
+
+    document.documentElement.scrollTop = 0;
+    document.documentElement.scrollLeft = 0;
+    document.body.scrollTop = 0;
+    document.body.scrollLeft = 0;
+    window.scrollTo(0, 0);
   }
 
   private _resetAreaHeaderScrollState(scrollToTop = false): void {
@@ -9055,7 +9120,50 @@ export class DwainsLayoutCard extends LitElement {
   private _resetAreaHeaderAfterNavigation(): void {
     this._resetAreaHeaderScrollState(true);
     requestAnimationFrame(() => this._resetAreaHeaderScrollState(true));
+    requestAnimationFrame(() => requestAnimationFrame(() => this._resetAreaHeaderScrollState(true)));
     window.setTimeout(() => this._resetAreaHeaderScrollState(true), 80);
+    window.setTimeout(() => this._resetAreaHeaderScrollState(true), 220);
+  }
+
+  private _resetProgressiveMobileRender(): void {
+    this._renderAllMobileHomeAreas = !this._isMobile;
+    this._renderAllMobileAreaEntities = !this._isMobile;
+
+    if (this._progressiveRenderCancel) {
+      this._progressiveRenderCancel();
+      this._progressiveRenderCancel = undefined;
+    }
+  }
+
+  private _scheduleProgressiveMobileRender(): void {
+    if (!this._isMobile) {
+      this._renderAllMobileHomeAreas = true;
+      this._renderAllMobileAreaEntities = true;
+      return;
+    }
+
+    if (this._renderAllMobileHomeAreas && this._renderAllMobileAreaEntities) return;
+    if (this._progressiveRenderCancel) return;
+
+    const renderRest = () => {
+      this._progressiveRenderCancel = undefined;
+      this._renderAllMobileHomeAreas = true;
+      this._renderAllMobileAreaEntities = true;
+    };
+    const requestIdle = (window as any).requestIdleCallback as
+      | ((callback: () => void, options?: { timeout: number }) => number)
+      | undefined;
+    const cancelIdle = (window as any).cancelIdleCallback as
+      | ((handle: number) => void)
+      | undefined;
+
+    if (requestIdle && cancelIdle) {
+      const handle = requestIdle(renderRest, { timeout: 450 });
+      this._progressiveRenderCancel = () => cancelIdle(handle);
+    } else {
+      const handle = window.setTimeout(renderRest, 90);
+      this._progressiveRenderCancel = () => window.clearTimeout(handle);
+    }
   }
 
   private _updateAreaHeaderScrollState(): void {
@@ -9409,7 +9517,6 @@ export class DwainsLayoutCard extends LitElement {
 
       if (oldHass) {
         this._updateEntityCards(oldHass, this.hass);
-        this._updateAreaDataCache();
       }
 
       // Update favorite tile cards when hass changes
@@ -9471,11 +9578,22 @@ export class DwainsLayoutCard extends LitElement {
     }
 
     if (changedProps.has('_selectedView') || changedProps.has('_selectedArea')) {
+      this._resetProgressiveMobileRender();
+
       if (this._selectedView === 'area') {
         this._resetAreaHeaderAfterNavigation();
       } else {
         this._resetAreaHeaderScrollState(false);
       }
+    }
+
+    if (
+      changedProps.has('_selectedView') ||
+      changedProps.has('_selectedArea') ||
+      changedProps.has('_isMobile') ||
+      (this._isMobile && (!this._renderAllMobileHomeAreas || !this._renderAllMobileAreaEntities))
+    ) {
+      this._scheduleProgressiveMobileRender();
     }
 
   }
@@ -10955,6 +11073,9 @@ export class DwainsLayoutCard extends LitElement {
     const desktopCollapsed = this._isDesktopAreaSidebarCollapsed();
     const layout = desktopCollapsed ? 'grid' : this._mobileHomeAreasLayout;
     const gridMode = layout === 'grid';
+    const renderedAreas = this._isMobile && !this._renderAllMobileHomeAreas && areas.length > MOBILE_INITIAL_HOME_AREAS
+      ? areas.slice(0, MOBILE_INITIAL_HOME_AREAS)
+      : areas;
 
     return html`
       <section class="mobile-home-section mobile-home-areas layout-${layout}">
@@ -10990,7 +11111,7 @@ export class DwainsLayoutCard extends LitElement {
         </div>
         <div class="mobile-area-rail">
           ${repeat(
-            areas,
+            renderedAreas,
             area => area.area_id,
             area => this._renderMobileHomeAreaCard(area)
           )}
@@ -12242,12 +12363,18 @@ export class DwainsLayoutCard extends LitElement {
   private _renderMobileEntitiesSection(area: AreaConfig, entities: EntityConfig[]) {
     const groups = this._mobileEntityGroups(entities);
     if (!groups.length) return nothing;
+    const renderedGroups = this._isMobile && !this._renderAllMobileAreaEntities && groups.length > MOBILE_INITIAL_ENTITY_GROUPS
+      ? groups.slice(0, MOBILE_INITIAL_ENTITY_GROUPS)
+      : groups;
 
     return html`
       <section class="mobile-entities-section layout-${this._mobileEntityLayout}">
-        ${groups.map(group => {
+        ${renderedGroups.map(group => {
           const hasActions = this._mobileControllableEntities(group.entities).length > 0;
           const gridMode = this._mobileEntityLayout === 'grid';
+          const renderedEntities = this._isMobile && !this._renderAllMobileAreaEntities && group.entities.length > MOBILE_INITIAL_ENTITY_CARDS
+            ? group.entities.slice(0, MOBILE_INITIAL_ENTITY_CARDS)
+            : group.entities;
 
           return html`
             <div class="mobile-domain-group ${this._isMobileDomainMenuOpen(area.area_id, group.key) ? 'menu-open' : ''}">
@@ -12279,13 +12406,13 @@ export class DwainsLayoutCard extends LitElement {
                 ` : nothing}
 	              </div>
 	              <div class="mobile-entity-rail">
-	                ${this._renderDomainCustomCardSlot(area.area_id, group.key, 0, group.entities.length)}
+	                ${this._renderDomainCustomCardSlot(area.area_id, group.key, 0, renderedEntities.length)}
 	                ${repeat(
-	                  group.entities,
+	                  renderedEntities,
 	                  entity => entity.entity_id,
 	                  (entity, index) => html`
                       ${this._renderMobileEntityCard(area, entity)}
-                      ${this._renderDomainCustomCardSlot(area.area_id, group.key, index + 1, group.entities.length)}
+                      ${this._renderDomainCustomCardSlot(area.area_id, group.key, index + 1, renderedEntities.length)}
                     `
 	                )}
 	              </div>
@@ -13989,11 +14116,32 @@ export class DwainsLayoutCard extends LitElement {
     clearAreaDataCache();
   }
 
-  private _updateAreaDataCache(): void {
-    // Clear area data cache to ensure fresh calculations
-    this._areaDataCache.clear();
-    // Also clear the external area data cache
-    clearAreaDataCache();
+  private _invalidateChangedAreaCaches(oldHass: HomeAssistant, newHass: HomeAssistant): void {
+    const changedAreaIds = new Set<string>();
+    let hasChangedEntity = false;
+
+    for (const entity of this.config?.entities || []) {
+      const entityId = entity.entity_id;
+      const oldState = oldHass.states[entityId];
+      const newState = newHass.states[entityId];
+
+      if (oldState === newState) continue;
+      if (oldState?.state === newState?.state && oldState?.attributes === newState?.attributes) continue;
+
+      hasChangedEntity = true;
+      if (entity.area_id) {
+        changedAreaIds.add(entity.area_id);
+      }
+    }
+
+    if (hasChangedEntity) {
+      this._domainCountsCache.clear();
+    }
+
+    changedAreaIds.forEach(areaId => {
+      this._areaDataCache.delete(areaId);
+      clearAreaDataCacheForArea(areaId);
+    });
   }
 
   private _showUnavailableEntitiesModal(areaId: string) {

@@ -10,6 +10,15 @@ export const clearAreaDataCache = (): void => {
   areaDataCache.clear();
 };
 
+export const clearAreaDataCacheForArea = (areaId: string): void => {
+  const prefix = `${areaId}-`;
+  for (const key of areaDataCache.keys()) {
+    if (key.startsWith(prefix)) {
+      areaDataCache.delete(key);
+    }
+  }
+};
+
 // Helper function to check if entity is hidden
 const isEntityHidden = (entityId: string, domain: string, areaId: string, config?: any): boolean => {
   if (!config?.areas_options?.[areaId]?.groups_options?.[domain]?.hidden) {
