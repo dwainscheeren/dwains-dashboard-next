@@ -12,7 +12,7 @@ interface NavItem {
   path: string;
   icon: string;
   label: string;
-  action?: 'home' | 'devices' | 'pages' | 'menu';
+  action?: 'home' | 'devices' | 'pages';
 }
 
 interface PageItem {
@@ -34,7 +34,6 @@ interface DeviceContext {
   label?: string;
 }
 
-const MENU_PATH = '__ha_menu__';
 const PAGES_PATH = '__dd_pages__';
 const MOBILE_NAV_QUERY = '(max-width: 768px)';
 const MOBILE_NAV_ACTIVE_CLASS = 'dd-next-mobile-nav-active';
@@ -181,7 +180,6 @@ export class DwainsBottomNav extends LitElement {
         action: 'devices',
       },
       ...pageNavItems,
-      { path: MENU_PATH, icon: 'mdi:menu', label: 'Menu', action: 'menu' },
     ];
     this._sync();
   }
@@ -197,11 +195,6 @@ export class DwainsBottomNav extends LitElement {
     }
     if (item.action === 'pages') {
       this._openPages();
-      return;
-    }
-    if (item.action === 'menu') {
-      this._pagesOpen = false;
-      this._toggleHaMenu();
       return;
     }
     this._go(item.path);
@@ -283,7 +276,7 @@ export class DwainsBottomNav extends LitElement {
     // hass-toggle-menu wordt afgehandeld door <home-assistant-main>, dat in de
     // shadow-DOM van <home-assistant> zit. Het event moet dus DAAR (of dieper)
     // afgevuurd worden — van buitenaf bubblet het er niet in.
-    _setDrawerPlacement(_isMobileNavActive(this.dashSegment) ? 'end' : 'start');
+    _setDrawerPlacement('start');
     const makeEv = () =>
       new CustomEvent('hass-toggle-menu', { bubbles: true, composed: true });
     const main = _deepFind('home-assistant-main');
@@ -309,6 +302,7 @@ export class DwainsBottomNav extends LitElement {
     return html`
       ${this._renderPagesSheet()}
       ${this._renderRestrictedMenuSheet()}
+      ${this._renderStandaloneMenuButton()}
       <nav class="bar">
         ${this._items.map(
           (it) => {
@@ -331,6 +325,35 @@ export class DwainsBottomNav extends LitElement {
       </nav>
     `;
   }
+
+  private _renderStandaloneMenuButton() {
+    const isArea = this._areaContext.view === 'area' && Boolean(this._areaContext.areaId);
+    const label = isArea ? 'Back to home' : 'Open menu';
+    return html`
+      <button
+        class="standalone-menu ${isArea ? 'is-back' : ''}"
+        type="button"
+        title=${label}
+        aria-label=${label}
+        @click=${() => {
+          if (isArea) {
+            this._goHomeFromArea();
+          } else {
+            this._toggleHaMenu();
+          }
+        }}
+      >
+        <ha-icon icon=${isArea ? 'mdi:arrow-left' : 'mdi:menu'}></ha-icon>
+      </button>
+    `;
+  }
+
+  private _goHomeFromArea = (): void => {
+    this._pagesOpen = false;
+    this._restrictedMenuOpen = false;
+    this._active = 'home';
+    window.dispatchEvent(new CustomEvent('dwains-dashboard-next-open-home'));
+  };
 
   private _renderRestrictedMenuSheet() {
     if (!this._isHaMenuRestricted()) return nothing;
@@ -469,20 +492,21 @@ export class DwainsBottomNav extends LitElement {
   static override styles = css`
     :host {
       display: none;
+      width: 0;
+      height: 0;
+      overflow: visible;
+      pointer-events: none;
       -webkit-tap-highlight-color: transparent;
     }
     @media (max-width: 768px) {
       :host {
         display: block;
-        position: fixed !important;
-        inset: 0 !important;
-        width: 100vw;
-        height: 100vh;
-        height: 100dvh;
-        z-index: 140;
+        position: static !important;
+        width: 0 !important;
+        height: 0 !important;
         pointer-events: none;
         overflow: visible;
-        contain: layout style;
+        contain: none;
       }
     }
     .bar {
@@ -490,7 +514,7 @@ export class DwainsBottomNav extends LitElement {
       left: 50%;
       right: auto;
       bottom: calc(4px + env(safe-area-inset-bottom, 0px));
-      z-index: 3;
+      z-index: 142;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -523,6 +547,65 @@ export class DwainsBottomNav extends LitElement {
         transform 0.28s cubic-bezier(0.22, 1, 0.36, 1),
         background-color 0.28s cubic-bezier(0.22, 1, 0.36, 1),
         box-shadow 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    .standalone-menu {
+      position: fixed;
+      left: max(14px, env(safe-area-inset-left, 0px));
+      bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+      z-index: 143;
+      width: 52px;
+      height: 52px;
+      padding: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid rgba(255, 255, 255, 0.72);
+      border-radius: 999px;
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(255, 255, 255, 0.5)),
+        rgba(255, 255, 255, 0.62);
+      color: rgba(15, 23, 42, 0.92);
+      box-shadow:
+        0 18px 42px rgba(15, 23, 42, 0.16),
+        inset 0 1px 0 rgba(255, 255, 255, 0.92),
+        inset 0 -1px 0 rgba(15, 23, 42, 0.04);
+      backdrop-filter: blur(24px) saturate(180%);
+      -webkit-backdrop-filter: blur(24px) saturate(180%);
+      pointer-events: auto;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
+      transition:
+        transform 0.18s ease,
+        background-color 0.18s ease,
+        color 0.18s ease,
+        box-shadow 0.18s ease;
+    }
+
+    .standalone-menu:hover {
+      transform: translateY(-1px);
+      box-shadow:
+        0 22px 48px rgba(15, 23, 42, 0.2),
+        inset 0 1px 0 rgba(255, 255, 255, 0.92),
+        inset 0 -1px 0 rgba(15, 23, 42, 0.04);
+    }
+
+    .standalone-menu:active {
+      transform: scale(0.96);
+    }
+
+    .standalone-menu.is-back {
+      background: #182044;
+      color: #ffffff;
+      border-color: rgba(255, 255, 255, 0.18);
+      box-shadow:
+        0 18px 42px rgba(15, 23, 42, 0.24),
+        inset 0 1px 0 rgba(255, 255, 255, 0.14);
+    }
+
+    .standalone-menu ha-icon {
+      --mdc-icon-size: 24px;
     }
     .bar::before {
       content: "";
@@ -626,7 +709,7 @@ export class DwainsBottomNav extends LitElement {
     .pages-backdrop {
       position: fixed;
       inset: 0;
-      z-index: 1;
+      z-index: 140;
       width: 100vw;
       height: 100vh;
       padding: 0;
@@ -653,7 +736,7 @@ export class DwainsBottomNav extends LitElement {
       left: 18px;
       right: 18px;
       bottom: calc(94px + env(safe-area-inset-bottom, 0px));
-      z-index: 2;
+      z-index: 141;
       max-height: min(54vh, 460px);
       display: flex;
       flex-direction: column;
@@ -803,6 +886,12 @@ export class DwainsBottomNav extends LitElement {
       .bar {
         background: rgba(255, 255, 255, 0.94);
       }
+      .standalone-menu {
+        left: max(10px, env(safe-area-inset-left, 0px));
+        bottom: calc(6px + env(safe-area-inset-bottom, 0px));
+        width: 48px;
+        height: 48px;
+      }
       .pages-sheet {
         background: rgba(255, 255, 255, 0.96);
       }
@@ -877,6 +966,22 @@ export class DwainsBottomNav extends LitElement {
         color: #ffffff;
       }
 
+      .standalone-menu {
+        border-color: rgba(255, 255, 255, 0.13);
+        background:
+          linear-gradient(180deg, rgba(43, 47, 58, 0.82), rgba(12, 14, 20, 0.76)),
+          rgba(14, 16, 22, 0.8);
+        color: rgba(248, 250, 252, 0.94);
+        box-shadow:
+          0 22px 52px rgba(0, 0, 0, 0.5),
+          inset 0 1px 0 rgba(255, 255, 255, 0.12);
+      }
+
+      .standalone-menu.is-back {
+        background: #182044;
+        color: #ffffff;
+      }
+
       .pages-backdrop {
         background: rgba(0, 0, 0, 0.36);
       }
@@ -928,6 +1033,7 @@ export class DwainsBottomNav extends LitElement {
     @media (prefers-reduced-motion: reduce) {
       .bar,
       .item,
+      .standalone-menu,
       .pages-backdrop,
       .pages-sheet {
         transition-duration: 0.01ms !important;
@@ -1021,13 +1127,18 @@ function _hideNativeHeaderOnMobile(attempt = 0): void {
 
       html.${activeClass} dwains-dashboard-next-bottom-nav,
       body.${activeClass} dwains-dashboard-next-bottom-nav {
-        position: fixed !important;
-        inset: 0 !important;
-        width: 100vw !important;
-        height: 100vh !important;
-        height: 100dvh !important;
+        display: block !important;
+        position: static !important;
+        inset: auto !important;
+        width: 0 !important;
+        height: 0 !important;
+        min-width: 0 !important;
+        min-height: 0 !important;
+        max-width: 0 !important;
+        max-height: 0 !important;
+        overflow: visible !important;
         pointer-events: none !important;
-        z-index: 140 !important;
+        z-index: auto !important;
       }
 
       ${hiddenHeaderSelectors} {
@@ -1168,9 +1279,8 @@ function _setNativeHeaderElementsHidden(active: boolean): void {
 
 /**
  * HA's mobiele zijmenu is een Web Awesome <wa-drawer placement="start"> (links).
- * Binnen DD met de mobiele bottom-nav zetten we hem tijdelijk rechts. Buiten die
- * context herstellen we expliciet naar links, omdat HA het attribuut zelf niet
- * altijd terugzet bij dashboardwissels.
+ * We houden dit expliciet links, omdat DD Next nu een eigen bottom-nav heeft en
+ * het hoofdmenu vanuit een losse linker knop opent.
  */
 function _setDrawerPlacement(placement: 'start' | 'end'): void {
   _deepFindAll('wa-drawer').forEach((wa) => {
@@ -1244,7 +1354,7 @@ function _syncHaShellForBottomNav(dashSegment?: string): void {
   } else {
     _setNativeHeaderElementsHidden(false);
   }
-  _setDrawerPlacement(active ? 'end' : 'start');
+  _setDrawerPlacement('start');
   if (!active) {
     _removeSidebarSection();
   }

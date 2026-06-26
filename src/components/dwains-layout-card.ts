@@ -1165,7 +1165,7 @@ export class DwainsLayoutCard extends LitElement {
       overflow-y: auto;
       overflow-x: hidden;
       overflow-anchor: none;
-      overscroll-behavior: contain;
+      overscroll-behavior: auto;
       -webkit-overflow-scrolling: touch;
       padding: 16px;
     }
@@ -1222,6 +1222,10 @@ export class DwainsLayoutCard extends LitElement {
       border-radius: 999px;
       background: color-mix(in srgb, var(--secondary-background-color) 74%, var(--card-background-color));
       color: var(--primary-text-color);
+    }
+
+    .settings-page-back ha-icon {
+      --mdc-icon-size: 22px;
     }
 
     .settings-page-title {
@@ -6813,8 +6817,35 @@ export class DwainsLayoutCard extends LitElement {
     }
 
     @media (max-width: 768px) {
+      :host {
+        height: auto;
+        max-height: none;
+        min-height: 100%;
+        overflow: visible;
+      }
+
+      .layout-container {
+        display: block;
+        height: auto;
+        max-height: none;
+        min-height: 100dvh;
+        overflow: visible;
+      }
+
+      .main-content {
+        display: block;
+        min-height: 100dvh;
+        overflow: visible;
+      }
+
       .content-area {
         padding: 0;
+        height: auto;
+        max-height: none;
+        min-height: 100dvh;
+        overflow: visible;
+        overscroll-behavior: auto;
+        -webkit-overflow-scrolling: auto;
         background:
           linear-gradient(180deg,
             color-mix(in srgb, var(--primary-color) 5%, var(--primary-background-color)) 0%,
@@ -6840,20 +6871,31 @@ export class DwainsLayoutCard extends LitElement {
       .settings-page-view {
         width: 100%;
         margin: 0;
-        padding: 10px 10px calc(164px + env(safe-area-inset-bottom, 0px));
+        padding: 8px 10px calc(152px + env(safe-area-inset-bottom, 0px));
       }
 
       .settings-page-header {
         grid-template-columns: auto minmax(0, 1fr);
         gap: 12px;
-        margin: 0 0 10px;
-        padding: 14px 14px;
-        border-radius: 0 0 18px 18px;
-        border-top: 0;
+        margin: 0 0 12px;
+        padding: 12px 14px;
+        border-radius: 18px;
+        border-top: 1px solid color-mix(in srgb, var(--divider-color) 72%, transparent);
+        box-shadow: 0 10px 28px rgba(15, 23, 42, 0.07);
+      }
+
+      .settings-page-back {
+        width: 42px;
+        height: 42px;
       }
 
       .settings-page-title h1 {
-        font-size: 22px;
+        font-size: 21px;
+      }
+
+      .settings-page-title p {
+        margin-top: 3px;
+        font-size: 13px;
       }
 
       .settings-page-actions {
@@ -6862,22 +6904,29 @@ export class DwainsLayoutCard extends LitElement {
 
       .settings-page-editor {
         border-radius: 18px;
+        box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
       }
 
       .settings-page-bottom-actions {
         position: sticky;
         bottom: calc(88px + env(safe-area-inset-bottom, 0px));
         z-index: 5;
-        display: flex;
-        justify-content: flex-end;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        align-items: center;
         margin: 12px 0 0;
-        padding: 10px;
+        padding: 8px;
         border: 1px solid color-mix(in srgb, var(--divider-color) 62%, transparent);
-        border-radius: 18px;
+        border-radius: 999px;
         background: color-mix(in srgb, var(--card-background-color) 92%, transparent);
-        box-shadow: 0 18px 38px rgba(15, 23, 42, 0.14);
+        box-shadow: 0 16px 34px rgba(15, 23, 42, 0.13);
         backdrop-filter: blur(18px) saturate(170%);
         -webkit-backdrop-filter: blur(18px) saturate(170%);
+      }
+
+      .settings-page-bottom-actions .settings-secondary,
+      .settings-page-bottom-actions .settings-primary {
+        width: 100%;
       }
 
       .global-header.mobile {
@@ -7984,17 +8033,19 @@ export class DwainsLayoutCard extends LitElement {
       .area-content-area .area-header {
         box-sizing: border-box;
         min-height: calc(146px + env(safe-area-inset-top, 0px));
-        margin: 0 -10px 12px;
+        margin: 0 -10px 18px;
         padding: calc(12px + env(safe-area-inset-top, 0px)) 16px 12px;
         border-radius: 0 0 18px 18px;
         background:
-          radial-gradient(circle at 12% 0%, rgba(255, 255, 255, 0.72), transparent 28%),
+          radial-gradient(circle at 10% -8%, color-mix(in srgb, var(--primary-color) 14%, transparent) 0%, transparent 34%),
+          radial-gradient(circle at 92% 4%, color-mix(in srgb, #35b7d7 10%, transparent) 0%, transparent 30%),
           linear-gradient(180deg,
-            color-mix(in srgb, var(--card-background-color) 99%, transparent) 0%,
-            color-mix(in srgb, var(--card-background-color) 92%, #dff4fb 8%) 100%);
+            color-mix(in srgb, var(--card-background-color) 94%, var(--primary-color) 6%) 0%,
+            color-mix(in srgb, var(--card-background-color) 90%, #dff4fb 10%) 62%,
+            color-mix(in srgb, var(--primary-background-color) 82%, var(--card-background-color) 18%) 100%);
         box-shadow:
-          0 10px 28px rgba(15, 23, 42, 0.08),
-          inset 0 -1px 0 color-mix(in srgb, var(--divider-color) 55%, transparent);
+          0 14px 34px rgba(15, 23, 42, 0.1),
+          inset 0 -1px 0 color-mix(in srgb, var(--primary-color) 13%, var(--divider-color));
       }
 
       .area-content-area .area-header.has-metrics,
@@ -8015,16 +8066,21 @@ export class DwainsLayoutCard extends LitElement {
       .area-content-area .area-header:not(.has-picture)::before {
         background:
           linear-gradient(180deg,
-            rgba(255, 255, 255, 0.54) 0%,
-            rgba(255, 255, 255, 0.14) 58%,
-            rgba(226, 235, 242, 0.38) 100%);
+            color-mix(in srgb, var(--card-background-color) 42%, transparent) 0%,
+            transparent 52%,
+            color-mix(in srgb, var(--primary-color) 5%, transparent) 100%);
+        opacity: 1;
       }
 
       .area-content-area .area-header::after {
-        bottom: -16px;
-        height: 30px;
-        opacity: 0.55;
-        filter: blur(10px);
+        bottom: -20px;
+        height: 40px;
+        opacity: 0.88;
+        filter: blur(12px);
+        background:
+          linear-gradient(180deg,
+            color-mix(in srgb, var(--primary-color) 7%, var(--card-background-color)) 0%,
+            transparent 82%);
       }
 
       .area-content-area .area-mobile-home {
@@ -8381,13 +8437,15 @@ export class DwainsLayoutCard extends LitElement {
         display: block;
         border-radius: 0 0 18px 18px;
         background:
-          radial-gradient(circle at 12% 0%, rgba(255, 255, 255, 0.72), transparent 28%),
+          radial-gradient(circle at 10% -8%, color-mix(in srgb, var(--primary-color) 14%, transparent) 0%, transparent 34%),
+          radial-gradient(circle at 92% 4%, color-mix(in srgb, #35b7d7 10%, transparent) 0%, transparent 30%),
           linear-gradient(180deg,
-            color-mix(in srgb, var(--card-background-color) 99%, transparent) 0%,
-            color-mix(in srgb, var(--card-background-color) 92%, #dff4fb 8%) 100%);
+            color-mix(in srgb, var(--card-background-color) 94%, var(--primary-color) 6%) 0%,
+            color-mix(in srgb, var(--card-background-color) 90%, #dff4fb 10%) 62%,
+            color-mix(in srgb, var(--primary-background-color) 82%, var(--card-background-color) 18%) 100%);
         box-shadow:
           0 14px 34px rgba(15, 23, 42, 0.12),
-          inset 0 -1px 0 color-mix(in srgb, var(--divider-color) 55%, transparent);
+          inset 0 -1px 0 color-mix(in srgb, var(--primary-color) 13%, var(--divider-color));
         pointer-events: none;
       }
 
@@ -9206,11 +9264,13 @@ export class DwainsLayoutCard extends LitElement {
 
   private _setupEventListeners() {
     window.addEventListener('resize', this._handleResize);
+    window.addEventListener('scroll', this._handleWindowScroll, { passive: true });
     this.addEventListener('show-more-info', this._handleShowMoreInfo);
   }
 
   private _cleanupEventListeners() {
     window.removeEventListener('resize', this._handleResize);
+    window.removeEventListener('scroll', this._handleWindowScroll);
     this.removeEventListener('show-more-info', this._handleShowMoreInfo);
   }
 
@@ -9238,8 +9298,21 @@ export class DwainsLayoutCard extends LitElement {
     }
 
     const target = event.currentTarget as HTMLElement | null;
-    const scrollTop = target?.scrollTop || 0;
+    const scrollTop = window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || target?.scrollTop || 0;
     this._pendingAreaScrollTop = scrollTop;
+
+    if (this._areaHeaderScrollRaf) return;
+
+    this._areaHeaderScrollRaf = requestAnimationFrame(() => {
+      this._areaHeaderScrollRaf = undefined;
+      this._setAreaHeaderStuckForScroll(this._pendingAreaScrollTop, true);
+    });
+  };
+
+  private _handleWindowScroll = () => {
+    if (!this._isMobile || this._selectedView !== 'area') return;
+
+    this._pendingAreaScrollTop = window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0;
 
     if (this._areaHeaderScrollRaf) return;
 
@@ -9366,7 +9439,8 @@ export class DwainsLayoutCard extends LitElement {
       if (this._areaHeaderRevealed) this._areaHeaderRevealed = false;
       return;
     }
-    this._setAreaHeaderStuckForScroll(scrollContainer.scrollTop, false);
+    const scrollTop = window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || scrollContainer.scrollTop || 0;
+    this._setAreaHeaderStuckForScroll(scrollTop, false);
   }
 
   private _setAreaHeaderStuckForScroll(scrollTop: number, fromScroll: boolean): void {
@@ -14157,11 +14231,11 @@ export class DwainsLayoutCard extends LitElement {
           <button
             class="settings-page-back"
             type="button"
-            title="Back"
-            aria-label="Back"
+            title="Close"
+            aria-label="Close"
             @click=${this._closeSettingsPage}
           >
-            <ha-icon icon="mdi:arrow-left"></ha-icon>
+            <ha-icon icon="mdi:close"></ha-icon>
           </button>
           <div class="settings-page-title">
             <h1>Dashboard settings</h1>

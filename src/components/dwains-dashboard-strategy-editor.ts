@@ -636,6 +636,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
         <div class="settings-detail-toolbar">
           <button class="settings-back-button" type="button" @click=${this._backToSettingsOverview}>
             <ha-icon icon="mdi:arrow-left"></ha-icon>
+            <span>All settings</span>
           </button>
           <div class="settings-detail-title">
             <span>${item.title}</span>
@@ -3281,35 +3282,45 @@ export class DwainsDashboardStrategyEditor extends LitElement {
       }
 
       .settings-detail-toolbar {
-        position: sticky;
-        top: 0;
-        z-index: 2;
         max-width: 940px;
-        margin: -16px auto 16px;
-        display: flex;
+        margin: 0 auto 14px;
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr);
         align-items: center;
         gap: 12px;
-        padding: 14px 0;
-        background: var(--primary-background-color);
-        border-bottom: 1px solid var(--divider-color);
+        padding: 12px 14px;
+        border: 1px solid color-mix(in srgb, var(--divider-color) 72%, transparent);
+        border-radius: 16px;
+        background: color-mix(in srgb, var(--card-background-color) 96%, var(--primary-color));
+        box-shadow: 0 8px 22px rgba(15, 23, 42, 0.05);
       }
 
       .settings-back-button {
-        width: 42px;
-        height: 42px;
+        width: auto;
+        min-width: 0;
+        height: 36px;
+        padding: 0 12px 0 10px;
         border: 0;
         border-radius: 999px;
         display: inline-flex;
         align-items: center;
+        gap: 6px;
         justify-content: center;
-        color: var(--primary-text-color);
-        background: var(--card-background-color);
-        box-shadow: 0 2px 10px rgba(15, 23, 42, 0.08);
+        color: var(--primary-color);
+        background: color-mix(in srgb, var(--primary-color) 9%, transparent);
+        box-shadow: none;
         cursor: pointer;
+        font-size: 13px;
+        font-weight: 800;
+        line-height: 1;
       }
 
       .settings-back-button ha-icon {
-        --mdc-icon-size: 22px;
+        --mdc-icon-size: 18px;
+      }
+
+      .settings-back-button span {
+        white-space: nowrap;
       }
 
       .settings-detail-title {
@@ -3320,7 +3331,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
 
       .settings-detail-title span {
         color: var(--primary-text-color);
-        font-size: 20px;
+        font-size: 18px;
         font-weight: 700;
         line-height: 1.2;
       }
@@ -3406,8 +3417,19 @@ export class DwainsDashboardStrategyEditor extends LitElement {
         }
 
         .settings-detail-toolbar {
-          margin: -16px -16px 16px;
-          padding: 10px 16px;
+          margin: 0 0 12px;
+          padding: 10px 12px;
+          border-radius: 14px;
+        }
+
+        .settings-detail-title span {
+          font-size: 17px;
+        }
+
+        .settings-detail-title small {
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
         }
       }
 
