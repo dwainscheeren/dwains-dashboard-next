@@ -42,6 +42,7 @@ const SIDEBAR_COLLAPSE_THRESHOLD = 96;
 const AREA_HEADER_STICK_SCROLL = 76;
 const AREA_HEADER_UNSTICK_SCROLL = 38;
 const AREA_HEADER_REVEAL_SCROLL = 88;
+const ICON_ARROW_LEFT = 'M20,11V13H8L13.5,18.5L12.08,19.92L4.16,12L12.08,4.08L13.5,5.5L8,11H20Z';
 
 interface CachedAreaData {
   data: AreaData;
@@ -184,6 +185,7 @@ export class DwainsLayoutCard extends LitElement {
   private _favoriteSuggestionsLoading = false;
   private _mobileDomainMenuPortal?: HTMLElement;
   private _areaHeaderScrollRaf?: number;
+  private _pendingAreaScrollTop = 0;
   private _optimisticCleanupTimer?: number;
   private _lastAreaScrollTop = 0;
   private _areaScrollUpDistance = 0;
@@ -440,6 +442,23 @@ export class DwainsLayoutCard extends LitElement {
       touch-action: manipulation;
     }
 
+    .dd-static-icon {
+      width: 20px;
+      height: 20px;
+      display: block;
+      flex: 0 0 auto;
+      fill: currentColor;
+      pointer-events: none;
+    }
+
+    .mobile-area-card,
+    .home-camera-card,
+    .home-summary-card,
+    .home-status-card,
+    .favorite-card-wrapper {
+      contain: layout style;
+    }
+
     /* Layout Container */
     .layout-container {
       --area-sidebar-width: 250px;
@@ -484,6 +503,7 @@ export class DwainsLayoutCard extends LitElement {
       min-height: 0;
       overflow-y: auto;
       overflow-x: hidden;
+      -webkit-overflow-scrolling: touch;
     }
 
     .layout-container.sidebar-resizing .sidebar {
@@ -1116,6 +1136,8 @@ export class DwainsLayoutCard extends LitElement {
       min-height: 0;
       overflow-y: auto;
       overflow-x: hidden;
+      overscroll-behavior: contain;
+      -webkit-overflow-scrolling: touch;
       padding: 16px;
     }
     /* Ruimte voor de mobiele onderbalk */
@@ -2887,6 +2909,10 @@ export class DwainsLayoutCard extends LitElement {
       position: relative;
     }
 
+    .mobile-domain-group:not(.menu-open) {
+      contain: layout style;
+    }
+
     .mobile-domain-group.menu-open {
       z-index: 1200;
     }
@@ -3047,6 +3073,7 @@ export class DwainsLayoutCard extends LitElement {
       --entity-color: var(--primary-color);
       position: relative;
       box-sizing: border-box;
+      contain: layout style;
       flex: 0 0 164px;
       min-width: 0;
       min-height: 128px;
@@ -6103,8 +6130,11 @@ export class DwainsLayoutCard extends LitElement {
         inset 0 0 0 1px rgba(15, 23, 42, 0.08);
     }
 
-    .area-mobile-round ha-icon {
+    .area-mobile-round ha-icon,
+    .area-mobile-round .dd-static-icon {
       --mdc-icon-size: 22px;
+      width: 22px;
+      height: 22px;
     }
 
     .area-mobile-home {
@@ -6320,8 +6350,11 @@ export class DwainsLayoutCard extends LitElement {
       outline-offset: 3px;
     }
 
-    .area-desktop-back ha-icon {
+    .area-desktop-back ha-icon,
+    .area-desktop-back .dd-static-icon {
       --mdc-icon-size: 22px;
+      width: 22px;
+      height: 22px;
     }
 
     .layout-container.sidebar-collapsed .area-desktop-back {
@@ -6629,7 +6662,7 @@ export class DwainsLayoutCard extends LitElement {
       }
 
       .content-area.area-content-area {
-        padding-top: 0;
+        padding: 0 10px calc(128px + env(safe-area-inset-bottom, 0px));
       }
 
       .home-view {
@@ -6789,8 +6822,11 @@ export class DwainsLayoutCard extends LitElement {
           inset 0 0 0 1px rgba(15, 23, 42, 0.05);
       }
 
-      .area-mobile-round ha-icon {
+      .area-mobile-round ha-icon,
+      .area-mobile-round .dd-static-icon {
         --mdc-icon-size: 20px;
+        width: 20px;
+        height: 20px;
       }
 
       .area-header.is-stuck .area-mobile-round {
@@ -7336,8 +7372,11 @@ export class DwainsLayoutCard extends LitElement {
       }
 
       .area-content-area .area-mobile-round ha-icon,
+      .area-content-area .area-mobile-round .dd-static-icon,
       .area-content-area .area-mobile-actions .unavailable-entities-icon ha-icon {
         --mdc-icon-size: 22px;
+        width: 22px;
+        height: 22px;
         color: currentColor;
       }
 
@@ -7807,8 +7846,11 @@ export class DwainsLayoutCard extends LitElement {
       }
 
       .area-content-area .area-mobile-round ha-icon,
+      .area-content-area .area-mobile-round .dd-static-icon,
       .area-content-area .area-mobile-actions .unavailable-entities-icon ha-icon {
         --mdc-icon-size: 20px;
+        width: 20px;
+        height: 20px;
       }
 
       .area-content-area .area-header-content {
@@ -7997,7 +8039,8 @@ export class DwainsLayoutCard extends LitElement {
         -webkit-backdrop-filter: blur(18px) saturate(1.25);
       }
 
-      .area-content-area .area-header.has-picture:not(.is-stuck) .area-mobile-home ha-icon {
+      .area-content-area .area-header.has-picture:not(.is-stuck) .area-mobile-home ha-icon,
+      .area-content-area .area-header.has-picture:not(.is-stuck) .area-mobile-home .dd-static-icon {
         color: #ffffff;
         opacity: 1;
       }
@@ -8977,13 +9020,13 @@ export class DwainsLayoutCard extends LitElement {
 
     const target = event.currentTarget as HTMLElement | null;
     const scrollTop = target?.scrollTop || 0;
+    this._pendingAreaScrollTop = scrollTop;
 
-    if (this._areaHeaderScrollRaf) {
-      cancelAnimationFrame(this._areaHeaderScrollRaf);
-    }
+    if (this._areaHeaderScrollRaf) return;
+
     this._areaHeaderScrollRaf = requestAnimationFrame(() => {
       this._areaHeaderScrollRaf = undefined;
-      this._setAreaHeaderStuckForScroll(scrollTop, true);
+      this._setAreaHeaderStuckForScroll(this._pendingAreaScrollTop, true);
     });
   };
 
@@ -9002,6 +9045,7 @@ export class DwainsLayoutCard extends LitElement {
     if (scrollToTop) {
       this._scrollContentAreaToTop();
     }
+    this._pendingAreaScrollTop = 0;
     if (this._areaHeaderStuck) this._areaHeaderStuck = false;
     if (this._areaHeaderRevealed) this._areaHeaderRevealed = false;
     this._lastAreaScrollTop = 0;
@@ -11281,6 +11325,14 @@ export class DwainsLayoutCard extends LitElement {
     return ['light', 'switch', 'fan', 'input_boolean', 'cover', 'lock'].includes(domain);
   }
 
+  private _renderStaticIcon(path: string): TemplateResult {
+    return html`
+      <svg class="dd-static-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d=${path}></path>
+      </svg>
+    `;
+  }
+
   private _favoriteQuickIcon(state: any, domain: string): string {
     const value = String(state?.state || '').toLowerCase();
     if (domain === 'cover') return ['open', 'opening'].includes(value) ? 'mdi:arrow-down' : 'mdi:arrow-up';
@@ -11371,7 +11423,7 @@ export class DwainsLayoutCard extends LitElement {
               aria-label="Back to home"
               @click=${() => this._selectView('home')}
             >
-              <ha-icon icon="mdi:arrow-left"></ha-icon>
+              ${this._renderStaticIcon(ICON_ARROW_LEFT)}
             </button>
             ${this._renderAreaMobileQuickControls(area.area_id, areaEntities)}
             <div class="area-mobile-actions">
@@ -11398,7 +11450,7 @@ export class DwainsLayoutCard extends LitElement {
                 aria-label="Back to home"
                 @click=${() => this._selectView('home')}
               >
-                <ha-icon icon="mdi:arrow-left"></ha-icon>
+                ${this._renderStaticIcon(ICON_ARROW_LEFT)}
               </button>
             ` : nothing}
             <div class="area-title-group">
