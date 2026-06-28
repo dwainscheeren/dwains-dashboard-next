@@ -6466,18 +6466,6 @@ export class DwainsLayoutCard extends LitElement {
       color: var(--text-primary-color);
     }
 
-    .area-mobile-dot {
-      position: absolute;
-      top: 2px;
-      right: 2px;
-      width: 8px;
-      height: 8px;
-      display: block;
-      border-radius: 50%;
-      background: #3b73ff;
-      box-shadow: 0 0 0 2px color-mix(in srgb, var(--card-background-color) 88%, #ffffff);
-    }
-
     .area-mobile-actions .unavailable-entities-icon {
       width: 42px;
       height: 42px;
@@ -7342,17 +7330,6 @@ export class DwainsLayoutCard extends LitElement {
         background: var(--primary-color);
       }
 
-      .area-mobile-dot {
-        position: absolute;
-        top: 3px;
-        right: 3px;
-        width: 7px;
-        height: 7px;
-        border-radius: 999px;
-        background: #3867ff;
-        box-shadow: 0 0 0 2px color-mix(in srgb, var(--card-background-color) 90%, transparent);
-      }
-
       .area-header-content {
         position: relative;
         z-index: 3;
@@ -7652,13 +7629,6 @@ export class DwainsLayoutCard extends LitElement {
       .area-content-area .area-mobile-edit.active {
         background: var(--primary-color);
         color: var(--text-primary-color);
-      }
-
-      .area-content-area .area-mobile-dot {
-        top: 4px;
-        right: 4px;
-        background: #3867ff;
-        box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.92);
       }
 
       .area-content-area .area-mobile-actions .unavailable-entities-icon {
@@ -11833,7 +11803,6 @@ export class DwainsLayoutCard extends LitElement {
                   @click=${this._toggleEditMode}
                 >
                   <ha-icon icon=${this._editMode ? 'mdi:check' : 'mdi:pencil'}></ha-icon>
-                  <span class="area-mobile-dot"></span>
                 </button>
               ` : nothing}
             </div>

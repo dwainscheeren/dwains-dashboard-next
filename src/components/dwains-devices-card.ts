@@ -31,6 +31,7 @@ const NEW_DEVICES_KEY = '__new_devices__';
 const MAINTENANCE_KEY = '__maintenance__';
 const MAINTENANCE_AREA_KEY = '__maintenance_no_area__';
 const ENERGY_KEY = 'energy';
+const DEVICES_OVERVIEW_KEY = '__overview__';
 const LOW_BATTERY_THRESHOLD = 20;
 const PERSON_DOMAIN = 'person';
 const PERSON_AREA_KEY = '__people__';
@@ -132,8 +133,7 @@ export class DwainsDevicesCard extends LitElement {
       } else if (urlDomain && data.has(urlDomain)) {
         this._selectedDomain = urlDomain;
       } else {
-        const domains = this._sortedDomains(data);
-        this._selectedDomain = domains[0] ?? null;
+        this._selectedDomain = DEVICES_OVERVIEW_KEY;
       }
       this._syncBottomNavDeviceContext();
     }
@@ -601,6 +601,7 @@ export class DwainsDevicesCard extends LitElement {
   private _typeName(key: string): string {
     if (key === MAINTENANCE_KEY) return 'Maintenance';
     if (key === ENERGY_KEY) return 'Energy';
+    if (key === DEVICES_OVERVIEW_KEY) return 'Overview';
     if (key.startsWith('binary_sensor.')) {
       return getDeviceClassName(this._hass, key.slice('binary_sensor.'.length));
     }
@@ -611,6 +612,7 @@ export class DwainsDevicesCard extends LitElement {
   private _typeIcon(key: string): string {
     if (key === MAINTENANCE_KEY) return 'mdi:wrench';
     if (key === ENERGY_KEY) return 'mdi:flash';
+    if (key === DEVICES_OVERVIEW_KEY) return 'mdi:view-grid-outline';
     if (key === PERSON_DOMAIN) return 'mdi:account-group';
     if (key.startsWith('binary_sensor.')) {
       return getDeviceClassIcon('binary_sensor', key.slice('binary_sensor.'.length));
@@ -621,6 +623,7 @@ export class DwainsDevicesCard extends LitElement {
   private _typeColor(key: string): string {
     if (key === MAINTENANCE_KEY) return 'var(--warning-color, #ff9800)';
     if (key === ENERGY_KEY) return '#d88e20';
+    if (key === DEVICES_OVERVIEW_KEY) return 'var(--primary-color)';
     if (key.startsWith('binary_sensor.')) {
       return getDomainColor('binary_sensor', key.slice('binary_sensor.'.length));
     }
@@ -638,6 +641,8 @@ export class DwainsDevicesCard extends LitElement {
             ? 'mdi:wrench'
           : domain === ENERGY_KEY
             ? 'mdi:flash'
+          : domain === DEVICES_OVERVIEW_KEY || !domain
+            ? 'mdi:format-list-bulleted-type'
           : domain
             ? this._typeIcon(domain)
             : 'mdi:format-list-bulleted-type',
@@ -647,6 +652,8 @@ export class DwainsDevicesCard extends LitElement {
             ? 'Maintenance'
           : domain === ENERGY_KEY
             ? 'Energy'
+          : domain === DEVICES_OVERVIEW_KEY || !domain
+            ? this._t('devices.title')
           : domain
             ? this._typeName(domain)
             : this._t('devices.title'),
@@ -698,7 +705,9 @@ export class DwainsDevicesCard extends LitElement {
     );
     const canShowEnergy = showEnergyMenu ?? this._showEnergyMenu();
 
-    if (domain === NEW_DEVICES_KEY) {
+    if (domain === DEVICES_OVERVIEW_KEY) {
+      // Always available.
+    } else if (domain === NEW_DEVICES_KEY) {
       if (!canShowNewDevices) return false;
     } else if (domain === MAINTENANCE_KEY) {
       if (!canShowMaintenance) return false;
@@ -730,7 +739,7 @@ export class DwainsDevicesCard extends LitElement {
   private _selectDomain(domain: string) {
     this._pendingDomainSelection = null;
     this._selectedDomain = domain;
-    this._updateUrlDomain(domain);
+    this._updateUrlDomain(domain === DEVICES_OVERVIEW_KEY ? null : domain);
     this._syncBottomNavDeviceContext();
     this._closeMobileNav();
   }
@@ -786,20 +795,22 @@ export class DwainsDevicesCard extends LitElement {
     }
 
     // Zorg dat er een geldige selectie is.
-    if (this._selectedDomain === NEW_DEVICES_KEY) {
+    if (this._selectedDomain === DEVICES_OVERVIEW_KEY) {
+      // Always valid.
+    } else if (this._selectedDomain === NEW_DEVICES_KEY) {
       if (!showNewDevicesMenu) {
-        this._selectedDomain = domains[0] ?? null;
+        this._selectedDomain = DEVICES_OVERVIEW_KEY;
       }
     } else if (this._selectedDomain === MAINTENANCE_KEY) {
       if (!showMaintenanceMenu) {
-        this._selectedDomain = domains[0] ?? (showNewDevicesMenu ? NEW_DEVICES_KEY : null);
+        this._selectedDomain = DEVICES_OVERVIEW_KEY;
       }
     } else if (this._selectedDomain === ENERGY_KEY) {
       if (!showEnergyMenu) {
-        this._selectedDomain = domains[0] ?? (showMaintenanceMenu ? MAINTENANCE_KEY : showNewDevicesMenu ? NEW_DEVICES_KEY : null);
+        this._selectedDomain = DEVICES_OVERVIEW_KEY;
       }
     } else if (!this._selectedDomain || !data.has(this._selectedDomain)) {
-      this._selectedDomain = domains[0] ?? (showEnergyMenu ? ENERGY_KEY : showMaintenanceMenu ? MAINTENANCE_KEY : showNewDevicesMenu ? NEW_DEVICES_KEY : null);
+      this._selectedDomain = DEVICES_OVERVIEW_KEY;
     }
 
     return html`
@@ -814,6 +825,8 @@ export class DwainsDevicesCard extends LitElement {
                 ? this._renderMaintenanceView(maintenance)
               : this._selectedDomain === ENERGY_KEY
                 ? this._renderEnergyView()
+              : this._selectedDomain === DEVICES_OVERVIEW_KEY
+                ? this._renderDevicesOverview(data, domains, newDevices, showNewDevicesMenu, maintenance, showMaintenanceMenu, showEnergyMenu)
               : this._renderDeviceView(data)}
           </div>
         </div>
@@ -850,6 +863,21 @@ export class DwainsDevicesCard extends LitElement {
       <nav class=${classMap(classes)}>
         <div class="sidebar-title">${this._t('devices.title')}</div>
         <div class="area-list">
+          <button
+            class="area-button overview ${this._selectedDomain === DEVICES_OVERVIEW_KEY ? 'selected' : ''}"
+            style=${`--domain-color: ${this._typeColor(DEVICES_OVERVIEW_KEY)};`}
+            @click=${() => this._selectDomain(DEVICES_OVERVIEW_KEY)}
+          >
+            <div class="area-icon">
+              <ha-icon icon="mdi:view-grid-outline"></ha-icon>
+            </div>
+            <div class="area-info">
+              <div class="area-name">Overview</div>
+              <div class="device-menu-subtitle">All device groups</div>
+            </div>
+            <span class="domain-count">${domains.length}</span>
+            <ha-icon class="device-menu-chevron" icon="mdi:chevron-right"></ha-icon>
+          </button>
           ${showNewDevicesMenu
             ? html`
                 <button
@@ -939,6 +967,151 @@ export class DwainsDevicesCard extends LitElement {
     `;
   }
 
+  private _renderDevicesOverview(
+    data: Map<string, Map<string, { area: AreaConfig; entities: EntityConfig[] }>>,
+    domains: string[],
+    newDevices: RecentDeviceSummary[],
+    showNewDevicesMenu: boolean,
+    maintenance: Map<string, MaintenanceBucket>,
+    showMaintenanceMenu: boolean,
+    showEnergyMenu: boolean
+  ) {
+    const energySummary = this._energySummary();
+    const cards: Array<{
+      key: string;
+      icon: string;
+      title: string;
+      subtitle: string;
+      count: number;
+      color: string;
+    }> = [];
+
+    if (showNewDevicesMenu) {
+      cards.push({
+        key: NEW_DEVICES_KEY,
+        icon: 'mdi:new-box',
+        title: 'New devices',
+        subtitle: newDevices.length === 1 ? '1 new device' : `${newDevices.length} new devices`,
+        count: newDevices.length,
+        color: 'var(--primary-color)',
+      });
+    }
+
+    if (showMaintenanceMenu) {
+      const summary = this._maintenanceSummary(maintenance);
+      cards.push({
+        key: MAINTENANCE_KEY,
+        icon: 'mdi:wrench',
+        title: 'Maintenance',
+        subtitle: this._maintenanceSubtitle(maintenance),
+        count: summary.totalCount,
+        color: this._typeColor(MAINTENANCE_KEY),
+      });
+    }
+
+    if (showEnergyMenu) {
+      cards.push({
+        key: ENERGY_KEY,
+        icon: 'mdi:flash',
+        title: 'Energy',
+        subtitle: energySummary.sensorCount === 1 ? '1 live power sensor' : `${energySummary.sensorCount} live power sensors`,
+        count: energySummary.sensorCount,
+        color: this._typeColor(ENERGY_KEY),
+      });
+    }
+
+    domains.forEach((domain) => {
+      const byArea = data.get(domain);
+      if (!byArea) return;
+      const count = this._domainCount(byArea);
+      cards.push({
+        key: domain,
+        icon: this._typeIcon(domain),
+        title: this._typeName(domain),
+        subtitle: count === 1 ? '1 entity' : `${count} entities`,
+        count,
+        color: this._typeColor(domain),
+      });
+    });
+
+    return html`
+      <div class="device-view devices-overview-view">
+        ${this._renderDevicePageHeader({
+          icon: 'mdi:format-list-bulleted-type',
+          title: this._t('devices.title'),
+          subtitle: cards.length === 1 ? '1 device group' : `${cards.length} device groups`,
+          color: this._typeColor(DEVICES_OVERVIEW_KEY),
+        })}
+
+        <div class="devices-overview-grid">
+          ${repeat(
+            cards,
+            (card) => card.key,
+            (card) => html`
+              <button
+                class="devices-overview-card"
+                type="button"
+                style=${`--domain-color: ${card.color};`}
+                @click=${() => this._selectDomain(card.key)}
+              >
+                <span class="overview-card-icon">
+                  <ha-icon icon=${card.icon}></ha-icon>
+                  <span class="overview-card-count">${card.count}</span>
+                </span>
+                <span class="overview-card-copy">
+                  <strong>${card.title}</strong>
+                  <small>${card.subtitle}</small>
+                </span>
+                <ha-icon class="overview-card-chevron" icon="mdi:chevron-right"></ha-icon>
+              </button>
+            `
+          )}
+        </div>
+      </div>
+    `;
+  }
+
+  private _renderDevicePageHeader(options: {
+    icon: string;
+    title: string;
+    subtitle?: string;
+    color: string;
+    back?: boolean;
+    actions?: unknown;
+    className?: string;
+  }) {
+    const classes = ['device-page-header'];
+    if (options.back) classes.push('has-back');
+    if (options.actions) classes.push('has-actions');
+    if (options.className) classes.push(options.className);
+
+    return html`
+      <div class=${classes.join(' ')} style=${`--domain-color: ${options.color};`}>
+        ${options.back ? html`
+          <button
+            class="device-header-back"
+            type="button"
+            title="Back to devices overview"
+            aria-label="Back to devices overview"
+            @click=${() => this._selectDomain(DEVICES_OVERVIEW_KEY)}
+          >
+            <ha-icon icon="mdi:arrow-left"></ha-icon>
+          </button>
+        ` : nothing}
+        <div class="device-header-main">
+          <span class="device-header-icon">
+            <ha-icon icon=${options.icon}></ha-icon>
+          </span>
+          <div class="device-header-copy">
+            <h1 class="device-title">${options.title}</h1>
+            ${options.subtitle ? html`<div class="device-subtitle">${options.subtitle}</div>` : nothing}
+          </div>
+        </div>
+        ${options.actions ? html`<div class="device-header-actions">${options.actions}</div>` : nothing}
+      </div>
+    `;
+  }
+
   private _renderDeviceView(
     data: Map<string, Map<string, { area: AreaConfig; entities: EntityConfig[] }>>
   ) {
@@ -955,12 +1128,13 @@ export class DwainsDevicesCard extends LitElement {
 
     return html`
       <div class="device-view">
-        <div class="device-header" style=${`--domain-color: ${this._typeColor(domain)};`}>
-          <div class="device-title-wrap">
-            <ha-icon icon=${this._typeIcon(domain)}></ha-icon>
-            <h1 class="device-title">${this._typeName(domain)}</h1>
-          </div>
-        </div>
+        ${this._renderDevicePageHeader({
+          icon: this._typeIcon(domain),
+          title: this._typeName(domain),
+          subtitle: this._domainCount(byArea) === 1 ? '1 entity' : `${this._domainCount(byArea)} entities`,
+          color: this._typeColor(domain),
+          back: true,
+        })}
 
         ${orderedAreas.map((area) => {
           const bucket = byArea.get(area.area_id)!;
@@ -996,19 +1170,19 @@ export class DwainsDevicesCard extends LitElement {
 
     return html`
       <div class="device-view energy-view">
-        <div class="device-header energy-header" style=${`--domain-color: ${this._typeColor(ENERGY_KEY)};`}>
-          <div class="device-title-wrap">
-            <ha-icon icon="mdi:flash"></ha-icon>
-            <div>
-              <h1 class="device-title">Energy</h1>
-              <div class="energy-header-subtitle">Live power usage by area</div>
+        ${this._renderDevicePageHeader({
+          icon: 'mdi:flash',
+          title: 'Energy',
+          subtitle: 'Live power usage by area',
+          color: this._typeColor(ENERGY_KEY),
+          back: true,
+          actions: html`
+            <div class="energy-header-total">
+              <span>${summary.formattedTotal}</span>
+              <small>${summary.sensorCount === 1 ? '1 live power sensor' : `${summary.sensorCount} live power sensors`}</small>
             </div>
-          </div>
-          <div class="energy-header-total">
-            <span>${summary.formattedTotal}</span>
-            <small>${summary.sensorCount === 1 ? '1 live power sensor' : `${summary.sensorCount} live power sensors`}</small>
-          </div>
-        </div>
+          `,
+        })}
 
         ${summary.sensorCount
           ? html`
@@ -1193,25 +1367,25 @@ export class DwainsDevicesCard extends LitElement {
 
     return html`
       <div class="device-view maintenance-view">
-        <div class="device-header maintenance-header" style=${`--domain-color: ${this._typeColor(MAINTENANCE_KEY)};`}>
-          <div class="device-title-wrap">
-            <ha-icon icon="mdi:wrench"></ha-icon>
-            <div>
-              <h1 class="device-title">Maintenance</h1>
-              <div class="maintenance-header-subtitle">${this._maintenanceSubtitle(maintenance)}</div>
+        ${this._renderDevicePageHeader({
+          icon: 'mdi:wrench',
+          title: 'Maintenance',
+          subtitle: this._maintenanceSubtitle(maintenance),
+          color: this._typeColor(MAINTENANCE_KEY),
+          back: true,
+          actions: html`
+            <div class="maintenance-summary">
+              <span>
+                <ha-icon icon="mdi:battery-alert"></ha-icon>
+                ${summary.lowBatteryCount}
+              </span>
+              <span>
+                <ha-icon icon="mdi:alert-circle-outline"></ha-icon>
+                ${summary.unavailableDeviceCount}
+              </span>
             </div>
-          </div>
-          <div class="maintenance-summary">
-            <span>
-              <ha-icon icon="mdi:battery-alert"></ha-icon>
-              ${summary.lowBatteryCount}
-            </span>
-            <span>
-              <ha-icon icon="mdi:alert-circle-outline"></ha-icon>
-              ${summary.unavailableDeviceCount}
-            </span>
-          </div>
-        </div>
+          `,
+        })}
 
         ${orderedBuckets.length
           ? orderedBuckets.map((bucket) => html`
@@ -1332,19 +1506,15 @@ export class DwainsDevicesCard extends LitElement {
   private _renderNewDevicesView(devices: RecentDeviceSummary[]) {
     return html`
       <div class="device-view">
+        ${this._renderDevicePageHeader({
+          icon: 'mdi:new-box',
+          title: 'New devices',
+          subtitle: `Devices added to Home Assistant in the last ${NEW_DEVICE_WINDOW_HOURS} hours.`,
+          color: this._typeColor(NEW_DEVICES_KEY),
+          back: true,
+          actions: html`<span class="device-header-count">${devices.length}</span>`,
+        })}
         <section class="recent-devices new-devices-view">
-          <div class="recent-header">
-            <div>
-              <div class="recent-title">
-                <ha-icon icon="mdi:new-box"></ha-icon>
-                <span>New devices</span>
-                <span class="recent-count">${devices.length}</span>
-              </div>
-              <div class="recent-subtitle">
-                Devices added to Home Assistant in the last ${NEW_DEVICE_WINDOW_HOURS} hours.
-              </div>
-            </div>
-          </div>
           <div class="recent-grid">
             ${devices.length
               ? devices.map((device) => this._renderRecentDevice(device))
@@ -1654,30 +1824,235 @@ export class DwainsDevicesCard extends LitElement {
       margin: 0 auto;
     }
 
-    .device-header {
-      display: flex;
+    .device-page-header {
+      --domain-color: var(--primary-color);
+      min-height: 134px;
+      margin: 0 0 20px;
+      padding: 22px 24px;
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
       align-items: center;
-      gap: 10px;
-      justify-content: space-between;
-      margin-bottom: 16px;
+      gap: 16px;
+      border: 1px solid color-mix(in srgb, var(--domain-color) 18%, var(--divider-color));
+      border-radius: 8px;
+      background:
+        radial-gradient(circle at 16% 20%, color-mix(in srgb, var(--domain-color) 10%, transparent), transparent 34%),
+        linear-gradient(135deg,
+          color-mix(in srgb, var(--card-background-color) 96%, var(--domain-color) 4%),
+          color-mix(in srgb, var(--card-background-color) 99%, transparent));
+      box-shadow: 0 20px 44px rgba(15, 23, 42, 0.06);
+      overflow: hidden;
     }
 
-    .device-title-wrap {
-      display: flex;
+    .device-page-header:not(.has-back) {
+      grid-template-columns: minmax(0, 1fr) auto;
+    }
+
+    .device-header-back {
+      width: 46px;
+      height: 46px;
+      padding: 0;
+      border: 0;
+      border-radius: 999px;
+      display: inline-flex;
       align-items: center;
-      gap: 10px;
+      justify-content: center;
+      background: #182044;
+      color: #ffffff;
+      box-shadow: 0 12px 28px rgba(15, 23, 42, 0.18);
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .device-header-back ha-icon {
+      --mdc-icon-size: 23px;
+    }
+
+    .device-header-main {
       min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 16px;
     }
 
-    .device-header ha-icon {
+    .device-header-icon {
+      width: 52px;
+      height: 52px;
+      border-radius: 8px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex: 0 0 auto;
+      background: color-mix(in srgb, var(--domain-color) 12%, var(--card-background-color));
+      color: var(--domain-color);
+      box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--domain-color) 14%, transparent);
+    }
+
+    .device-header-icon ha-icon {
       --mdc-icon-size: 28px;
-      color: var(--domain-color, var(--primary-color));
+    }
+
+    .device-header-copy {
+      min-width: 0;
     }
 
     .device-title {
       margin: 0;
-      font-size: 24px;
+      color: var(--primary-text-color);
+      font-size: clamp(24px, 3vw, 38px);
+      font-weight: 850;
+      line-height: 1.02;
+      letter-spacing: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .device-subtitle {
+      margin-top: 6px;
+      color: var(--secondary-text-color);
+      font-size: 13px;
+      font-weight: 700;
+      line-height: 1.2;
+    }
+
+    .device-header-actions {
+      justify-self: end;
+      display: inline-flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .device-header-count {
+      min-width: 34px;
+      height: 34px;
+      padding: 0 12px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: color-mix(in srgb, var(--domain-color) 13%, var(--card-background-color));
+      color: var(--domain-color);
+      font-size: 14px;
+      font-weight: 850;
+      box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--domain-color) 16%, transparent);
+    }
+
+    .overview-subtitle {
+      margin-top: 3px;
+      color: var(--secondary-text-color);
+      font-size: 13px;
       font-weight: 600;
+    }
+
+    .devices-overview-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 14px;
+    }
+
+    .devices-overview-card {
+      --domain-color: var(--primary-color);
+      min-height: 148px;
+      padding: 16px;
+      border: 1px solid color-mix(in srgb, var(--domain-color) 15%, var(--divider-color));
+      border-radius: 8px;
+      background: var(--card-background-color);
+      color: var(--primary-text-color);
+      box-shadow: 0 16px 34px rgba(15, 23, 42, 0.06);
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      align-items: start;
+      text-align: left;
+      cursor: pointer;
+      position: relative;
+      overflow: hidden;
+      transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .devices-overview-card::after {
+      content: "";
+      position: absolute;
+      left: 16px;
+      right: 16px;
+      bottom: 0;
+      height: 3px;
+      border-radius: 999px 999px 0 0;
+      background: color-mix(in srgb, var(--domain-color) 60%, transparent);
+    }
+
+    .devices-overview-card:hover {
+      transform: translateY(-2px);
+      border-color: color-mix(in srgb, var(--domain-color) 32%, var(--divider-color));
+      box-shadow: 0 20px 42px rgba(15, 23, 42, 0.1);
+    }
+
+    .overview-card-icon {
+      width: 46px;
+      height: 46px;
+      border-radius: 8px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: color-mix(in srgb, var(--domain-color) 12%, transparent);
+      color: var(--domain-color);
+      position: relative;
+    }
+
+    .overview-card-icon ha-icon {
+      --mdc-icon-size: 25px;
+    }
+
+    .overview-card-count {
+      position: absolute;
+      right: -10px;
+      top: -9px;
+      min-width: 22px;
+      height: 22px;
+      padding: 0 7px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--domain-color);
+      color: #fff;
+      font-size: 12px;
+      font-weight: 800;
+      box-shadow: 0 8px 18px color-mix(in srgb, var(--domain-color) 32%, transparent);
+    }
+
+    .overview-card-copy {
+      align-self: end;
+      display: grid;
+      gap: 3px;
+      min-width: 0;
+    }
+
+    .overview-card-copy strong {
+      color: var(--primary-text-color);
+      font-size: 18px;
+      font-weight: 800;
+      line-height: 1.05;
+    }
+
+    .overview-card-copy small {
+      color: var(--secondary-text-color);
+      font-size: 12px;
+      font-weight: 600;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .overview-card-chevron {
+      position: absolute;
+      right: 14px;
+      top: 14px;
+      color: var(--secondary-text-color);
+      --mdc-icon-size: 22px;
     }
 
     .recent-devices {
@@ -2731,6 +3106,117 @@ export class DwainsDevicesCard extends LitElement {
         grid-template-columns: 1fr;
       }
 
+      .devices-overview-view {
+        padding: 2px 0;
+      }
+
+      .device-page-header {
+        min-height: 132px;
+        margin: 0 -10px 18px;
+        padding: calc(14px + env(safe-area-inset-top, 0px)) 16px 18px;
+        grid-template-columns: auto minmax(0, 1fr);
+        align-items: start;
+        gap: 12px;
+        border-width: 0 0 1px;
+        border-radius: 0 0 8px 8px;
+        background:
+          linear-gradient(180deg,
+            color-mix(in srgb, var(--card-background-color) 98%, transparent) 0%,
+            color-mix(in srgb, var(--card-background-color) 90%, var(--domain-color) 4%) 100%);
+        box-shadow: 0 12px 28px rgba(15, 23, 42, 0.06);
+      }
+
+      .device-page-header.has-actions {
+        grid-template-columns: auto minmax(0, 1fr) auto;
+      }
+
+      .device-page-header:not(.has-back) {
+        grid-template-columns: minmax(0, 1fr) auto;
+      }
+
+      .device-page-header:not(.has-back) .device-header-main {
+        grid-column: 1;
+      }
+
+      .device-header-back {
+        width: 40px;
+        height: 40px;
+        margin-top: 1px;
+      }
+
+      .device-header-back ha-icon {
+        --mdc-icon-size: 21px;
+      }
+
+      .device-header-main {
+        align-items: center;
+        gap: 10px;
+      }
+
+      .device-page-header.has-back .device-header-main {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 7px;
+      }
+
+      .device-page-header.has-back .device-header-icon {
+        display: none;
+      }
+
+      .device-header-icon {
+        width: 44px;
+        height: 44px;
+      }
+
+      .device-header-icon ha-icon {
+        --mdc-icon-size: 24px;
+      }
+
+      .device-title {
+        font-size: 26px;
+      }
+
+      .device-subtitle {
+        margin-top: 3px;
+        font-size: 12px;
+      }
+
+      .device-header-actions {
+        align-self: start;
+      }
+
+      .device-page-header.has-actions .device-header-actions {
+        grid-column: 1 / -1;
+        width: 100%;
+        justify-content: flex-start;
+      }
+
+      .devices-overview-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .devices-overview-card {
+        min-height: 128px;
+        padding: 14px;
+        border-radius: 8px;
+      }
+
+      .overview-card-icon {
+        width: 42px;
+        height: 42px;
+      }
+
+      .overview-card-copy strong {
+        font-size: 16px;
+        overflow-wrap: anywhere;
+      }
+
+      .overview-card-copy small {
+        white-space: normal;
+        line-height: 1.2;
+      }
+
       .recent-header,
       .recent-device {
         align-items: stretch;
@@ -2741,12 +3227,8 @@ export class DwainsDevicesCard extends LitElement {
         flex-direction: column;
       }
 
-      .maintenance-header {
-        gap: 12px;
-      }
-
       .maintenance-summary {
-        width: 100%;
+        width: auto;
       }
 
       .maintenance-grid {
@@ -2755,11 +3237,6 @@ export class DwainsDevicesCard extends LitElement {
 
       .maintenance-card {
         min-height: 62px;
-      }
-
-      .energy-header {
-        align-items: stretch;
-        flex-direction: column;
       }
 
       .energy-header-total {
