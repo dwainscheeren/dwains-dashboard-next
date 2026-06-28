@@ -50,7 +50,8 @@ type SettingsPageKey =
   | "home"
   | "header"
   | "devices"
-  | "people_areas"
+  | "people"
+  | "areas"
   | "replacements"
   | "permissions"
   | "support";
@@ -496,6 +497,9 @@ export class DwainsDashboardStrategyEditor extends LitElement {
     const devicesUnavailableMode = this._config?.settings?.hide_unavailable_entities_on_devices === false
       ? "Unavailable shown"
       : "Unavailable hidden";
+    const areasUnavailableMode = this._config?.settings?.hide_unavailable_entities === false
+      ? "Unavailable shown"
+      : "Unavailable hidden";
 
     return [
       {
@@ -526,13 +530,22 @@ export class DwainsDashboardStrategyEditor extends LitElement {
         summary: `${this._config?.settings?.show_notifications === false ? "Notifications hidden" : "Notifications shown"} · ${this._config?.settings?.alarm_entity_id ? "Alarm selected" : "No alarm selected"}`,
       },
       {
-        page: "people_areas",
+        page: "people",
+        group: "layout",
+        icon: "mdi:account-group-outline",
+        color: "#8b5cf6",
+        title: "People",
+        description: "Choose which people are visible in Dwains Dashboard.",
+        summary: `${personCount} people`,
+      },
+      {
+        page: "areas",
         group: "layout",
         icon: "mdi:floor-plan",
-        color: "#8b5cf6",
-        title: "People & areas",
-        description: "Visible people, rooms and room entity order.",
-        summary: `${personCount} people · ${areaCount} areas`,
+        color: "#14b8a6",
+        title: "Areas",
+        description: "Visible rooms, room order and unavailable entity behavior.",
+        summary: `${areaCount} areas · ${areasUnavailableMode}`,
       },
       {
         page: "devices",
@@ -668,11 +681,10 @@ export class DwainsDashboardStrategyEditor extends LitElement {
         `;
       case "devices":
         return this._renderEntityDisplaySettingsPanel();
-      case "people_areas":
-        return html`
-          ${this._renderPersonsSettingsPanel()}
-          ${this._renderAreasSettingsPanel()}
-        `;
+      case "people":
+        return this._renderPersonsSettingsPanel();
+      case "areas":
+        return this._renderAreasSettingsPanel();
       case "replacements":
         return this._renderReplacementsSettingsPanel();
       case "permissions":
@@ -1032,8 +1044,23 @@ export class DwainsDashboardStrategyEditor extends LitElement {
     return this._renderSettingsPanel(
       "mdi:floor-plan",
       "Areas",
-      "Configure which areas are visible and in what order they are shown.",
-      this._renderAreasConfiguration()
+      "Configure which areas are visible, in what order they are shown and how room entities are filtered.",
+      html`
+        <div class="entity-display-section">
+          <div class="hide-unavailable-toggle">
+            <ha-formfield label="Hide unavailable/unknown entities in area views">
+              <ha-switch
+                .checked=${this._config?.settings?.hide_unavailable_entities !== false}
+                @change=${this._toggleHideUnavailableAreaEntities}
+              ></ha-switch>
+            </ha-formfield>
+            <p class="toggle-description">
+              Enabled by default. Entities with 'unavailable' or 'unknown' states are hidden from room cards. When hidden entities exist, Dwains Dashboard shows an attention badge in the room header.
+            </p>
+          </div>
+          ${this._renderAreasConfiguration()}
+        </div>
+      `
     );
   }
 
@@ -2815,6 +2842,21 @@ export class DwainsDashboardStrategyEditor extends LitElement {
       settings: {
         ...this._config!.settings,
         hide_unavailable_entities_on_devices: hideUnavailable
+      }
+    };
+
+    this._fireConfigChanged(newConfig);
+  }
+
+  private _toggleHideUnavailableAreaEntities(e: Event): void {
+    const target = e.target as any;
+    const hideUnavailable = target.checked;
+
+    const newConfig: DwainsDashboardConfig = {
+      ...this._config!,
+      settings: {
+        ...this._config!.settings,
+        hide_unavailable_entities: hideUnavailable
       }
     };
 

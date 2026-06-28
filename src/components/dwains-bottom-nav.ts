@@ -1,5 +1,16 @@
 import { LitElement, html, css, nothing } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
+import {
+  mdiAccountCircle,
+  mdiAccountCog,
+  mdiArrowLeft,
+  mdiCheck,
+  mdiChevronRight,
+  mdiFormatListBulletedType,
+  mdiHome,
+  mdiMenu,
+  mdiPuzzle,
+} from '@mdi/js';
 import type { DwainsDashboardSettings } from '../types/strategy';
 import { ddLocalize } from '../utils/localize';
 import { navigateHomeAssistant } from '../utils/navigation';
@@ -40,6 +51,17 @@ const MOBILE_NAV_ACTIVE_CLASS = 'dd-next-mobile-nav-active';
 const HIDE_NATIVE_HEADER_STYLE_ID = 'dd-hide-header';
 const HIDDEN_NATIVE_HEADER_ATTR = 'data-dd-next-native-header-hidden';
 const HIDDEN_NATIVE_HEADER_OLD_STYLE_ATTR = 'data-dd-next-native-header-old-style';
+const FAST_ICON_PATHS: Record<string, string> = {
+  'mdi:account-circle': mdiAccountCircle,
+  'mdi:account-cog': mdiAccountCog,
+  'mdi:arrow-left': mdiArrowLeft,
+  'mdi:check': mdiCheck,
+  'mdi:chevron-right': mdiChevronRight,
+  'mdi:format-list-bulleted-type': mdiFormatListBulletedType,
+  'mdi:home': mdiHome,
+  'mdi:menu': mdiMenu,
+  'mdi:puzzle': mdiPuzzle,
+};
 
 /**
  * dwains-dashboard-next-bottom-nav — vaste navigatiebalk onderaan op mobiel (smart-home-app
@@ -316,7 +338,7 @@ export class DwainsBottomNav extends LitElement {
               aria-label=${display.label}
               aria-current=${active ? 'page' : nothing}
             >
-              <ha-icon icon=${display.icon}></ha-icon>
+              ${this._renderIcon(display.icon)}
               <span>${display.label}</span>
             </button>
           `;
@@ -343,7 +365,7 @@ export class DwainsBottomNav extends LitElement {
           }
         }}
       >
-        <ha-icon icon=${isArea ? 'mdi:arrow-left' : 'mdi:menu'}></ha-icon>
+        ${this._renderIcon(isArea ? 'mdi:arrow-left' : 'mdi:menu')}
       </button>
     `;
   }
@@ -366,17 +388,17 @@ export class DwainsBottomNav extends LitElement {
       <section class="pages-sheet ${this._restrictedMenuOpen ? 'open' : ''}" aria-hidden=${this._restrictedMenuOpen ? 'false' : 'true'}>
         <div class="pages-handle"></div>
         <div class="pages-heading">
-          <ha-icon icon="mdi:account-circle"></ha-icon>
+          ${this._renderIcon('mdi:account-circle')}
           <span>Menu</span>
         </div>
         <div class="pages-list">
           <button class="page-row" @click=${this._openProfileSettings}>
-            <span class="page-icon"><ha-icon icon="mdi:account-cog"></ha-icon></span>
+            <span class="page-icon">${this._renderIcon('mdi:account-cog')}</span>
             <span class="page-copy">
               <span class="page-name">Profile settings</span>
               <span class="page-subtitle">Open your Home Assistant profile</span>
             </span>
-            <ha-icon class="page-chevron" icon="mdi:chevron-right"></ha-icon>
+            <span class="page-chevron">${this._renderIcon('mdi:chevron-right')}</span>
           </button>
         </div>
       </section>
@@ -394,7 +416,7 @@ export class DwainsBottomNav extends LitElement {
       <section class="pages-sheet ${this._pagesOpen ? 'open' : ''}" aria-hidden=${this._pagesOpen ? 'false' : 'true'}>
         <div class="pages-handle"></div>
         <div class="pages-heading">
-          <ha-icon icon="mdi:puzzle"></ha-icon>
+          ${this._renderIcon('mdi:puzzle')}
           <span>Pages</span>
         </div>
         <div class="pages-list">
@@ -406,12 +428,12 @@ export class DwainsBottomNav extends LitElement {
                 @click=${() => this._go(page.path)}
                 aria-current=${active ? 'page' : nothing}
               >
-                <span class="page-icon"><ha-icon icon=${page.icon}></ha-icon></span>
+                <span class="page-icon">${this._renderIcon(page.icon)}</span>
                 <span class="page-copy">
                   <span class="page-name">${page.label}</span>
                   <span class="page-subtitle">${active ? 'Current page' : 'Open page'}</span>
                 </span>
-                <ha-icon class="page-chevron" icon=${active ? 'mdi:check' : 'mdi:chevron-right'}></ha-icon>
+                <span class="page-chevron">${this._renderIcon(active ? 'mdi:check' : 'mdi:chevron-right')}</span>
               </button>
             `;
           })}
@@ -487,6 +509,16 @@ export class DwainsBottomNav extends LitElement {
       icon: item.icon,
       label: item.label,
     };
+  }
+
+  private _renderIcon(icon: string) {
+    const path = FAST_ICON_PATHS[icon];
+    if (!path) return html`<ha-icon icon=${icon}></ha-icon>`;
+    return html`
+      <svg class="dd-static-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d=${path}></path>
+      </svg>
+    `;
   }
 
   static override styles = css`
@@ -604,8 +636,12 @@ export class DwainsBottomNav extends LitElement {
         inset 0 1px 0 rgba(255, 255, 255, 0.14);
     }
 
-    .standalone-menu ha-icon {
+    .standalone-menu ha-icon,
+    .standalone-menu .dd-static-icon {
       --mdc-icon-size: 24px;
+      width: 24px;
+      height: 24px;
+      fill: currentColor;
     }
     .bar::before {
       content: "";
@@ -660,8 +696,13 @@ export class DwainsBottomNav extends LitElement {
         transform 0.18s ease,
         box-shadow 0.18s ease;
     }
-    .item ha-icon {
+    .item ha-icon,
+    .item .dd-static-icon {
       --mdc-icon-size: 21px;
+      width: 21px;
+      height: 21px;
+      flex: 0 0 auto;
+      fill: currentColor;
     }
     .item span {
       display: none;
@@ -790,9 +831,13 @@ export class DwainsBottomNav extends LitElement {
       line-height: 1;
     }
 
-    .pages-heading ha-icon {
+    .pages-heading ha-icon,
+    .pages-heading .dd-static-icon {
       --mdc-icon-size: 20px;
+      width: 20px;
+      height: 20px;
       color: rgba(15, 23, 42, 0.78);
+      fill: currentColor;
     }
 
     .pages-list {
@@ -846,8 +891,12 @@ export class DwainsBottomNav extends LitElement {
       color: var(--primary-color, #03a9f4);
     }
 
-    .page-icon ha-icon {
+    .page-icon ha-icon,
+    .page-icon .dd-static-icon {
       --mdc-icon-size: 22px;
+      width: 22px;
+      height: 22px;
+      fill: currentColor;
     }
 
     .page-copy {
@@ -878,8 +927,16 @@ export class DwainsBottomNav extends LitElement {
     }
 
     .page-chevron {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
       --mdc-icon-size: 21px;
       color: rgba(15, 23, 42, 0.48);
+    }
+    .page-chevron .dd-static-icon {
+      width: 21px;
+      height: 21px;
+      fill: currentColor;
     }
 
     @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {

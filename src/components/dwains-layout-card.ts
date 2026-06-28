@@ -13635,8 +13635,8 @@ export class DwainsLayoutCard extends LitElement {
       }
     }
 
-    // Filter unavailable/unknown entities if configured
-    if (this.config?.settings?.hide_unavailable_entities === true) {
+    // Filter unavailable/unknown entities by default unless explicitly disabled.
+    if (this.config?.settings?.hide_unavailable_entities !== false) {
       filteredEntities = filteredEntities.filter(entity => {
         const state = this.hass.states[entity.entity_id];
         return state && state.state !== 'unavailable' && state.state !== 'unknown';
@@ -13685,7 +13685,7 @@ export class DwainsLayoutCard extends LitElement {
 
   private _renderUnavailableEntitiesIcon(areaId: string) {
     // Only show icon if hiding unavailable entities is enabled
-    if (this.config?.settings?.hide_unavailable_entities !== true) {
+    if (this.config?.settings?.hide_unavailable_entities === false) {
       return nothing;
     }
 
