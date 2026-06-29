@@ -11,6 +11,7 @@ import { getAreaIcon, getDeviceClassIcon, getDomainColor, getDomainIcon } from '
 import { getStatusDomains, getTotalWattage, type DomainCount as StatusDomainCount } from '../utils/header-status-domains';
 import { getDeviceClassName, getDomainName } from '../utils/domain-names';
 import { filterHiddenDeviceEntities } from '../utils/device-admission';
+import { findReplacementAssignment, resolveEntityCardConfig } from '../utils/blueprint-replacements';
 import { restrictNonAdminDashboardSettings } from '../utils/security';
 import { sortAreas } from '../utils/area-entities';
 import { navigateHomeAssistant } from '../utils/navigation';
@@ -3264,6 +3265,24 @@ export class DwainsLayoutCard extends LitElement {
       transition:
         transform 0.18s ease,
         box-shadow 0.18s ease;
+    }
+
+    .mobile-entity-replacement-card {
+      box-sizing: border-box;
+      flex: 0 0 260px;
+      min-width: 0;
+      scroll-snap-align: start;
+    }
+
+    .mobile-entity-replacement-card dwains-dashboard-next-card-host {
+      display: block;
+      width: 100%;
+    }
+
+    .mobile-entities-section.layout-grid .mobile-entity-replacement-card {
+      width: 100%;
+      flex: none;
+      scroll-snap-align: none;
     }
 
     .mobile-entity-card:active {
@@ -12900,6 +12919,35 @@ export class DwainsLayoutCard extends LitElement {
     return getDomainIcon(key);
   }
 
+  private _areaReplacementCardConfig(entityId: string): any | null {
+    const assignment = findReplacementAssignment({
+      hass: this.hass,
+      config: this.config,
+      entity: entityId,
+      surface: 'area_cards',
+    });
+
+    if (!assignment || assignment.enabled === false) return null;
+
+    return resolveEntityCardConfig({
+      hass: this.hass,
+      config: this.config,
+      entity: entityId,
+      surface: 'area_cards',
+    });
+  }
+
+  private _renderAreaReplacementCard(entityId: string, cardConfig: any) {
+    return html`
+      <div class="mobile-entity-replacement-card" data-entity=${entityId}>
+        <dwains-dashboard-next-card-host
+          .hass=${this.hass}
+          .config=${cardConfig}
+        ></dwains-dashboard-next-card-host>
+      </div>
+    `;
+  }
+
   private _renderMobileEntityCard(area: AreaConfig, entity: EntityConfig) {
     const rawState = this.hass.states[entity.entity_id];
     if (!rawState) return nothing;
@@ -12907,6 +12955,11 @@ export class DwainsLayoutCard extends LitElement {
     const state = this._getEffectiveEntityState(rawState);
     const domain = entity.entity_id.split('.')[0] || 'unknown';
     const deviceClass = state.attributes?.device_class;
+    const replacementConfig = this._areaReplacementCardConfig(entity.entity_id);
+    if (replacementConfig) {
+      return this._renderAreaReplacementCard(entity.entity_id, replacementConfig);
+    }
+
     const icon = this.hass.entities?.[entity.entity_id]?.icon || state.attributes?.icon || getDeviceClassIcon(domain, deviceClass) || getDomainIcon(domain);
     const name = state.attributes?.friendly_name || this.hass.entities?.[entity.entity_id]?.name || entity.entity_id;
     const active = this._isEntityActiveForUi(state, domain);
