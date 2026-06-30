@@ -163,6 +163,28 @@ async function openScenario(page, scenario, viewportName, theme) {
     return;
   }
 
+  if (scenario.path.startsWith('home?dd_area=')) {
+    const currentPath = new URL(page.url()).pathname.replace(/\/$/, '');
+    if (currentPath !== `${dashboardRoot}/home`) {
+      await page.goto(toDashboardUrl('home'), { waitUntil: 'domcontentloaded' });
+      await loginIfNeeded(page);
+      await applyTheme(page, theme);
+      await waitForDashboard(page, theme, viewportName, `${scenario.name}-home-start`);
+    }
+
+    const targetUrl = toDashboardUrl(scenario.path);
+    await page.evaluate((url) => {
+      window.history.pushState(null, '', url);
+      const ev = new Event('location-changed', { bubbles: true, composed: true });
+      ev.detail = { replace: false };
+      window.dispatchEvent(ev);
+      window.scrollTo({ top: 0, behavior: 'instant' });
+    }, targetUrl).catch(() => {});
+    await applyTheme(page, theme);
+    await page.waitForTimeout(1000);
+    return;
+  }
+
   await page.goto(toDashboardUrl(scenario.path), { waitUntil: 'domcontentloaded' });
   await loginIfNeeded(page);
   await applyTheme(page, theme);

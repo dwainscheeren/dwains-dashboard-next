@@ -20,6 +20,13 @@ Camera feeds in these screenshots use the privacy-safe demo images from `assets/
 | <img src="screenshots/light/mobile/devices.png" alt="Mobile devices light" width="260"> | <img src="screenshots/dark/mobile/devices.png" alt="Mobile devices dark" width="260"> |
 | <img src="screenshots/light/mobile/settings.png" alt="Mobile settings light" width="260"> | <img src="screenshots/dark/mobile/settings.png" alt="Mobile settings dark" width="260"> |
 
+## Area Page
+
+| Light mode | Dark mode |
+| --- | --- |
+| ![Desktop area light](screenshots/light/desktop/area-woonkamer.png) | ![Desktop area dark](screenshots/dark/desktop/area-woonkamer.png) |
+| <img src="screenshots/light/mobile/area-woonkamer.png" alt="Mobile area light" width="260"> | <img src="screenshots/dark/mobile/area-woonkamer.png" alt="Mobile area dark" width="260"> |
+
 ## Settings Details
 
 | Page | Desktop | Mobile |
