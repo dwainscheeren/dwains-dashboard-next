@@ -14,6 +14,7 @@ import {
 import type { DwainsDashboardSettings } from '../types/strategy';
 import { ddLocalize } from '../utils/localize';
 import { navigateHomeAssistant } from '../utils/navigation';
+import { isHassDarkTheme } from '../utils/theme';
 import {
   restrictNonAdminDashboardSettings,
   restrictNonAdminHaSidebar,
@@ -90,6 +91,7 @@ export class DwainsBottomNav extends LitElement {
   set hass(hass: any) {
     const first = !this._hass;
     this._hass = hass;
+    this._syncThemeAttribute();
     _applyHaSidebarRestriction(this._hass, this._settings, this.dashSegment);
     _syncHaShellForBottomNav(this.dashSegment);
     _injectSidebarSection(this._hass, this._settings, this.dashSegment);
@@ -110,6 +112,7 @@ export class DwainsBottomNav extends LitElement {
 
   connectedCallback(): void {
     super.connectedCallback();
+    this._syncThemeAttribute();
     this._sync();
     window.addEventListener('location-changed', this._sync);
     window.addEventListener('popstate', this._sync);
@@ -126,6 +129,7 @@ export class DwainsBottomNav extends LitElement {
   }
 
   private _sync = () => {
+    this._syncThemeAttribute();
     this._active = this._normalizeActivePath(this._currentPath());
     // Zichtbaar zolang we op ons eigen dashboard zitten.
     this._visible = !this.dashSegment || this._segment() === this.dashSegment;
@@ -138,6 +142,10 @@ export class DwainsBottomNav extends LitElement {
     }
     if (!this._isHaMenuRestricted()) this._restrictedMenuOpen = false;
   };
+
+  private _syncThemeAttribute(): void {
+    this.toggleAttribute('data-theme-dark', isHassDarkTheme(this._hass, this));
+  }
 
   private _segment(): string {
     const seg = window.location.pathname.split('/')[1];
@@ -628,12 +636,14 @@ export class DwainsBottomNav extends LitElement {
     }
 
     .standalone-menu.is-back {
-      background: #182044;
+      background:
+        linear-gradient(180deg, rgba(34, 38, 48, 0.84), rgba(8, 10, 15, 0.9)),
+        rgba(10, 12, 18, 0.86);
       color: #ffffff;
-      border-color: rgba(255, 255, 255, 0.18);
+      border-color: rgba(255, 255, 255, 0.1);
       box-shadow:
-        0 18px 42px rgba(15, 23, 42, 0.24),
-        inset 0 1px 0 rgba(255, 255, 255, 0.14);
+        0 18px 40px rgba(0, 0, 0, 0.56),
+        inset 0 1px 0 rgba(255, 255, 255, 0.075);
     }
 
     .standalone-menu ha-icon,
@@ -974,117 +984,118 @@ export class DwainsBottomNav extends LitElement {
       }
     }
 
-    @media (prefers-color-scheme: dark) {
-      .bar {
-        background:
-          linear-gradient(180deg, rgba(43, 47, 58, 0.78), rgba(12, 14, 20, 0.74)),
-          rgba(14, 16, 22, 0.78);
-        border-color: rgba(255, 255, 255, 0.13);
-        box-shadow:
-          0 24px 58px rgba(0, 0, 0, 0.58),
-          0 0 0 1px rgba(255, 255, 255, 0.04),
-          inset 0 1px 0 rgba(255, 255, 255, 0.12),
-          inset 0 -1px 0 rgba(0, 0, 0, 0.34);
-        backdrop-filter: blur(30px) saturate(160%);
-        -webkit-backdrop-filter: blur(30px) saturate(160%);
-      }
-      .bar::before {
-        background:
-          linear-gradient(180deg,
-            rgba(255, 255, 255, 0.13),
-            rgba(255, 255, 255, 0.055) 28%,
-            rgba(255, 255, 255, 0.015) 100%);
-        opacity: 0.86;
-      }
-      .bar::after {
-        background: rgba(255, 255, 255, 0.2);
-        opacity: 0.5;
-      }
-      .item {
-        color: rgba(226, 232, 240, 0.72);
-      }
-      .item:hover {
-        color: rgba(248, 250, 252, 0.96);
-        background: rgba(255, 255, 255, 0.055);
-      }
-      .item.active {
-        background:
-          linear-gradient(180deg,
-            rgba(255, 255, 255, 0.2),
-            rgba(255, 255, 255, 0.115) 48%,
-            rgba(255, 255, 255, 0.075) 100%);
-        color: #f8fafc;
-        box-shadow:
-          0 12px 28px rgba(0, 0, 0, 0.38),
-          inset 0 1px 0 rgba(255, 255, 255, 0.18),
-          inset 0 0 0 1px rgba(255, 255, 255, 0.14);
-      }
-      .item.active ha-icon {
-        color: #ffffff;
-      }
+    :host([data-theme-dark]) .bar {
+      background:
+        linear-gradient(180deg, rgba(34, 38, 48, 0.82), rgba(8, 10, 15, 0.9)),
+        rgba(10, 12, 18, 0.86);
+      border-color: rgba(255, 255, 255, 0.08);
+      box-shadow:
+        0 20px 44px rgba(0, 0, 0, 0.62),
+        0 0 0 1px rgba(0, 0, 0, 0.28),
+        inset 0 1px 0 rgba(255, 255, 255, 0.075),
+        inset 0 -1px 0 rgba(0, 0, 0, 0.34);
+      backdrop-filter: blur(30px) saturate(160%);
+      -webkit-backdrop-filter: blur(30px) saturate(160%);
+    }
+    :host([data-theme-dark]) .bar::before {
+      background:
+        linear-gradient(180deg,
+          rgba(255, 255, 255, 0.075),
+          rgba(255, 255, 255, 0.025) 30%,
+          rgba(255, 255, 255, 0) 100%);
+      opacity: 0.7;
+    }
+    :host([data-theme-dark]) .bar::after {
+      background: rgba(255, 255, 255, 0.08);
+      opacity: 0.28;
+    }
+    :host([data-theme-dark]) .item {
+      color: rgba(226, 232, 240, 0.72);
+    }
+    :host([data-theme-dark]) .item:hover {
+      color: rgba(248, 250, 252, 0.96);
+      background: rgba(255, 255, 255, 0.055);
+    }
+    :host([data-theme-dark]) .item.active {
+      background:
+        linear-gradient(180deg,
+          rgba(255, 255, 255, 0.13),
+          rgba(255, 255, 255, 0.075) 48%,
+          rgba(255, 255, 255, 0.045) 100%);
+      color: #f8fafc;
+      box-shadow:
+        0 10px 22px rgba(0, 0, 0, 0.36),
+        inset 0 1px 0 rgba(255, 255, 255, 0.12),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.09);
+    }
+    :host([data-theme-dark]) .item.active ha-icon {
+      color: #ffffff;
+    }
 
-      .standalone-menu {
-        border-color: rgba(255, 255, 255, 0.13);
-        background:
-          linear-gradient(180deg, rgba(43, 47, 58, 0.82), rgba(12, 14, 20, 0.76)),
-          rgba(14, 16, 22, 0.8);
-        color: rgba(248, 250, 252, 0.94);
-        box-shadow:
-          0 22px 52px rgba(0, 0, 0, 0.5),
-          inset 0 1px 0 rgba(255, 255, 255, 0.12);
-      }
+    :host([data-theme-dark]) .standalone-menu {
+      border-color: rgba(255, 255, 255, 0.08);
+      background:
+        linear-gradient(180deg, rgba(34, 38, 48, 0.84), rgba(8, 10, 15, 0.9)),
+        rgba(10, 12, 18, 0.86);
+      color: rgba(248, 250, 252, 0.94);
+      box-shadow:
+        0 18px 40px rgba(0, 0, 0, 0.56),
+        inset 0 1px 0 rgba(255, 255, 255, 0.075);
+    }
 
-      .standalone-menu.is-back {
-        background: #182044;
-        color: #ffffff;
-      }
+    :host([data-theme-dark]) .standalone-menu.is-back {
+      background:
+        linear-gradient(180deg, rgba(34, 38, 48, 0.84), rgba(8, 10, 15, 0.9)),
+        rgba(10, 12, 18, 0.86);
+      color: #ffffff;
+      border-color: rgba(255, 255, 255, 0.1);
+    }
 
-      .pages-backdrop {
-        background: rgba(0, 0, 0, 0.36);
-      }
+    :host([data-theme-dark]) .pages-backdrop {
+      background: rgba(0, 0, 0, 0.36);
+    }
 
-      .pages-sheet {
-        border-color: rgba(255, 255, 255, 0.12);
-        background:
-          linear-gradient(180deg, rgba(38, 42, 52, 0.94), rgba(18, 20, 28, 0.9)),
-          rgba(16, 18, 24, 0.92);
-        box-shadow:
-          0 28px 68px rgba(0, 0, 0, 0.62),
-          inset 0 1px 0 rgba(255, 255, 255, 0.1);
-      }
+    :host([data-theme-dark]) .pages-sheet {
+      border-color: rgba(255, 255, 255, 0.12);
+      background:
+        linear-gradient(180deg, rgba(38, 42, 52, 0.94), rgba(18, 20, 28, 0.9)),
+        rgba(16, 18, 24, 0.92);
+      box-shadow:
+        0 28px 68px rgba(0, 0, 0, 0.62),
+        inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    }
 
-      .pages-handle {
-        background: rgba(255, 255, 255, 0.18);
-      }
+    :host([data-theme-dark]) .pages-handle {
+      background: rgba(255, 255, 255, 0.18);
+    }
 
-      .pages-heading,
-      .pages-heading ha-icon {
-        color: rgba(248, 250, 252, 0.92);
-      }
+    :host([data-theme-dark]) .pages-heading,
+    :host([data-theme-dark]) .pages-heading ha-icon {
+      color: rgba(248, 250, 252, 0.92);
+    }
 
-      .page-row {
-        background: rgba(255, 255, 255, 0.07);
-        color: rgba(248, 250, 252, 0.94);
-        box-shadow:
-          inset 0 0 0 1px rgba(255, 255, 255, 0.08),
-          0 10px 24px rgba(0, 0, 0, 0.18);
-      }
+    :host([data-theme-dark]) .page-row {
+      background: rgba(255, 255, 255, 0.07);
+      color: rgba(248, 250, 252, 0.94);
+      box-shadow:
+        inset 0 0 0 1px rgba(255, 255, 255, 0.08),
+        0 10px 24px rgba(0, 0, 0, 0.18);
+    }
 
-      .page-row.active {
-        background: color-mix(in srgb, var(--primary-color, #03a9f4) 18%, rgba(255, 255, 255, 0.08));
-        box-shadow:
-          inset 0 0 0 1px color-mix(in srgb, var(--primary-color, #03a9f4) 42%, transparent),
-          0 12px 28px rgba(0, 0, 0, 0.24);
-      }
+    :host([data-theme-dark]) .page-row.active {
+      background: color-mix(in srgb, var(--primary-color, #03a9f4) 18%, rgba(255, 255, 255, 0.08));
+      box-shadow:
+        inset 0 0 0 1px color-mix(in srgb, var(--primary-color, #03a9f4) 42%, transparent),
+        0 12px 28px rgba(0, 0, 0, 0.24);
+    }
 
-      .page-icon {
-        background: color-mix(in srgb, var(--primary-color, #03a9f4) 20%, transparent);
-      }
+    :host([data-theme-dark]) .page-icon {
+      background: color-mix(in srgb, var(--primary-color, #03a9f4) 20%, transparent);
+    }
 
-      .page-subtitle,
-      .page-chevron {
-        color: rgba(226, 232, 240, 0.54);
-      }
+    :host([data-theme-dark]) .page-subtitle,
+    :host([data-theme-dark]) .page-chevron {
+      color: rgba(226, 232, 240, 0.54);
     }
 
     @media (prefers-reduced-motion: reduce) {

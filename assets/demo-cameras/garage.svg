@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720" role="img" aria-label="Demo garage camera feed">
+  <defs>
+    <linearGradient id="wall" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#39444a"/>
+      <stop offset=".52" stop-color="#242b31"/>
+      <stop offset="1" stop-color="#111519"/>
+    </linearGradient>
+    <linearGradient id="floor" x1="0" x2="1" y1="0" y2="0">
+      <stop offset="0" stop-color="#2c3134"/>
+      <stop offset="1" stop-color="#1a1d20"/>
+    </linearGradient>
+    <filter id="grain">
+      <feTurbulence type="fractalNoise" baseFrequency=".8" numOctaves="2" stitchTiles="stitch"/>
+      <feColorMatrix type="saturate" values="0"/>
+      <feComponentTransfer><feFuncA type="table" tableValues="0 .09"/></feComponentTransfer>
+    </filter>
+    <filter id="soft" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="18"/></filter>
+  </defs>
+  <rect width="1280" height="720" fill="url(#wall)"/>
+  <path d="M0 424h1280v296H0z" fill="url(#floor)"/>
+  <path d="M0 424h1280" stroke="#5c686d" stroke-width="3" opacity=".42"/>
+  <ellipse cx="1015" cy="155" rx="250" ry="78" fill="#e8f2f7" opacity=".15" filter="url(#soft)"/>
+  <g opacity=".88">
+    <path d="M90 148h260v316H90z" fill="#1f2529"/>
+    <path d="M116 175h86v96h-86zm108 0h94v96h-94zM116 296h202v64H116zm0 88h202v54H116z" fill="#606b6e" opacity=".58"/>
+    <path d="M420 202h332v262H420z" fill="#20262a"/>
+    <path d="M450 228h124v80H450zm146 0h126v80H596zM450 332h272v54H450zm0 78h272v38H450z" fill="#7d8787" opacity=".5"/>
+    <path d="M846 260h280v204H846z" fill="#22282b"/>
+    <path d="M876 286h100v62H876zm120 0h100v62H996zM876 372h220v58H876z" fill="#677174" opacity=".53"/>
+  </g>
+  <g opacity=".55" stroke="#727e82" stroke-width="2">
+    <path d="M0 535h1280M0 620h1280M140 424 46 720M365 424 298 720M638 424 618 720M940 424l36 296M1178 424l92 296"/>
+  </g>
+  <rect width="1280" height="720" fill="#000" opacity=".08"/>
+  <rect width="1280" height="720" filter="url(#grain)"/>
+  <circle cx="32" cy="30" r="5" fill="#fff" opacity=".75"/>
+  <path d="M0 0h1280v720H0z" fill="none" stroke="#000" stroke-opacity=".18" stroke-width="16"/>
+</svg>

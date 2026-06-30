@@ -15,6 +15,7 @@ import { findReplacementAssignment, resolveEntityCardConfig } from '../utils/blu
 import { restrictNonAdminDashboardSettings } from '../utils/security';
 import { sortAreas } from '../utils/area-entities';
 import { navigateHomeAssistant } from '../utils/navigation';
+import { isHassDarkTheme } from '../utils/theme';
 import { normalizeHiddenHomeInformationCards, normalizeHiddenHomeSections, normalizeHomeSectionsOrder } from '../utils/home-sections';
 import { buildHousePowerUsage } from '../utils/power-usage';
 import { showDomainEntitiesDialog } from './utils/show-domain-entities-dialog';
@@ -201,6 +202,8 @@ export class DwainsLayoutCard extends LitElement {
   private _areaScrollUpDistance = 0;
   private _pictureContrastCache = new Map<string, PictureContrastCacheValue>();
   private _sidebarResizePointerId?: number;
+  private _areaSidebarScrollTop = 0;
+  private _areaSidebarRestoreRaf?: number;
   private _progressiveRenderCancel?: () => void;
   private _pendingSettingsConfig?: Partial<DwainsDashboardConfig>;
   private _settingsEditorInitialized = false;
@@ -488,6 +491,13 @@ export class DwainsLayoutCard extends LitElement {
       contain-intrinsic-size: 164px 150px;
     }
 
+    :host {
+      display: block;
+      height: calc(100dvh - var(--header-height, 56px));
+      min-height: 0;
+      overflow: hidden;
+    }
+
     /* Layout Container */
     .layout-container {
       --area-sidebar-width: 250px;
@@ -530,8 +540,12 @@ export class DwainsLayoutCard extends LitElement {
       transition: transform 0.3s ease, width 0.16s ease, flex-basis 0.16s ease;
       z-index: 1;
       min-height: 0;
+      height: 100%;
+      max-height: 100%;
       overflow-y: auto;
       overflow-x: hidden;
+      overscroll-behavior: contain;
+      scrollbar-gutter: stable;
       -webkit-overflow-scrolling: touch;
     }
 
@@ -4260,7 +4274,7 @@ export class DwainsLayoutCard extends LitElement {
       white-space: nowrap;
     }
 
-    @media (prefers-color-scheme: dark) {
+    :host([data-theme-dark]) {
       .favorite-card-wrapper {
         background:
           linear-gradient(180deg,
@@ -5956,7 +5970,7 @@ export class DwainsLayoutCard extends LitElement {
         right: -9px;
       }
 
-      @media (prefers-color-scheme: dark) {
+      :host([data-theme-dark]) {
         .home-welcome {
           background:
             linear-gradient(180deg,
@@ -6326,8 +6340,11 @@ export class DwainsLayoutCard extends LitElement {
 
     .area-mobile-home {
       display: none;
-      background: #182044;
+      background:
+        linear-gradient(180deg, rgba(34, 38, 48, 0.84), rgba(8, 10, 15, 0.9)),
+        rgba(10, 12, 18, 0.86);
       color: #ffffff;
+      border: 1px solid rgba(255, 255, 255, 0.1);
     }
 
     .layout-container.sidebar-collapsed .area-mobile-home {
@@ -6502,12 +6519,15 @@ export class DwainsLayoutCard extends LitElement {
       flex: 0 0 auto;
       border: 0;
       border-radius: 999px;
-      background: #182044;
+      background:
+        linear-gradient(180deg, rgba(34, 38, 48, 0.84), rgba(8, 10, 15, 0.9)),
+        rgba(10, 12, 18, 0.86);
       color: #ffffff;
+      border: 1px solid rgba(255, 255, 255, 0.1);
       cursor: pointer;
       box-shadow:
-        0 12px 26px rgba(15, 23, 42, 0.2),
-        inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+        0 18px 40px rgba(0, 0, 0, 0.34),
+        inset 0 1px 0 rgba(255, 255, 255, 0.075);
       transition:
         transform 0.18s ease,
         box-shadow 0.18s ease;
@@ -6703,11 +6723,14 @@ export class DwainsLayoutCard extends LitElement {
         justify-self: start;
         width: 44px;
         height: 44px;
-        background: #182044;
+        background:
+          linear-gradient(180deg, rgba(34, 38, 48, 0.84), rgba(8, 10, 15, 0.9)),
+          rgba(10, 12, 18, 0.86);
         color: #ffffff;
+        border-color: rgba(255, 255, 255, 0.1);
         box-shadow:
-          0 12px 26px rgba(15, 23, 42, 0.2),
-          inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+          0 18px 40px rgba(0, 0, 0, 0.34),
+          inset 0 1px 0 rgba(255, 255, 255, 0.075);
       }
 
       .area-mobile-quick-controls {
@@ -7111,20 +7134,25 @@ export class DwainsLayoutCard extends LitElement {
         left: 0;
         z-index: 6;
         justify-self: start;
-        background: #182044;
+        background:
+          linear-gradient(180deg, rgba(34, 38, 48, 0.84), rgba(8, 10, 15, 0.9)),
+          rgba(10, 12, 18, 0.86);
         color: #ffffff;
+        border-color: rgba(255, 255, 255, 0.1);
         box-shadow:
-          0 12px 26px rgba(15, 23, 42, 0.22),
-          inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+          0 18px 40px rgba(0, 0, 0, 0.34),
+          inset 0 1px 0 rgba(255, 255, 255, 0.075);
       }
 
       .area-header.has-picture .area-mobile-home {
-        background: rgba(24, 32, 68, 0.94);
+        background:
+          linear-gradient(180deg, rgba(34, 38, 48, 0.72), rgba(8, 10, 15, 0.76)),
+          rgba(10, 12, 18, 0.72);
         color: #ffffff;
         backdrop-filter: blur(14px);
         box-shadow:
-          0 12px 28px rgba(0, 0, 0, 0.24),
-          inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+          0 14px 32px rgba(0, 0, 0, 0.34),
+          inset 0 1px 0 rgba(255, 255, 255, 0.08);
       }
 
       .area-mobile-quick-controls {
@@ -7305,8 +7333,11 @@ export class DwainsLayoutCard extends LitElement {
 
       .area-mobile-edit {
         position: relative;
-        background: #182044;
+        background:
+          linear-gradient(180deg, rgba(34, 38, 48, 0.84), rgba(8, 10, 15, 0.9)),
+          rgba(10, 12, 18, 0.86);
         color: #ffffff;
+        border-color: rgba(255, 255, 255, 0.1);
       }
 
       .area-mobile-actions {
@@ -7862,8 +7893,11 @@ export class DwainsLayoutCard extends LitElement {
       }
 
       .area-content-area .area-mobile-home {
-        background: #182044;
+        background:
+          linear-gradient(180deg, rgba(34, 38, 48, 0.84), rgba(8, 10, 15, 0.9)),
+          rgba(10, 12, 18, 0.86);
         color: #ffffff;
+        border-color: rgba(255, 255, 255, 0.1);
       }
 
       .area-content-area .area-header-content {
@@ -8097,8 +8131,11 @@ export class DwainsLayoutCard extends LitElement {
       }
 
       .area-content-area .area-mobile-home {
-        background: #182044;
+        background:
+          linear-gradient(180deg, rgba(34, 38, 48, 0.84), rgba(8, 10, 15, 0.9)),
+          rgba(10, 12, 18, 0.86);
         color: #ffffff;
+        border-color: rgba(255, 255, 255, 0.1);
       }
 
       .area-content-area .area-mobile-round ha-icon,
@@ -9037,7 +9074,7 @@ export class DwainsLayoutCard extends LitElement {
         backdrop-filter: blur(2px);
       }
 
-      @media (prefers-color-scheme: dark) {
+      :host([data-theme-dark]) {
         .layout-container > .sidebar,
         .sidebar {
           border-color: rgba(255, 255, 255, 0.1);
@@ -9171,6 +9208,7 @@ export class DwainsLayoutCard extends LitElement {
 
   connectedCallback() {
     super.connectedCallback();
+    this._syncThemeAttribute();
     this._loadMobileEntityLayoutPreference();
     this._loadAreaSidebarWidthPreference();
     this._loadAreaSidebarCollapsedPreference();
@@ -9198,6 +9236,7 @@ export class DwainsLayoutCard extends LitElement {
 
     // Handle hass updates for live entity state changes
     if (changedProps.has('hass') && this.hass) {
+      this._syncThemeAttribute();
       // Houd de mobiele onderbalk levend en up-to-date.
       ensureBottomNav(this.hass, this.config?.settings);
       this._syncBottomNavAreaContext();
@@ -9241,6 +9280,10 @@ export class DwainsLayoutCard extends LitElement {
       cancelAnimationFrame(this._areaHeaderScrollRaf);
       this._areaHeaderScrollRaf = undefined;
     }
+    if (this._areaSidebarRestoreRaf !== undefined) {
+      cancelAnimationFrame(this._areaSidebarRestoreRaf);
+      this._areaSidebarRestoreRaf = undefined;
+    }
     if (this._optimisticCleanupTimer !== undefined) {
       window.clearTimeout(this._optimisticCleanupTimer);
       this._optimisticCleanupTimer = undefined;
@@ -9277,6 +9320,35 @@ export class DwainsLayoutCard extends LitElement {
 
   private _isDesktopAreaSidebarCollapsed(): boolean {
     return this._areaSidebarCollapsed && !this._isMobile;
+  }
+
+  private _handleSidebarScroll = (event: Event) => {
+    if (this._isMobile) return;
+
+    const target = event.currentTarget as HTMLElement | null;
+    if (target) {
+      this._areaSidebarScrollTop = target.scrollTop;
+    }
+  };
+
+  private _restoreAreaSidebarScroll(): void {
+    if (this._isMobile || this._isDesktopAreaSidebarCollapsed()) return;
+
+    if (this._areaSidebarRestoreRaf !== undefined) {
+      cancelAnimationFrame(this._areaSidebarRestoreRaf);
+    }
+
+    this._areaSidebarRestoreRaf = requestAnimationFrame(() => {
+      this._areaSidebarRestoreRaf = undefined;
+      const sidebar = this.shadowRoot?.querySelector('.sidebar') as HTMLElement | null;
+      if (!sidebar) return;
+
+      const maxScrollTop = Math.max(0, sidebar.scrollHeight - sidebar.clientHeight);
+      const nextScrollTop = Math.min(this._areaSidebarScrollTop, maxScrollTop);
+      if (Math.abs(sidebar.scrollTop - nextScrollTop) > 1) {
+        sidebar.scrollTop = nextScrollTop;
+      }
+    });
   }
 
   private _handleContentScroll = (event: Event) => {
@@ -9818,6 +9890,11 @@ export class DwainsLayoutCard extends LitElement {
       changedProps.has('config')
     ) {
       this._syncBottomNavAreaContext();
+      this._restoreAreaSidebarScroll();
+    }
+
+    if (changedProps.has('_isMobile')) {
+      this._restoreAreaSidebarScroll();
     }
 
     // Reset the state changes flag after render
@@ -9855,6 +9932,10 @@ export class DwainsLayoutCard extends LitElement {
     if (this._selectedView === 'settings') {
       this._syncSettingsEditor();
     }
+  }
+
+  private _syncThemeAttribute(): void {
+    this.toggleAttribute('data-theme-dark', isHassDarkTheme(this.hass, this));
   }
 
   private _getRelevantEntities(): string[] {
@@ -10086,7 +10167,7 @@ export class DwainsLayoutCard extends LitElement {
     const hasNotifications = showNotifications && this._persistentNotifications.length > 0;
 
     return html`
-      <nav class=${classMap(classes)}>
+      <nav class=${classMap(classes)} @scroll=${this._handleSidebarScroll}>
         <div class="area-list">
           <div
             class="area-button home-button ${this._selectedView === 'home' ? 'selected' : ''} ${hasNotifications ? 'has-notifications' : ''}"

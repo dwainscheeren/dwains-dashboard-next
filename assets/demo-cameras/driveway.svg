@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720" role="img" aria-label="Demo driveway camera feed">
+  <defs>
+    <linearGradient id="sky" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#b9d6e7"/>
+      <stop offset=".56" stop-color="#d7e2dc"/>
+      <stop offset="1" stop-color="#6d796c"/>
+    </linearGradient>
+    <linearGradient id="drive" x1="0" x2="1">
+      <stop offset="0" stop-color="#6b665d"/>
+      <stop offset="1" stop-color="#3d413d"/>
+    </linearGradient>
+    <filter id="grain">
+      <feTurbulence type="fractalNoise" baseFrequency=".72" numOctaves="2" stitchTiles="stitch"/>
+      <feColorMatrix type="saturate" values=".45"/>
+      <feComponentTransfer><feFuncA type="table" tableValues="0 .07"/></feComponentTransfer>
+    </filter>
+    <filter id="soft" x="-25%" y="-25%" width="150%" height="150%"><feGaussianBlur stdDeviation="16"/></filter>
+  </defs>
+  <rect width="1280" height="720" fill="url(#sky)"/>
+  <circle cx="1040" cy="108" r="76" fill="#fff7cb" opacity=".55" filter="url(#soft)"/>
+  <path d="M0 392c198-44 420-48 662-14 243 34 448 34 618-12v354H0z" fill="url(#drive)"/>
+  <path d="M0 384c190-35 423-37 676-4 244 32 447 28 604-18" fill="none" stroke="#d8d7c7" stroke-width="16" opacity=".42"/>
+  <g opacity=".86">
+    <path d="M58 242h330v170H58z" fill="#7a4f43"/>
+    <path d="M38 242h370l-36-92H76z" fill="#4c3e38"/>
+    <path d="M108 284h88v128h-88zm122 0h94v70h-94z" fill="#2d3435" opacity=".72"/>
+    <path d="M812 250h292v138H812z" fill="#f3f0e7" opacity=".82"/>
+    <path d="M790 250h336l-76-76H846z" fill="#46524c"/>
+    <rect x="862" y="288" width="82" height="72" fill="#6c8c94" opacity=".65"/>
+    <rect x="972" y="288" width="82" height="72" fill="#6c8c94" opacity=".65"/>
+  </g>
+  <g fill="#2f5a38" opacity=".78">
+    <ellipse cx="516" cy="282" rx="72" ry="125"/>
+    <ellipse cx="600" cy="274" rx="58" ry="116"/>
+    <ellipse cx="1180" cy="302" rx="95" ry="132"/>
+  </g>
+  <g opacity=".22" stroke="#ede7d7" stroke-width="2">
+    <path d="M0 510h1280M0 590h1280M150 392 80 720M442 380 390 720M726 382 738 720M1010 380l72 340"/>
+  </g>
+  <rect width="1280" height="720" fill="#000" opacity=".05"/>
+  <rect width="1280" height="720" filter="url(#grain)"/>
+  <circle cx="31" cy="30" r="5" fill="#fff" opacity=".82"/>
+</svg>

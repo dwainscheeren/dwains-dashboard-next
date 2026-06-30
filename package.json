@@ -1,6 +1,6 @@
 {
   "name": "dwains-dashboard-next",
-  "version": "1.5.1",
+  "version": "1.5.2",
   "description": "Dwains Dashboard Next for Home Assistant",
   "main": "dist/dwains-dashboard-next.js",
   "type": "module",
@@ -9,7 +9,11 @@
     "watch": "rollup -c -w",
     "clean": "rm -rf dist",
     "type-check": "tsc --noEmit",
-    "build:release": "npm run clean && npm run build"
+    "build:release": "npm run clean && npm run build",
+    "screenshots": "node scripts/screenshot-dashboard.mjs",
+    "screenshots:install": "playwright install chromium",
+    "video": "node scripts/record-dashboard-video.mjs",
+    "video:install": "playwright install chromium"
   },
   "keywords": [
     "home-assistant",
@@ -25,14 +29,15 @@
     "@rollup/plugin-node-resolve": "^15.2.3",
     "@rollup/plugin-terser": "^0.4.4",
     "@rollup/plugin-typescript": "^11.1.5",
+    "@playwright/test": "^1.61.1",
     "@types/node": "^20.10.5",
     "rollup": "^4.9.1",
     "tslib": "^2.6.2",
     "typescript": "^5.3.3"
   },
   "dependencies": {
+    "@mdi/js": "^7.4.47",
     "lit": "^3.2.0",
-    "memoize-one": "^6.0.0",
-    "@mdi/js": "^7.4.47"
+    "memoize-one": "^6.0.0"
   }
 }

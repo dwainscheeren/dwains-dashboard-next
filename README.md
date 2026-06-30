@@ -12,7 +12,7 @@ See this as Dwains Dashboard v4: totally rebuilt from scratch, with a completely
 
 ## Status
 
-Current release: `1.5.1`
+Current release: `1.5.2`
 
 ## Community And Support
 
@@ -70,6 +70,59 @@ The production dashboard file is generated at:
 ```text
 dist/dwains-dashboard-next.js
 ```
+
+### Screenshots
+
+Automated desktop and mobile screenshots can be generated against a running Home Assistant instance:
+
+```bash
+npm run screenshots:install
+DD_SCREENSHOT_USERNAME=your-user DD_SCREENSHOT_PASSWORD=your-password npm run screenshots
+```
+
+Useful options:
+
+```bash
+DD_SCREENSHOT_BASE_URL=http://localhost:8123
+DD_SCREENSHOT_DASHBOARD_PATH=/dd-next
+DD_SCREENSHOT_AREA_ID=living_room
+DD_SCREENSHOT_OUTPUT_DIR=screenshots/generated
+DD_SCREENSHOT_THEMES=light,dark
+DD_SCREENSHOT_FULL_PAGE=true
+DD_SCREENSHOT_COLLAPSE_HA_SIDEBAR=false
+DD_SCREENSHOT_PRIVACY_CAMERAS=false
+DD_SCREENSHOT_PRIVACY_CAMERA_DIR=assets/demo-cameras
+```
+
+If `DD_SCREENSHOT_DASHBOARD_PATH` is not set, the script tries to find the Dwains Dashboard Next dashboard automatically. Screenshots are written by theme, viewport and page, for example `screenshots/generated/light/desktop/home.png`. By default the script captures home, devices, dashboard settings and a few settings detail pages. The Home Assistant sidebar is collapsed by default for desktop screenshots; set `DD_SCREENSHOT_COLLAPSE_HA_SIDEBAR=false` to keep it open. Camera feeds are replaced with demo images by default so private camera views do not end up in screenshots. Set `DD_SCREENSHOT_PRIVACY_CAMERAS=false` only when you explicitly want real camera images.
+
+### Dashboard Video
+
+An automated dashboard tour video can be recorded against the same running Home Assistant instance:
+
+```bash
+npm run video:install
+DD_VIDEO_USERNAME=your-user DD_VIDEO_PASSWORD=your-password npm run video
+```
+
+By default this records a mobile light-mode walkthrough and saves it as `videos/generated/light/mobile-tour.webm`. Set `DD_VIDEO_THEMES=light,dark` to create a separate video for each theme.
+
+Useful options:
+
+```bash
+DD_VIDEO_BASE_URL=http://localhost:8123
+DD_VIDEO_DASHBOARD_PATH=/dd-next
+DD_VIDEO_AREA_ID=living_room
+DD_VIDEO_OUTPUT_DIR=videos/generated
+DD_VIDEO_VIEWPORTS=mobile,desktop
+DD_VIDEO_THEMES=light,dark
+DD_VIDEO_TRIM_START_SECONDS=6
+DD_VIDEO_COLLAPSE_HA_SIDEBAR=false
+DD_VIDEO_PRIVACY_CAMERAS=false
+DD_VIDEO_PRIVACY_CAMERA_DIR=assets/demo-cameras
+```
+
+The video tour opens the home page, scrolls down and back up, opens an area, scrolls the area, opens and closes an entity dialog, opens the devices page, opens a device group and then opens dashboard settings. The first 6 seconds are trimmed by default to remove login/loading time; set `DD_VIDEO_TRIM_START_SECONDS=0` to keep the full recording. Desktop recordings collapse the Home Assistant sidebar by default. Camera feeds are replaced with demo images by default; set `DD_VIDEO_PRIVACY_CAMERAS=false` only when recording a private/local video where real camera images are wanted.
 
 ## HACS
 

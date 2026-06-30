@@ -25,6 +25,7 @@ import {
 import { ensureBottomNav } from './dwains-bottom-nav';
 import { fireEvent } from './utils/fire-event';
 import { buildHousePowerUsage, type PowerAreaSummary, type PowerEntitySummary } from '../utils/power-usage';
+import { isHassDarkTheme } from '../utils/theme';
 import './utils/dd-card-host';
 
 const NEW_DEVICES_KEY = '__new_devices__';
@@ -86,6 +87,7 @@ export class DwainsDevicesCard extends LitElement {
   // i.p.v. een volledige re-render te forceren.
   set hass(hass: any) {
     this._hass = hass;
+    this._syncThemeAttribute();
     ensureBottomNav(hass, this.config?.settings);
     this._syncBottomNavDeviceContext();
     const hosts = this.renderRoot?.querySelectorAll('dwains-dashboard-next-card-host');
@@ -145,6 +147,7 @@ export class DwainsDevicesCard extends LitElement {
 
   connectedCallback() {
     super.connectedCallback();
+    this._syncThemeAttribute();
     this._checkMobile();
     window.addEventListener('resize', this._resizeHandler);
     window.addEventListener('dwains-dashboard-next-toggle-devices-nav', this._handleDevicesNavToggle);
@@ -662,9 +665,16 @@ export class DwainsDevicesCard extends LitElement {
   }
 
   protected override updated(changedProps: PropertyValues): void {
+    if (changedProps.has('_hass')) {
+      this._syncThemeAttribute();
+    }
     if (changedProps.has('_selectedDomain')) {
       this._syncBottomNavDeviceContext();
     }
+  }
+
+  private _syncThemeAttribute(): void {
+    this.toggleAttribute('data-theme-dark', isHassDarkTheme(this._hass, this));
   }
 
   // Aanwezige device-types, alfabetisch gesorteerd op getDomainTitle.
@@ -3004,7 +3014,7 @@ export class DwainsDevicesCard extends LitElement {
         display: none;
       }
 
-      @media (prefers-color-scheme: dark) {
+      :host([data-theme-dark]) {
         .layout-container > .sidebar,
         .sidebar {
           border-color: rgba(255, 255, 255, 0.1);

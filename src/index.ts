@@ -1,16 +1,6 @@
 import { DwainsDashboardStrategy } from './strategies/dashboard-strategy';
 import { DwainsViewStrategy } from './strategies/view-strategy';
 
-import './components/dwains-layout-card';
-import './components/dwains-domain-entities-dialog';
-import './components/dwains-dashboard-strategy-editor';
-import { DwainsFlexboxCard } from './components/cards/dwains-flexbox-card';
-import './components/dwains-page-card';
-import './components/dwains-devices-card';
-import './components/dwains-bottom-nav';
-import './components/dwains-replacement-manager-dialog';
-import { DwainsDashboardCard } from './components/dwains-dashboard-card';
-import { DwainsDashboardCardEditor } from './components/dwains-dashboard-card-editor';
 import { DD_NEXT_VERSION } from './version';
 
 console.log('Dwains Dashboard Next - Loading...');
@@ -21,6 +11,7 @@ const VIEW_STRATEGY_TYPE = 'dwains-dashboard-next-view';
 const DASHBOARD_STRATEGY_TAG = `ll-strategy-dashboard-${DASHBOARD_STRATEGY_TYPE}`;
 const VIEW_STRATEGY_TAG = `ll-strategy-view-${VIEW_STRATEGY_TYPE}`;
 const DASHBOARD_CARD_TYPE = 'dwains-dashboard-next-card';
+let uiElementsReady: Promise<void> = Promise.resolve().then(() => loadUiElements());
 
 // Safe element registration
 const safeDefine = (name: string, constructor: CustomElementConstructor) => {
@@ -32,6 +23,7 @@ const safeDefine = (name: string, constructor: CustomElementConstructor) => {
 
 const createDashboardStrategyElement = () => class extends HTMLElement {
   static async generate(config: any, hass: any) {
+    await uiElementsReady;
     const strategy = new DwainsDashboardStrategy();
     return strategy.generate(config, hass);
   }
@@ -43,6 +35,7 @@ const createDashboardStrategyElement = () => class extends HTMLElement {
 
 const createViewStrategyElement = () => class extends HTMLElement {
   static async generate(config: any, hass: any) {
+    await uiElementsReady;
     const strategy = new DwainsViewStrategy();
     return strategy.generate(config, hass);
   }
@@ -57,6 +50,40 @@ safeDefine(VIEW_STRATEGY_TAG, createViewStrategyElement());
 // defined when old Dwains Dashboard has not already claimed the same names.
 safeDefine('ll-strategy-dashboard-dwains', createDashboardStrategyElement());
 safeDefine('ll-strategy-view-dwains-view', createViewStrategyElement());
+
+async function loadUiElements(): Promise<void> {
+  try {
+    const [
+      { DwainsDashboardCard },
+      { DwainsDashboardCardEditor },
+      { DwainsFlexboxCard },
+    ] = await Promise.all([
+      import('./components/dwains-dashboard-card'),
+      import('./components/dwains-dashboard-card-editor'),
+      import('./components/cards/dwains-flexbox-card'),
+      import('./components/dwains-layout-card'),
+      import('./components/dwains-domain-entities-dialog'),
+      import('./components/dwains-dashboard-strategy-editor'),
+      import('./components/dwains-page-card'),
+      import('./components/dwains-devices-card'),
+      import('./components/dwains-bottom-nav'),
+      import('./components/dwains-replacement-manager-dialog'),
+    ]);
+
+    safeDefine(DASHBOARD_CARD_TYPE, DwainsDashboardCard);
+    safeDefine('dwains-dashboard-next-card-editor', DwainsDashboardCardEditor);
+    safeDefine('dwains-flexbox-card', class extends DwainsFlexboxCard {});
+
+    // Legacy card aliases for early Next configs when old DD is not installed.
+    safeDefine('dwains-dashboard-card', class extends DwainsDashboardCard {});
+    safeDefine('dwains-dashboard-card-editor', class extends DwainsDashboardCardEditor {});
+
+    console.log('✓ Registered custom card: dwains-dashboard-next-card');
+    console.log('Dwains Dashboard Next - Loaded successfully!');
+  } catch (err) {
+    console.error('Dwains Dashboard Next - Failed to load UI elements', err);
+  }
+}
 
 // Global interface declaration
 declare global {
@@ -171,15 +198,6 @@ if (!window.customStrategies.some((s) => s?.type === DASHBOARD_STRATEGY_TYPE && 
   console.log('Registered Dwains Dashboard Next in the Add dashboard dialog');
 }
 
-// Register custom card elements immediately
-safeDefine(DASHBOARD_CARD_TYPE, DwainsDashboardCard);
-safeDefine('dwains-dashboard-next-card-editor', DwainsDashboardCardEditor);
-safeDefine('dwains-flexbox-card', class extends DwainsFlexboxCard {});
-
-// Legacy card aliases for early Next configs when old DD is not installed.
-safeDefine('dwains-dashboard-card', class extends DwainsDashboardCard {});
-safeDefine('dwains-dashboard-card-editor', class extends DwainsDashboardCardEditor {});
-
 // Register custom card in card picker
 window.customCards = window.customCards || [];
 if (!window.customCards.some((card) => card?.type === DASHBOARD_CARD_TYPE)) {
@@ -192,9 +210,5 @@ if (!window.customCards.some((card) => card?.type === DASHBOARD_CARD_TYPE)) {
   });
 }
 
-console.log('✓ Registered custom card: dwains-dashboard-next-card');
-
-console.log('Dwains Dashboard Next - Loaded successfully!');
-
 // Export for external use if needed
-export { DwainsDashboardStrategy, DwainsViewStrategy, DwainsDashboardCard, DwainsDashboardCardEditor };
+export { DwainsDashboardStrategy, DwainsViewStrategy };

@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720" role="img" aria-label="Demo kitchen camera feed">
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#dbe8e5"/>
+      <stop offset=".58" stop-color="#a8b8b0"/>
+      <stop offset="1" stop-color="#56635e"/>
+    </linearGradient>
+    <linearGradient id="counter" x1="0" x2="1">
+      <stop offset="0" stop-color="#273335"/>
+      <stop offset="1" stop-color="#101719"/>
+    </linearGradient>
+    <filter id="grain">
+      <feTurbulence type="fractalNoise" baseFrequency=".68" numOctaves="2" stitchTiles="stitch"/>
+      <feColorMatrix type="saturate" values="0"/>
+      <feComponentTransfer><feFuncA type="table" tableValues="0 .065"/></feComponentTransfer>
+    </filter>
+    <filter id="soft" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="20"/></filter>
+  </defs>
+  <rect width="1280" height="720" fill="url(#bg)"/>
+  <ellipse cx="330" cy="92" rx="280" ry="88" fill="#fff" opacity=".42" filter="url(#soft)"/>
+  <g opacity=".9">
+    <rect x="84" y="92" width="312" height="250" rx="6" fill="#eef5f0" opacity=".88"/>
+    <rect x="118" y="122" width="108" height="190" fill="#a6c7ce" opacity=".64"/>
+    <rect x="250" y="122" width="108" height="190" fill="#b9d2d0" opacity=".62"/>
+    <path d="M500 82h470v258H500z" fill="#eef1ed" opacity=".72"/>
+    <path d="M538 128h86v144h-86zm112 0h86v144h-86zm112 0h86v144h-86zm112 0h58v144h-58z" fill="#53625f" opacity=".24"/>
+    <path d="M0 382h1280v338H0z" fill="url(#counter)"/>
+    <path d="M0 382h1280v38H0z" fill="#d8ddd5"/>
+    <path d="M90 420h210v220H90zm250 0h230v220H340zm270 0h210v220H610zm250 0h240v220H860z" fill="#1b2426"/>
+    <path d="M166 444h62m188 0h78m186 0h62m270 0h74" stroke="#8b9590" stroke-width="8" stroke-linecap="round" opacity=".52"/>
+  </g>
+  <g opacity=".5">
+    <path d="M1038 292c34-70 99-65 121 0 18 54-20 108-60 108s-86-50-61-108z" fill="#44514b"/>
+    <rect x="1080" y="372" width="36" height="108" rx="18" fill="#44514b"/>
+  </g>
+  <rect width="1280" height="720" fill="#000" opacity=".06"/>
+  <rect width="1280" height="720" filter="url(#grain)"/>
+  <circle cx="31" cy="30" r="5" fill="#fff" opacity=".8"/>
+</svg>
