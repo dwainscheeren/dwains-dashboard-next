@@ -17,8 +17,11 @@ See this as Dwains Dashboard v4: totally rebuilt from scratch, with a completely
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/dark/desktop/home.png" alt="Dwains Dashboard Next desktop home dark mode" width="450">
-  <img src="docs/screenshots/light/desktop/devices.png" alt="Dwains Dashboard Next desktop devices page" width="450">
+  <img src="docs/screenshots/dark/desktop/home.png" alt="Dwains Dashboard Next desktop home dark mode" width="920">
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/light/desktop/devices.png" alt="Dwains Dashboard Next desktop devices page" width="920">
 </p>
 
 <p align="center">
