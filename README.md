@@ -10,6 +10,24 @@ It installs as a Home Assistant dashboard through HACS. On a normal HACS setup i
 
 See this as Dwains Dashboard v4: totally rebuilt from scratch, with a completely new design and new features.
 
+## Preview
+
+<p align="center">
+  <img src="docs/screenshots/light/desktop/home.png" alt="Dwains Dashboard Next desktop home light mode" width="920">
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/dark/desktop/home.png" alt="Dwains Dashboard Next desktop home dark mode" width="450">
+  <img src="docs/screenshots/light/desktop/devices.png" alt="Dwains Dashboard Next desktop devices page" width="450">
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/light/mobile/home.png" alt="Dwains Dashboard Next mobile home light mode" width="260">
+  <img src="docs/screenshots/dark/mobile/settings.png" alt="Dwains Dashboard Next mobile settings dark mode" width="260">
+</p>
+
+More desktop, mobile, light-mode and dark-mode screenshots are available in the [screenshot gallery](docs/screenshots.md).
+
 ## Status
 
 Current release: `1.5.2`

@@ -2,8 +2,8 @@ node_modules/
 .DS_Store
 npm-debug.log*
 *.log
-screenshots/generated/
-screenshots/
-assets/screenshots/
-videos/generated/
-videos/
+/screenshots/generated/
+/screenshots/
+/assets/screenshots/
+/videos/generated/
+/videos/
