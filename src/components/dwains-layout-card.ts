@@ -4035,6 +4035,17 @@ export class DwainsLayoutCard extends LitElement {
       .global-header.mobile .header-expand-button[data-extra-count]::after {
         right: -8px;
       }
+
+      .mobile-home-section,
+      .home-camera-section,
+      .home-status-section,
+      .home-favorites-section,
+      .home-summaries-section,
+      .mobile-domain-group,
+      .mobile-entities-section.layout-grid .mobile-entity-card {
+        content-visibility: visible;
+        contain-intrinsic-size: auto;
+      }
     }
 
     /* Favorites Section */
