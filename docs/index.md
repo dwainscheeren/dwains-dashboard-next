@@ -21,12 +21,6 @@ Dwains Dashboard Next is installed as a Home Assistant dashboard through HACS. I
 
 ## GitHub Pages
 
-This `docs` folder can be published with GitHub Pages:
+This documentation is published with GitHub Pages:
 
-1. Open the repository settings on GitHub.
-2. Go to Pages.
-3. Select `Deploy from a branch`.
-4. Select branch `main` and folder `/docs`.
-5. Save.
-
-GitHub will publish this documentation as a simple documentation website.
+[https://dwainscheeren.github.io/dwains-dashboard-next/](https://dwainscheeren.github.io/dwains-dashboard-next/)

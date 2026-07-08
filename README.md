@@ -39,6 +39,7 @@ More desktop, mobile, light-mode and dark-mode screenshots are available in the 
 
 ## Documentation
 
+- [Documentation website](https://dwainscheeren.github.io/dwains-dashboard-next/)
 - [Documentation home](docs/index.md)
 - [Installation](docs/installation.md)
 - [Getting started](docs/getting-started.md)
