@@ -7,6 +7,24 @@
   </div>
 </section>
 
+## Preview
+
+<div class="screenshot-preview">
+  <a class="screenshot-preview__desktop" href="screenshots.html">
+    <img src="screenshots/light/desktop/home.png" alt="Dwains Dashboard Next desktop home screen in light mode">
+  </a>
+  <div class="screenshot-preview__mobile">
+    <a href="screenshots.html">
+      <img src="screenshots/light/mobile/home.png" alt="Dwains Dashboard Next mobile home screen in light mode">
+    </a>
+    <a href="screenshots.html">
+      <img src="screenshots/dark/mobile/home.png" alt="Dwains Dashboard Next mobile home screen in dark mode">
+    </a>
+  </div>
+</div>
+
+<p><a href="screenshots.html">View all screenshots</a></p>
+
 ## Start Here
 
 <div class="doc-grid">

@@ -285,6 +285,38 @@ img {
   color: var(--accent-dark);
 }
 
+.screenshot-preview {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 220px;
+  gap: 16px;
+  align-items: start;
+  margin: 18px 0 10px;
+}
+
+.screenshot-preview a {
+  display: block;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.screenshot-preview a:hover {
+  border-color: rgba(7, 155, 197, 0.42);
+  text-decoration: none;
+}
+
+.screenshot-preview img {
+  display: block;
+  width: 100%;
+  border-radius: 0;
+}
+
+.screenshot-preview__mobile {
+  display: grid;
+  gap: 16px;
+}
+
 .doc-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -356,6 +388,14 @@ img {
 
   .doc-grid {
     grid-template-columns: 1fr;
+  }
+
+  .screenshot-preview {
+    grid-template-columns: 1fr;
+  }
+
+  .screenshot-preview__mobile {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .site-footer__inner {
