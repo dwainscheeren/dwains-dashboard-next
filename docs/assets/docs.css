@@ -1,16 +1,16 @@
 :root {
   color-scheme: light;
-  --bg: #f5f8fb;
+  --bg: #f7f8fa;
   --surface: #ffffff;
-  --surface-soft: #edf7fb;
+  --surface-soft: #eef7fb;
   --text: #101828;
   --muted: #667085;
-  --line: #dce7ee;
+  --line: #e4e7ec;
   --accent: #079bc5;
   --accent-dark: #057a9b;
   --nav: #0f172a;
-  --shadow: 0 20px 50px rgba(15, 23, 42, 0.08);
-  --radius: 18px;
+  --shadow: none;
+  --radius: 14px;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
@@ -21,9 +21,7 @@
 body {
   margin: 0;
   color: var(--text);
-  background:
-    radial-gradient(circle at 12% 0%, rgba(7, 155, 197, 0.12), transparent 28rem),
-    linear-gradient(180deg, #ffffff 0, var(--bg) 18rem);
+  background: var(--bg);
   font-size: 16px;
   line-height: 1.65;
 }
@@ -41,9 +39,8 @@ a:hover {
   position: sticky;
   top: 0;
   z-index: 10;
-  background: rgba(255, 255, 255, 0.88);
-  border-bottom: 1px solid rgba(220, 231, 238, 0.9);
-  backdrop-filter: blur(18px);
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
 }
 
 .site-header__inner,
@@ -80,11 +77,10 @@ a:hover {
   height: 42px;
   border-radius: 14px;
   color: white;
-  background: linear-gradient(145deg, #08a9d5, #0f6280);
+  background: var(--accent);
   font-size: 13px;
   font-weight: 800;
   letter-spacing: 0.02em;
-  box-shadow: 0 14px 24px rgba(7, 155, 197, 0.2);
 }
 
 .brand strong,
@@ -242,12 +238,9 @@ img {
   gap: 22px;
   margin-bottom: 34px;
   padding: clamp(24px, 4vw, 44px);
-  border: 1px solid rgba(7, 155, 197, 0.18);
-  border-radius: 28px;
-  background:
-    linear-gradient(135deg, rgba(7, 155, 197, 0.1), rgba(255, 255, 255, 0.92) 54%),
-    var(--surface);
-  box-shadow: var(--shadow);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--surface);
 }
 
 .doc-hero h1 {
@@ -277,13 +270,13 @@ img {
   min-height: 42px;
   padding: 0 16px;
   border-radius: 999px;
-  background: var(--nav);
+  background: var(--accent);
   color: white;
   font-weight: 800;
 }
 
 .button:hover {
-  background: #1e293b;
+  background: var(--accent-dark);
   color: white;
   text-decoration: none;
 }
@@ -311,13 +304,11 @@ img {
   padding: 22px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: rgba(255, 255, 255, 0.82);
-  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.05);
+  background: var(--surface);
 }
 
 .doc-card:hover {
   border-color: rgba(7, 155, 197, 0.38);
-  transform: translateY(-1px);
   text-decoration: none;
 }
 
@@ -337,7 +328,7 @@ img {
 
 .site-footer {
   border-top: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.62);
+  background: var(--surface);
 }
 
 .site-footer__inner {
