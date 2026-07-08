@@ -1,6 +1,6 @@
 <section class="doc-hero">
-  <h1>Dwains Dashboard Next Documentation</h1>
-  <p>Install, configure and customize Dwains Dashboard Next for Home Assistant.</p>
+  <h1>Dwains Dashboard Next</h1>
+  <p>A fully auto-generated Home Assistant dashboard based on your areas, devices and entities. Install it, add the dashboard, and instantly get an app-like overview of your whole house.</p>
   <div class="doc-actions">
     <a class="button" href="installation.html">Install with HACS</a>
     <a class="button button--secondary" href="getting-started.html">Getting started</a>
