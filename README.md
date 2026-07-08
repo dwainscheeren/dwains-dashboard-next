@@ -10,6 +10,12 @@ It installs as a Home Assistant dashboard through HACS. On a normal HACS setup i
 
 See this as Dwains Dashboard v4: totally rebuilt from scratch, with a completely new design and new features.
 
+<p align="center">
+  <a href="https://my.home-assistant.io/redirect/hacs_repository/?owner=dwainscheeren&repository=dwains-dashboard-next&category=dashboard">
+    <img src="https://my.home-assistant.io/badges/hacs_repository.svg" alt="Open this repository in HACS">
+  </a>
+</p>
+
 ## Preview
 
 <p align="center">
@@ -31,9 +37,24 @@ See this as Dwains Dashboard v4: totally rebuilt from scratch, with a completely
 
 More desktop, mobile, light-mode and dark-mode screenshots are available in the [screenshot gallery](docs/screenshots.md).
 
+## Documentation
+
+- [Documentation home](docs/index.md)
+- [Installation](docs/installation.md)
+- [Getting started](docs/getting-started.md)
+- [Navigation](docs/navigation.md)
+- [Dashboard settings](docs/dashboard-settings.md)
+- [Home page](docs/home-page.md)
+- [Areas](docs/areas.md)
+- [Devices](docs/devices.md)
+- [Blueprints](docs/blueprints.md)
+- [Custom cards](docs/custom-cards.md)
+- [User permissions](docs/user-permissions.md)
+- [Screenshots](docs/screenshots.md)
+
 ## Status
 
-Current release: `1.5.2`
+Current release: `1.5.3`
 
 ## Community And Support
 
@@ -48,13 +69,7 @@ Current release: `1.5.2`
 
 ## Installation
 
-1. Open HACS in Home Assistant.
-2. Add this repository as a custom repository.
-3. Select the repository type `Dashboard`.
-4. Install `Dwains Dashboard Next`.
-5. Reload Home Assistant frontend resources if Home Assistant asks for it.
-6. Go to Settings, Dashboards, Add dashboard.
-7. Select `Dwains Dashboard Next` from Community dashboards.
+Use the HACS button above or follow the full [installation guide](docs/installation.md).
 
 ## HACS Resource Troubleshooting
 
