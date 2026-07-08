@@ -71,16 +71,10 @@ a:hover {
 }
 
 .brand__mark {
-  display: grid;
-  place-items: center;
   width: 42px;
   height: 42px;
-  border-radius: 14px;
-  color: white;
-  background: var(--accent);
-  font-size: 13px;
-  font-weight: 800;
-  letter-spacing: 0.02em;
+  border-radius: 11px;
+  object-fit: contain;
 }
 
 .brand strong,
