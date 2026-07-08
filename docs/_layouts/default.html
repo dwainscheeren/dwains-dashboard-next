@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% if page.title %}{{ page.title }} - {% endif %}{{ site.title }}</title>
+    <meta name="description" content="{{ site.description }}">
+    <link rel="stylesheet" href="{{ '/assets/docs.css' | relative_url }}">
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="site-header__inner">
+        <a class="brand" href="{{ '/' | relative_url }}" aria-label="Dwains Dashboard Next documentation home">
+          <span class="brand__mark">DD</span>
+          <span>
+            <strong>Dwains Dashboard Next</strong>
+            <small>Documentation</small>
+          </span>
+        </a>
+        <nav class="site-nav" aria-label="Documentation navigation">
+          <a href="{{ '/installation.html' | relative_url }}">Install</a>
+          <a href="{{ '/getting-started.html' | relative_url }}">Start</a>
+          <a href="{{ '/dashboard-settings.html' | relative_url }}">Settings</a>
+          <a href="{{ '/areas.html' | relative_url }}">Areas</a>
+          <a href="{{ '/devices.html' | relative_url }}">Devices</a>
+          <a href="{{ '/blueprints.html' | relative_url }}">Blueprints</a>
+          <a href="{{ '/screenshots.html' | relative_url }}">Screenshots</a>
+          <a href="https://github.com/dwainscheeren/dwains-dashboard-next">GitHub</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="page-shell">
+      <article class="content">
+        {{ content }}
+      </article>
+    </main>
+
+    <footer class="site-footer">
+      <div class="site-footer__inner">
+        <span>Dwains Dashboard Next</span>
+        <a href="https://github.com/dwainscheeren/dwains-dashboard-next">GitHub</a>
+      </div>
+    </footer>
+  </body>
+</html>
