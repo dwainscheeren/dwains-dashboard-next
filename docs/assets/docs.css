@@ -124,12 +124,30 @@ a:hover {
   text-decoration: none;
 }
 
+.site-nav .github-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 4px;
+  color: var(--surface);
+  background: var(--nav);
+}
+
+.site-nav .github-button:hover {
+  color: var(--surface);
+  background: #253044;
+}
+
 .page-shell {
   padding: 56px 0 72px;
 }
 
 .content {
   max-width: 860px;
+}
+
+.docs-home .content {
+  max-width: none;
 }
 
 .content > h1:first-child {
