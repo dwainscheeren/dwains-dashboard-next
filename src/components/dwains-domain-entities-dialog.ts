@@ -6,6 +6,8 @@ import { repeat } from 'lit/directives/repeat.js';
 import type { HomeAssistant } from '../types/home-assistant';
 import type { DwainsDashboardConfig, EntityConfig } from '../types/strategy';
 import { getDeviceClassIcon, getDomainColor, getDomainIcon } from '../utils/icons';
+import { getDomainName } from '../utils/domain-names';
+import { ddLocalize } from '../utils/localize';
 import { fireEvent } from './utils/fire-event';
 
 export interface DomainEntitiesDialogParams {
@@ -40,6 +42,9 @@ interface OptimisticEntityState {
 @customElement('dwains-dashboard-next-domain-entities-dialog')
 export class DwainsDomainEntitiesDialog extends LitElement {
   @property({ attribute: false }) public hass!: HomeAssistant;
+
+  private _t = (key: string, vars?: Record<string, string | number>) =>
+    ddLocalize(this.hass, key, vars);
 
   @state() private _params?: DomainEntitiesDialogParams;
   @state() private _groupedEntities: GroupedEntities = {};
@@ -717,9 +722,9 @@ export class DwainsDomainEntitiesDialog extends LitElement {
         // For persons, group by location/status instead of area
         const location = entityState?.state || 'unknown';
         const locationKey = location === 'home' ? 'home' : 'away';
-            const locationName = location === 'home' ? 'Home' :
-                          location === 'away' ? 'Away' :
-                          location === 'not_home' ? 'Away' :
+            const locationName = location === 'home' ? this._t('dlg.domain.person_home') :
+                          location === 'away' ? this._t('dlg.domain.person_away') :
+                          location === 'not_home' ? this._t('dlg.domain.person_away') :
                             `${location.charAt(0).toUpperCase()}${location.slice(1)}`;
 
         if (!grouped[locationKey]) {
@@ -815,24 +820,24 @@ export class DwainsDomainEntitiesDialog extends LitElement {
     const { domain, filterByUnitOfMeasurement, deviceClass, customTitle } = this._params;
     let domainTitle = customTitle || this._getLocalizedDomainTitle(domain);
     if (filterByUnitOfMeasurement === 'W') {
-      domainTitle = 'Power Sensors';
+      domainTitle = this._t('dlg.domain.power_sensors');
     } else if (deviceClass) {
       // Use device class specific title
       const deviceClassTitles: Record<string, string> = {
-        motion: 'Motion Sensors',
-        door: 'Door Sensors',
-        window: 'Window Sensors',
-        smoke: 'Smoke Detectors',
-        gas: 'Gas Detectors',
-        moisture: 'Moisture Sensors',
-        occupancy: 'Occupancy Sensors',
-        opening: 'Opening Sensors',
-        presence: 'Presence Sensors',
-        safety: 'Safety Sensors',
-        tamper: 'Tamper Sensors',
-        vibration: 'Vibration Sensors'
+        motion: this._t('dlg.domain.dc_motion'),
+        door: this._t('dlg.domain.dc_door'),
+        window: this._t('dlg.domain.dc_window'),
+        smoke: this._t('dlg.domain.dc_smoke'),
+        gas: this._t('dlg.domain.dc_gas'),
+        moisture: this._t('dlg.domain.dc_moisture'),
+        occupancy: this._t('dlg.domain.dc_occupancy'),
+        opening: this._t('dlg.domain.dc_opening'),
+        presence: this._t('dlg.domain.dc_presence'),
+        safety: this._t('dlg.domain.dc_safety'),
+        tamper: this._t('dlg.domain.dc_tamper'),
+        vibration: this._t('dlg.domain.dc_vibration')
       };
-      domainTitle = deviceClassTitles[deviceClass] || `${deviceClass.charAt(0).toUpperCase() + deviceClass.slice(1)} Sensors`;
+      domainTitle = deviceClassTitles[deviceClass] || this._t('dlg.domain.sensors_suffix', { name: `${deviceClass.charAt(0).toUpperCase() + deviceClass.slice(1)}` });
     }
 
     return html`
@@ -858,7 +863,7 @@ export class DwainsDomainEntitiesDialog extends LitElement {
 
         <div class="content">
           ${this._loading
-            ? html`<div class="loading">Loading...</div>`
+            ? html`<div class="loading">${this._t('dlg.domain.loading')}</div>`
             : this._renderContent()
           }
         </div>
@@ -880,7 +885,7 @@ export class DwainsDomainEntitiesDialog extends LitElement {
         <div class="empty-state">
           <ha-icon icon="mdi:information-outline"></ha-icon>
           <div class="empty-state-text">
-            No active entities found
+            ${this._t('dlg.domain.empty')}
           </div>
         </div>
       `;
@@ -907,7 +912,7 @@ export class DwainsDomainEntitiesDialog extends LitElement {
           type="button"
           @click=${this._handleViewAll}
         >
-          <span>${this._params.viewAllLabel || 'View all'}</span>
+          <span>${this._params.viewAllLabel || this._t('dlg.domain.view_all')}</span>
           <ha-icon icon="mdi:chevron-right"></ha-icon>
         </button>
       </div>
@@ -928,7 +933,7 @@ export class DwainsDomainEntitiesDialog extends LitElement {
         <div class="empty-state">
           <ha-icon icon="mdi:check-circle-outline"></ha-icon>
           <div class="empty-state-text">
-            No problematic entities found
+            ${this._t('dlg.domain.empty_problematic')}
           </div>
         </div>
       `;
@@ -982,8 +987,8 @@ export class DwainsDomainEntitiesDialog extends LitElement {
     if (['light', 'switch', 'fan', 'input_boolean'].includes(domain)) {
       return html`
         <div class="domain-actions">
-          ${actionButton('Turn on all', 'mdi:power', 'turn_on')}
-          ${actionButton('Turn off all', 'mdi:power-off', 'turn_off')}
+          ${actionButton(this._t('dlg.domain.turn_on_all'), 'mdi:power', 'turn_on')}
+          ${actionButton(this._t('dlg.domain.turn_off_all'), 'mdi:power-off', 'turn_off')}
         </div>
       `;
     }
@@ -991,8 +996,8 @@ export class DwainsDomainEntitiesDialog extends LitElement {
     if (domain === 'cover') {
       return html`
         <div class="domain-actions">
-          ${actionButton('Open all', 'mdi:arrow-up', 'open_cover')}
-          ${actionButton('Close all', 'mdi:arrow-down', 'close_cover')}
+          ${actionButton(this._t('dlg.domain.open_all'), 'mdi:arrow-up', 'open_cover')}
+          ${actionButton(this._t('dlg.domain.close_all'), 'mdi:arrow-down', 'close_cover')}
         </div>
       `;
     }
@@ -1000,8 +1005,8 @@ export class DwainsDomainEntitiesDialog extends LitElement {
     if (domain === 'lock') {
       return html`
         <div class="domain-actions">
-          ${actionButton('Unlock all', 'mdi:lock-open-variant-outline', 'unlock')}
-          ${actionButton('Lock all', 'mdi:lock-outline', 'lock')}
+          ${actionButton(this._t('dlg.domain.unlock_all'), 'mdi:lock-open-variant-outline', 'unlock')}
+          ${actionButton(this._t('dlg.domain.lock_all'), 'mdi:lock-outline', 'lock')}
         </div>
       `;
     }
@@ -1090,7 +1095,7 @@ export class DwainsDomainEntitiesDialog extends LitElement {
           ${this._renderEntityActions(state, domain, active)}
         </div>
         <div class="domain-entity-copy">
-          <div class="domain-entity-meta">${fallbackMeta || this._entityAreaName(entity) || 'No area'}</div>
+          <div class="domain-entity-meta">${fallbackMeta || this._entityAreaName(entity) || this._t('dlg.domain.no_area')}</div>
           <div class="domain-entity-name">${name}</div>
           <div class="domain-entity-status">${this._entityStatusText(state, domain)}</div>
         </div>
@@ -1108,8 +1113,8 @@ export class DwainsDomainEntitiesDialog extends LitElement {
         <button
           class="domain-entity-action domain-entity-toggle"
           type="button"
-          title=${active ? 'Turn off' : 'Turn on'}
-          aria-label=${active ? 'Turn off' : 'Turn on'}
+          title=${active ? this._t('dlg.domain.toggle_off') : this._t('dlg.domain.toggle_on')}
+          aria-label=${active ? this._t('dlg.domain.toggle_off') : this._t('dlg.domain.toggle_on')}
           ?disabled=${unavailable}
           @click=${(event: Event) => this._handleEntityToggle(event, state, domain)}
         ></button>
@@ -1126,8 +1131,8 @@ export class DwainsDomainEntitiesDialog extends LitElement {
         <button
           class="domain-entity-action domain-lock-action ${unlocked ? 'is-unlocked' : ''}"
           type="button"
-          title=${unlocked ? 'Lock' : 'Unlock'}
-          aria-label=${unlocked ? 'Lock' : 'Unlock'}
+          title=${unlocked ? this._t('dlg.domain.lock') : this._t('dlg.domain.unlock')}
+          aria-label=${unlocked ? this._t('dlg.domain.lock') : this._t('dlg.domain.unlock')}
           ?disabled=${unavailable}
           @click=${(event: Event) => this._handleLockAction(event, state)}
         >
@@ -1140,8 +1145,8 @@ export class DwainsDomainEntitiesDialog extends LitElement {
       <button
         class="domain-entity-action domain-entity-more"
         type="button"
-        title="More info"
-        aria-label="More info"
+        title=${this._t('dlg.domain.more_info')}
+        aria-label=${this._t('dlg.domain.more_info')}
         @click=${(event: Event) => this._handleMoreInfo(event, entityId)}
       >
         <ha-icon icon="mdi:chevron-right"></ha-icon>
@@ -1162,8 +1167,8 @@ export class DwainsDomainEntitiesDialog extends LitElement {
           <button
             class="domain-entity-action domain-cover-action ${value === 'opening' ? 'active' : ''}"
             type="button"
-            title="Open"
-            aria-label="Open"
+            title=${this._t('dlg.domain.cover_open')}
+            aria-label=${this._t('dlg.domain.cover_open')}
             ?disabled=${unavailable}
             @click=${(event: Event) => this._handleCoverAction(event, state, 'open')}
           >
@@ -1174,8 +1179,8 @@ export class DwainsDomainEntitiesDialog extends LitElement {
           <button
             class="domain-entity-action domain-cover-action ${value === 'opening' || value === 'closing' ? 'active' : ''}"
             type="button"
-            title="Stop"
-            aria-label="Stop"
+            title=${this._t('dlg.domain.cover_stop')}
+            aria-label=${this._t('dlg.domain.cover_stop')}
             ?disabled=${unavailable}
             @click=${(event: Event) => this._handleCoverAction(event, state, 'stop')}
           >
@@ -1186,8 +1191,8 @@ export class DwainsDomainEntitiesDialog extends LitElement {
           <button
             class="domain-entity-action domain-cover-action ${value === 'closing' ? 'active' : ''}"
             type="button"
-            title="Close"
-            aria-label="Close"
+            title=${this._t('dlg.domain.cover_close')}
+            aria-label=${this._t('dlg.domain.cover_close')}
             ?disabled=${unavailable}
             @click=${(event: Event) => this._handleCoverAction(event, state, 'close')}
           >
@@ -1201,7 +1206,11 @@ export class DwainsDomainEntitiesDialog extends LitElement {
   private async _runBulkDomainAction(entityIds: string[], action: BulkDomainAction, label: string): Promise<void> {
     const domain = this._params?.domain || '';
     const count = entityIds.length;
-    const confirmed = window.confirm(`${label} ${count} ${count === 1 ? 'entity' : 'entities'}?`);
+    const confirmed = window.confirm(
+      count === 1
+        ? this._t('dlg.domain.bulk_confirm_one', { label, count })
+        : this._t('dlg.domain.bulk_confirm_other', { label, count })
+    );
 
     if (!confirmed) return;
 
@@ -1337,7 +1346,9 @@ export class DwainsDomainEntitiesDialog extends LitElement {
     const formatted = this.hass.formatEntityState(effectiveState);
 
     if (domain === 'light' && effectiveState.state === 'on' && typeof effectiveState.attributes?.brightness === 'number') {
-      return `${Math.round((effectiveState.attributes.brightness / 255) * 100)}% brightness`;
+      return this._t('dlg.domain.status_brightness', {
+        percent: Math.round((effectiveState.attributes.brightness / 255) * 100),
+      });
     }
 
     if (domain === 'cover' && typeof effectiveState.attributes?.current_position === 'number') {
@@ -1348,7 +1359,7 @@ export class DwainsDomainEntitiesDialog extends LitElement {
       const current = effectiveState.attributes?.current_temperature;
       const target = effectiveState.attributes?.temperature;
       const unit = this.hass?.config?.unit_system?.temperature || '°C';
-      if (current !== undefined && target !== undefined) return `${current}${unit} · set ${target}${unit}`;
+      if (current !== undefined && target !== undefined) return this._t('dlg.domain.status_climate_set', { current, target, unit });
       if (current !== undefined) return `${current}${unit}`;
     }
 
@@ -1483,22 +1494,7 @@ export class DwainsDomainEntitiesDialog extends LitElement {
   }
 
   private _getLocalizedDomainTitle(domain: string): string {
-    const titles: Record<string, string> = {
-      light: 'Lights',
-      switch: 'Switches',
-      climate: 'Climate',
-      binary_sensor: 'Sensors',
-      sensor: 'Sensors',
-      person: 'People',
-      camera: 'Cameras',
-      media_player: 'Media Players',
-      cover: 'Covers',
-      lock: 'Locks',
-      fan: 'Fans',
-      vacuum: 'Vacuums',
-      alarm_control_panel: 'Alarm Systems'
-    };
-    return titles[domain] || domain.charAt(0).toUpperCase() + domain.slice(1);
+    return getDomainName(this.hass, domain);
   }
 }
 

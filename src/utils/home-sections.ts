@@ -10,29 +10,29 @@ export const DEFAULT_HOME_SECTIONS_ORDER: HomeSectionKey[] = [
 
 export const HOME_SECTION_META: Record<HomeSectionKey, { label: string; icon: string; description: string }> = {
   summaries: {
-    label: 'Summaries',
+    label: 'home_section.summaries.label',
     icon: 'mdi:clipboard-list-outline',
-    description: 'Repairs, updates and newly discovered devices from Home Assistant.',
+    description: 'home_section.summaries.desc',
   },
   cameras: {
-    label: 'Cameras',
+    label: 'home_section.cameras.label',
     icon: 'mdi:cctv',
-    description: 'Area cameras on the home page.',
+    description: 'home_section.cameras.desc',
   },
   areas: {
-    label: 'Areas',
+    label: 'home_section.areas.label',
     icon: 'mdi:floor-plan',
-    description: 'Mobile and small-screen room cards; desktop uses the left area menu.',
+    description: 'home_section.areas.desc',
   },
   devices: {
-    label: 'House information',
+    label: 'home_section.devices.label',
     icon: 'mdi:view-dashboard-outline',
-    description: 'People, indoor climate, power usage and device groups.',
+    description: 'home_section.devices.desc',
   },
   favorites: {
-    label: 'Favorites',
+    label: 'home_section.favorites.label',
     icon: 'mdi:star',
-    description: 'Pinned entities selected by you.',
+    description: 'home_section.favorites.desc',
   },
 };
 
@@ -45,24 +45,24 @@ export const DEFAULT_HOME_INFORMATION_CARDS: HomeInformationCardKey[] = [
 
 export const HOME_INFORMATION_CARD_META: Record<HomeInformationCardKey, { label: string; icon: string; description: string }> = {
   people: {
-    label: 'People',
+    label: 'home_info.people.label',
     icon: 'mdi:account-group',
-    description: 'Presence cards for the people in this home.',
+    description: 'home_info.people.desc',
   },
   climate: {
-    label: 'Indoor climate',
+    label: 'home_info.climate.label',
     icon: 'mdi:home-thermometer-outline',
-    description: 'Average temperature and humidity from room sensors.',
+    description: 'home_info.climate.desc',
   },
   power: {
-    label: 'House power usage',
+    label: 'home_info.power.label',
     icon: 'mdi:flash',
-    description: 'Current whole-house power usage and top rooms.',
+    description: 'home_info.power.desc',
   },
   device_groups: {
-    label: 'Device groups',
+    label: 'home_info.device_groups.label',
     icon: 'mdi:view-grid-outline',
-    description: 'Status cards such as lights, switches, covers and motion.',
+    description: 'home_info.device_groups.desc',
   },
 };
 

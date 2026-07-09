@@ -257,7 +257,7 @@ export class DwainsLayoutCard extends LitElement {
       detail: {
         areaId: this._selectedView === 'area' ? this._selectedArea : null,
         icon: settingsSelected ? 'mdi:cog-outline' : area ? getAreaIcon(area) : 'mdi:home',
-        name: settingsSelected ? 'Settings' : area?.name || 'Home',
+        name: settingsSelected ? this._t('lc.nav.settings') : area?.name || this._t('sidebar.home'),
         view: this._selectedView || 'home',
       },
     }));
@@ -10022,8 +10022,8 @@ export class DwainsLayoutCard extends LitElement {
       <button
         class="sidebar-collapse-toggle ${collapsed ? 'is-collapsed' : ''}"
         type="button"
-        title=${collapsed ? 'Show area sidebar' : 'Collapse area sidebar'}
-        aria-label=${collapsed ? 'Show area sidebar' : 'Collapse area sidebar'}
+        title=${collapsed ? this._t('home.sidebar.show') : this._t('home.sidebar.collapse')}
+        aria-label=${collapsed ? this._t('home.sidebar.show') : this._t('home.sidebar.collapse')}
         @click=${this._toggleAreaSidebarCollapsed}
       >
         <ha-icon icon=${collapsed ? 'mdi:chevron-right' : 'mdi:chevron-left'}></ha-icon>
@@ -10033,12 +10033,12 @@ export class DwainsLayoutCard extends LitElement {
         class="sidebar-resize-handle"
         type="button"
         role="separator"
-        aria-label="Resize area sidebar"
+        aria-label=${this._t('home.sidebar.resize')}
         aria-orientation="vertical"
         aria-valuemin=${SIDEBAR_MIN_WIDTH}
         aria-valuemax=${SIDEBAR_MAX_WIDTH}
         aria-valuenow=${this._areaSidebarWidth}
-        title="Drag to resize area sidebar"
+        title=${this._t('home.sidebar.resize_hint')}
         @pointerdown=${this._startSidebarResize}
         @keydown=${this._handleSidebarResizeKeydown}
       ></button>
@@ -10076,12 +10076,12 @@ export class DwainsLayoutCard extends LitElement {
           <div class="notifications-title">
             <div class="notifications-title-row">
               <ha-icon icon="mdi:bell-outline"></ha-icon>
-              <span>Notifications</span>
+              <span>${this._t('home.notifications.title')}</span>
             </div>
             <div class="notifications-subtitle">
               ${hasNotifications
-                ? `${count} persistent ${count === 1 ? 'notification' : 'notifications'}`
-                : 'Persistent notifications from Home Assistant'}
+                ? this._t('home.notifications.persistent_count', { count })
+                : this._t('home.notifications.subtitle_empty')}
             </div>
           </div>
           <div class="notifications-actions">
@@ -10089,7 +10089,7 @@ export class DwainsLayoutCard extends LitElement {
               <button
                 class="notifications-icon-button"
                 type="button"
-                title="Dismiss all"
+                title=${this._t('home.notifications.dismiss_all')}
                 @click=${this._dismissAllPersistentNotifications}
               >
                 <ha-icon icon="mdi:delete-sweep-outline"></ha-icon>
@@ -10098,7 +10098,7 @@ export class DwainsLayoutCard extends LitElement {
             <button
               class="notifications-icon-button"
               type="button"
-              title="Refresh"
+              title=${this._t('home.notifications.refresh')}
               @click=${() => this._loadPersistentNotifications(true)}
             >
               <ha-icon icon="mdi:refresh"></ha-icon>
@@ -10106,7 +10106,7 @@ export class DwainsLayoutCard extends LitElement {
             <button
               class="notifications-icon-button"
               type="button"
-              title="Close"
+              title=${this._t('common.close')}
               @click=${this._closeNotifications}
             >
               <ha-icon icon="mdi:close"></ha-icon>
@@ -10119,7 +10119,7 @@ export class DwainsLayoutCard extends LitElement {
             ? html`
                 <div class="notifications-loading">
                   <ha-icon icon="mdi:loading"></ha-icon>
-                  <span>Loading notifications...</span>
+                  <span>${this._t('home.notifications.loading')}</span>
                 </div>
               `
             : this._notificationsError
@@ -10136,7 +10136,7 @@ export class DwainsLayoutCard extends LitElement {
                 : html`
                     <div class="notifications-empty">
                       <ha-icon icon="mdi:bell-check-outline"></ha-icon>
-                      <span>No persistent notifications</span>
+                      <span>${this._t('home.notifications.empty')}</span>
                     </div>
                   `}
         </div>
@@ -10151,7 +10151,7 @@ export class DwainsLayoutCard extends LitElement {
           <ha-icon icon="mdi:bell-badge-outline"></ha-icon>
         </div>
         <div class="notification-copy">
-          <div class="notification-title">${notification.title || 'Notification'}</div>
+          <div class="notification-title">${notification.title || this._t('home.notifications.item_fallback')}</div>
           <div class="notification-message">${notification.message}</div>
           ${notification.created_at ? html`
             <div class="notification-date">${this._formatNotificationDate(notification.created_at)}</div>
@@ -10160,7 +10160,7 @@ export class DwainsLayoutCard extends LitElement {
         <button
           class="notification-dismiss"
           type="button"
-          title="Dismiss"
+          title=${this._t('home.notifications.dismiss')}
           @click=${() => this._dismissPersistentNotification(notification.notification_id)}
         >
           <ha-icon icon="mdi:close"></ha-icon>
@@ -10209,7 +10209,7 @@ export class DwainsLayoutCard extends LitElement {
     const count = this._persistentNotifications.length;
     if (!count) return nothing;
 
-    const label = `${count} persistent ${count === 1 ? 'notification' : 'notifications'}`;
+    const label = this._t('home.notifications.persistent_count', { count });
     const displayCount = count > 99 ? '99+' : String(count);
 
     return html`
@@ -10274,7 +10274,7 @@ export class DwainsLayoutCard extends LitElement {
 
     return sortedFloors.map(([floorName, areas]) => {
       const floorTitle = floorName === 'no_floor' ?
-        this.hass.localize('ui.components.area-picker.no_floor') || 'Unassigned spaces' :
+        this.hass.localize('ui.components.area-picker.no_floor') || this._t('home.unassigned_spaces') :
         floorName;
 
       return html`
@@ -10523,7 +10523,7 @@ export class DwainsLayoutCard extends LitElement {
     if (activeLabel) {
       if (domain.count === 1 && domain.entities?.length === 1) {
         const areaName = this._entityAreaName(domain.entities[0]!);
-        return areaName ? `${activeLabel.singular} in ${areaName}` : activeLabel.singular;
+        return areaName ? this._t('home.status.in_area', { label: activeLabel.singular, area: areaName }) : activeLabel.singular;
       }
       return activeLabel.plural;
     }
@@ -10531,7 +10531,7 @@ export class DwainsLayoutCard extends LitElement {
     // Bij precies 1 actief: toon de ruimte ("Motion in Slaapkamer").
     if (domain.domain !== 'person' && domain.count === 1 && domain.entities?.length === 1) {
       const areaName = this._entityAreaName(domain.entities[0]!);
-      if (areaName) return `${domain.name} in ${areaName}`;
+      if (areaName) return this._t('home.status.in_area', { label: domain.name, area: areaName });
     }
     return domain.name;
   }
@@ -10539,44 +10539,44 @@ export class DwainsLayoutCard extends LitElement {
   private _statusCardActiveLabel(domain: DomainCount): { singular: string; plural: string } | undefined {
     if (domain.domain === 'person') return undefined;
 
-    if (domain.domain === 'light') return { singular: 'Light on', plural: 'Lights on' };
-    if (domain.domain === 'switch') return { singular: 'Switch on', plural: 'Switches on' };
-    if (domain.domain === 'cover') return { singular: 'Cover open', plural: 'Covers open' };
-    if (domain.domain === 'fan') return { singular: 'Fan on', plural: 'Fans on' };
-    if (domain.domain === 'lock') return { singular: 'Lock unlocked', plural: 'Locks unlocked' };
-    if (domain.domain === 'climate') return { singular: 'Climate active', plural: 'Climate active' };
-    if (domain.domain === 'media_player') return { singular: 'Media player playing', plural: 'Media players playing' };
-    if (domain.domain === 'vacuum') return { singular: 'Vacuum cleaning', plural: 'Vacuums cleaning' };
-    if (domain.domain === 'alarm_control_panel') return { singular: 'Alarm armed', plural: 'Alarms armed' };
+    if (domain.domain === 'light') return { singular: this._t('home.status.light_on'), plural: this._t('home.status.lights_on') };
+    if (domain.domain === 'switch') return { singular: this._t('home.status.switch_on'), plural: this._t('home.status.switches_on') };
+    if (domain.domain === 'cover') return { singular: this._t('home.status.cover_open'), plural: this._t('home.status.covers_open') };
+    if (domain.domain === 'fan') return { singular: this._t('home.status.fan_on'), plural: this._t('home.status.fans_on') };
+    if (domain.domain === 'lock') return { singular: this._t('home.status.lock_unlocked'), plural: this._t('home.status.locks_unlocked') };
+    if (domain.domain === 'climate') return { singular: this._t('home.status.climate_active'), plural: this._t('home.status.climate_active') };
+    if (domain.domain === 'media_player') return { singular: this._t('home.status.media_player_playing'), plural: this._t('home.status.media_players_playing') };
+    if (domain.domain === 'vacuum') return { singular: this._t('home.status.vacuum_cleaning'), plural: this._t('home.status.vacuums_cleaning') };
+    if (domain.domain === 'alarm_control_panel') return { singular: this._t('home.status.alarm_armed'), plural: this._t('home.status.alarms_armed') };
 
     if (domain.domain === 'binary_sensor') {
       switch (domain.deviceClass) {
         case 'door':
-          return { singular: 'Door open', plural: 'Doors open' };
+          return { singular: this._t('home.status.door_open'), plural: this._t('home.status.doors_open') };
         case 'window':
-          return { singular: 'Window open', plural: 'Windows open' };
+          return { singular: this._t('home.status.window_open'), plural: this._t('home.status.windows_open') };
         case 'opening':
-          return { singular: 'Opening open', plural: 'Openings open' };
+          return { singular: this._t('home.status.opening_open'), plural: this._t('home.status.openings_open') };
         case 'motion':
-          return { singular: 'Motion detected', plural: 'Motion detected' };
+          return { singular: this._t('home.status.motion_detected'), plural: this._t('home.status.motion_detected') };
         case 'smoke':
-          return { singular: 'Smoke detected', plural: 'Smoke detected' };
+          return { singular: this._t('home.status.smoke_detected'), plural: this._t('home.status.smoke_detected') };
         case 'gas':
-          return { singular: 'Gas detected', plural: 'Gas detected' };
+          return { singular: this._t('home.status.gas_detected'), plural: this._t('home.status.gas_detected') };
         case 'moisture':
-          return { singular: 'Moisture detected', plural: 'Moisture detected' };
+          return { singular: this._t('home.status.moisture_detected'), plural: this._t('home.status.moisture_detected') };
         case 'occupancy':
-          return { singular: 'Occupancy detected', plural: 'Occupancy detected' };
+          return { singular: this._t('home.status.occupancy_detected'), plural: this._t('home.status.occupancy_detected') };
         case 'presence':
-          return { singular: 'Presence detected', plural: 'Presence detected' };
+          return { singular: this._t('home.status.presence_detected'), plural: this._t('home.status.presence_detected') };
         case 'tamper':
-          return { singular: 'Tamper detected', plural: 'Tamper detected' };
+          return { singular: this._t('home.status.tamper_detected'), plural: this._t('home.status.tamper_detected') };
         case 'vibration':
-          return { singular: 'Vibration detected', plural: 'Vibration detected' };
+          return { singular: this._t('home.status.vibration_detected'), plural: this._t('home.status.vibration_detected') };
         case 'safety':
-          return { singular: 'Safety active', plural: 'Safety active' };
+          return { singular: this._t('home.status.safety_active'), plural: this._t('home.status.safety_active') };
         default:
-          return { singular: `${domain.name} active`, plural: `${domain.name} active` };
+          return { singular: this._t('home.status.generic_active', { name: domain.name }), plural: this._t('home.status.generic_active', { name: domain.name }) };
       }
     }
 
@@ -10643,19 +10643,19 @@ export class DwainsLayoutCard extends LitElement {
       <section class="home-summaries-section">
         <div class="home-status-heading">
           <ha-icon icon="mdi:clipboard-list-outline"></ha-icon>
-          <span>Summaries</span>
+          <span>${this._t('home_section.summaries.label')}</span>
         </div>
         <div class="mobile-section-heading">
           <div class="mobile-section-title">
             <button
               class="mobile-layout-toggle active"
               type="button"
-              title="Summaries"
-              aria-label="Summaries"
+              title=${this._t('home_section.summaries.label')}
+              aria-label=${this._t('home_section.summaries.label')}
             >
               <ha-icon icon="mdi:clipboard-list-outline"></ha-icon>
             </button>
-            <span class="mobile-section-title-label">Summaries</span>
+            <span class="mobile-section-title-label">${this._t('home_section.summaries.label')}</span>
           </div>
         </div>
         <div class="home-summary-list">
@@ -10694,8 +10694,8 @@ export class DwainsLayoutCard extends LitElement {
     if (this._repairsIssueCount > 0) {
       cards.push({
         key: 'repairs',
-        label: 'Repairs',
-        subtitle: `${this._repairsIssueCount} ${this._repairsIssueCount === 1 ? 'issue' : 'issues'}`,
+        label: this._t('home.summary.repairs'),
+        subtitle: this._t('home.summary.repairs_count', { count: this._repairsIssueCount }),
         icon: 'mdi:wrench',
         color: '#f59e0b',
         count: this._repairsIssueCount,
@@ -10706,8 +10706,8 @@ export class DwainsLayoutCard extends LitElement {
     if (updateCount > 0) {
       cards.push({
         key: 'updates',
-        label: 'Updates',
-        subtitle: `${updateCount} ${updateCount === 1 ? 'update' : 'updates'} available`,
+        label: this._t('home.summary.updates'),
+        subtitle: this._t('home.summary.updates_count', { count: updateCount }),
         icon: 'mdi:package-up',
         color: '#0ea5e9',
         count: updateCount,
@@ -10718,8 +10718,8 @@ export class DwainsLayoutCard extends LitElement {
     if (this._discoveredDeviceCount > 0) {
       cards.push({
         key: 'discovered',
-        label: 'Devices discovered',
-        subtitle: `${this._discoveredDeviceCount} ${this._discoveredDeviceCount === 1 ? 'device' : 'devices'} to add`,
+        label: this._t('home.summary.discovered'),
+        subtitle: this._t('home.summary.discovered_count', { count: this._discoveredDeviceCount }),
         icon: 'mdi:devices',
         color: '#1494aa',
         count: this._discoveredDeviceCount,
@@ -10736,7 +10736,7 @@ export class DwainsLayoutCard extends LitElement {
   }
 
   private _renderHomeWelcome() {
-    const userName = this.hass?.user?.name || 'User';
+    const userName = this.hass?.user?.name || this._t('home.default_user');
     const greeting = this._getGreeting();
     const weatherEntity = this._weatherDisplayEnabled() ? this._getWeatherEntity() : undefined;
     const weatherTemperature = this._formatWeatherTemperature(weatherEntity);
@@ -10751,8 +10751,8 @@ export class DwainsLayoutCard extends LitElement {
               <button
                 class="welcome-avatar"
                 type="button"
-                title="Profile settings"
-                aria-label="Profile settings"
+                title=${this._t('home.profile_settings')}
+                aria-label=${this._t('home.profile_settings')}
                 @click=${this._openProfileSettings}
               >
                 ${userPicture
@@ -10763,7 +10763,7 @@ export class DwainsLayoutCard extends LitElement {
                 <div class="welcome-text">
                   <span class="welcome-greeting">${greeting}</span>
                   <span class="welcome-name">, ${userName}!</span>
-                  <span class="welcome-title">Hello, ${userName}</span>
+                  <span class="welcome-title">${this._t('home.hello', { name: userName })}</span>
                 </div>
                 <div class="welcome-return">${this._getHomeSnapshotText(weatherEntity)}</div>
               </div>
@@ -10783,7 +10783,7 @@ export class DwainsLayoutCard extends LitElement {
                 <button
                   class="welcome-action"
                   type="button"
-                  title="Notifications"
+                  title=${this._t('home.notifications.title')}
                   @click=${this._openNotifications}
                 >
                   <ha-icon icon="mdi:bell-outline"></ha-icon>
@@ -10810,7 +10810,7 @@ export class DwainsLayoutCard extends LitElement {
                 >
                   <ha-icon icon=${weatherEntity.attributes.icon || 'mdi:weather-cloudy'}></ha-icon>
                   <span class="weather-temp">${weatherTemperature}</span>
-                  <span class="weather-label">Outside</span>
+                  <span class="weather-label">${this._t('home.weather.outside')}</span>
                 </div>
               ` : nothing}
             </div>
@@ -10861,27 +10861,27 @@ export class DwainsLayoutCard extends LitElement {
       <div class="home-status-section layout-${this._mobileHomeDevicesLayout}">
         <div class="home-status-heading">
           <ha-icon icon="mdi:view-dashboard-outline"></ha-icon>
-          <span>House information</span>
+          <span>${this._t('home_section.devices.label')}</span>
         </div>
         <div class="mobile-section-heading">
           <div class="mobile-section-title">
             <button
               class="mobile-layout-toggle ${gridMode ? 'active' : ''}"
               type="button"
-              title=${gridMode ? 'Swipe house information' : 'Show all house information'}
-              aria-label=${gridMode ? 'Switch house information to swipe cards' : 'Show all house information'}
+              title=${gridMode ? this._t('home.layout.swipe', { label: this._t('home_section.devices.label') }) : this._t('home.layout.show_all', { label: this._t('home_section.devices.label') })}
+              aria-label=${gridMode ? this._t('home.layout.switch_to_swipe', { label: this._t('home_section.devices.label') }) : this._t('home.layout.show_all', { label: this._t('home_section.devices.label') })}
               @click=${this._toggleMobileHomeDevicesLayout}
             >
               <ha-icon icon=${gridMode ? 'mdi:view-carousel-outline' : 'mdi:view-grid-outline'}></ha-icon>
             </button>
-            <span class="mobile-section-title-label">House information</span>
+            <span class="mobile-section-title-label">${this._t('home_section.devices.label')}</span>
           </div>
           <button
             class="mobile-section-action"
             type="button"
             @click=${this._openMobileDeviceSwitcher}
           >
-            <span>See all</span>
+            <span>${this._t('home.see_all')}</span>
             <ha-icon icon="mdi:chevron-right"></ha-icon>
           </button>
         </div>
@@ -10901,20 +10901,20 @@ export class DwainsLayoutCard extends LitElement {
       <section class="home-camera-section layout-${this._mobileHomeCamerasLayout}">
         <div class="home-status-heading">
           <ha-icon icon="mdi:cctv"></ha-icon>
-          <span>Cameras</span>
+          <span>${this._t('home_section.cameras.label')}</span>
         </div>
         <div class="mobile-section-heading">
           <div class="mobile-section-title">
             <button
               class="mobile-layout-toggle ${gridMode ? 'active' : ''}"
               type="button"
-              title=${gridMode ? 'Swipe cameras' : 'Show all cameras'}
-              aria-label=${gridMode ? 'Switch cameras to swipe cards' : 'Show all cameras'}
+              title=${gridMode ? this._t('home.layout.swipe', { label: this._t('home_section.cameras.label') }) : this._t('home.layout.show_all', { label: this._t('home_section.cameras.label') })}
+              aria-label=${gridMode ? this._t('home.layout.switch_to_swipe', { label: this._t('home_section.cameras.label') }) : this._t('home.layout.show_all', { label: this._t('home_section.cameras.label') })}
               @click=${this._toggleMobileHomeCamerasLayout}
             >
               <ha-icon icon=${gridMode ? 'mdi:view-carousel-outline' : 'mdi:view-grid-outline'}></ha-icon>
             </button>
-            <span class="mobile-section-title-label">Cameras</span>
+            <span class="mobile-section-title-label">${this._t('home_section.cameras.label')}</span>
           </div>
         </div>
         <div class="home-camera-grid">
@@ -10980,7 +10980,7 @@ export class DwainsLayoutCard extends LitElement {
       const cameraEntity = cameraEntities[0]!;
       const stateObj = this.hass.states[cameraEntity.entity_id];
       const name = stateObj?.attributes?.friendly_name || cameraEntity.entity_id;
-      const state = stateObj ? this.hass.formatEntityState(stateObj) : 'Unknown';
+      const state = stateObj ? this.hass.formatEntityState(stateObj) : this._t('home.unknown');
       const imageUrl = this._getCameraImageUrl(cameraEntity.entity_id);
       const camera: HomeAreaCamera = {
         areaId: area.area_id,
@@ -11025,8 +11025,8 @@ export class DwainsLayoutCard extends LitElement {
     if (!powerUsage.sensorCount) return nothing;
 
     const subtitle = powerUsage.sensorCount
-      ? `${powerUsage.sensorCount} live power ${powerUsage.sensorCount === 1 ? 'sensor' : 'sensors'}`
-      : 'No live power sensors';
+      ? this._t('home.power.sensor_count', { count: powerUsage.sensorCount })
+      : this._t('home.power.no_sensors');
 
     return html`
       <div
@@ -11036,20 +11036,20 @@ export class DwainsLayoutCard extends LitElement {
         data-domain="wattage"
         role="button"
         tabindex="0"
-        aria-label=${`House power usage: ${powerUsage.formattedTotal}`}
+        aria-label=${`${this._t('home_info.power.label')}: ${powerUsage.formattedTotal}`}
       >
         <div class="house-power-head">
           <div class="status-card-icon house-power-icon">
             <ha-icon icon="mdi:flash"></ha-icon>
           </div>
           <div class="house-power-copy">
-            <div class="house-power-title">House power usage</div>
+            <div class="house-power-title">${this._t('home_info.power.label')}</div>
             <div class="house-power-subtitle">${subtitle}</div>
           </div>
           <div class="house-power-total">${powerUsage.formattedTotal}</div>
         </div>
         ${powerUsage.rooms.length ? html`
-          <div class="house-power-list" aria-label="Top rooms by power usage">
+          <div class="house-power-list" aria-label=${this._t('home.power.top_rooms')}>
             ${repeat(
               powerUsage.rooms,
               room => room.areaId,
@@ -11057,7 +11057,7 @@ export class DwainsLayoutCard extends LitElement {
             )}
           </div>
         ` : html`
-          <div class="house-power-empty">No room power usage right now</div>
+          <div class="house-power-empty">${this._t('home.power.empty')}</div>
         `}
       </div>
     `;
@@ -11075,16 +11075,16 @@ export class DwainsLayoutCard extends LitElement {
         data-domain="sensor"
         role="button"
         tabindex="0"
-        aria-label="Indoor climate"
+        aria-label=${this._t('home_info.climate.label')}
       >
         <div class="house-climate-head">
           <div class="status-card-icon house-climate-icon">
             <ha-icon icon="mdi:home-thermometer-outline"></ha-icon>
           </div>
           <div class="house-climate-copy">
-            <div class="house-climate-title">Indoor climate</div>
+            <div class="house-climate-title">${this._t('home_info.climate.label')}</div>
             <div class="house-climate-subtitle">
-              ${climate.sensorCount === 1 ? '1 climate sensor' : `${climate.sensorCount} climate sensors`}
+              ${this._t('home.climate.sensor_count', { count: climate.sensorCount })}
             </div>
           </div>
         </div>
@@ -11157,15 +11157,15 @@ export class DwainsLayoutCard extends LitElement {
     }
 
     const title = kind
-      ? metrics[0]?.label || 'Indoor climate'
-      : 'Indoor climate';
+      ? metrics[0]?.label || this._t('home_info.climate.label')
+      : this._t('home_info.climate.label');
 
     showDomainEntitiesDialog(this, {
       domain: 'sensor',
       config: this.config,
       entityIds,
       customTitle: title,
-      viewAllLabel: 'View sensors',
+      viewAllLabel: this._t('home.climate.view_sensors'),
       onViewAll: () => this._openDeviceDomain('sensor'),
     });
   }
@@ -11174,8 +11174,8 @@ export class DwainsLayoutCard extends LitElement {
     const personEntities = this._getVisiblePersonEntities();
     const homeCount = personEntities.filter(person => person.state === 'home').length;
     const subtitle = personEntities.length
-      ? `${homeCount}/${personEntities.length} home`
-      : 'No people';
+      ? this._t('home.people_home', { home: homeCount, total: personEntities.length })
+      : this._t('home.people.subtitle_empty');
 
     return html`
       <div
@@ -11188,7 +11188,7 @@ export class DwainsLayoutCard extends LitElement {
             <ha-icon icon="mdi:account-group"></ha-icon>
           </div>
           <div class="house-persons-copy">
-            <div class="house-persons-title">People</div>
+            <div class="house-persons-title">${this._t('home_info.people.label')}</div>
             <div class="house-persons-subtitle">${subtitle}</div>
           </div>
         </div>
@@ -11201,7 +11201,7 @@ export class DwainsLayoutCard extends LitElement {
             )}
           </div>
         ` : html`
-          <div class="house-persons-empty">No visible persons configured</div>
+          <div class="house-persons-empty">${this._t('home.people.empty')}</div>
         `}
       </div>
     `;
@@ -11259,8 +11259,8 @@ export class DwainsLayoutCard extends LitElement {
   private _formatPersonState(person: any): string {
     if (person.state === 'home') return this._t('person.home');
     if (person.state === 'not_home') return this._t('person.away');
-    if (!person.state || person.state === 'unknown') return 'Unknown';
-    if (person.state === 'unavailable') return 'Unavailable';
+    if (!person.state || person.state === 'unknown') return this._t('home.unknown');
+    if (person.state === 'unavailable') return this._t('home.unavailable');
 
     return String(person.state)
       .replace(/_/g, ' ')
@@ -11273,18 +11273,18 @@ export class DwainsLayoutCard extends LitElement {
 
     if (personEntities.length) {
       const homeCount = personEntities.filter(person => person.state === 'home').length;
-      parts.push(`${homeCount}/${personEntities.length} home`);
+      parts.push(this._t('home.people_home', { home: homeCount, total: personEntities.length }));
     }
 
     if (this._showNotificationsUi() && this._persistentNotifications.length) {
       const count = this._persistentNotifications.length;
-      parts.push(`${count} ${count === 1 ? 'notification' : 'notifications'}`);
+      parts.push(this._t('home.snapshot.notification_count', { count }));
     }
 
     const attentionCount = this._getHomeSummaryCards()
       .reduce((total, summary) => total + summary.count, 0);
     if (attentionCount) {
-      parts.push(attentionCount === 1 ? '1 item needs attention' : `${attentionCount} items need attention`);
+      parts.push(this._t('home.snapshot.attention', { count: attentionCount }));
     }
 
     const weatherText = this._formatWeatherSnapshot(weatherEntity);
@@ -11292,14 +11292,14 @@ export class DwainsLayoutCard extends LitElement {
       parts.push(weatherText);
     }
 
-    return parts.slice(0, 3).join(' · ') || 'Everything looks calm';
+    return parts.slice(0, 3).join(' · ') || this._t('home.snapshot.calm');
   }
 
   private _formatWeatherSnapshot(weatherEntity?: any): string {
     const temperature = this._formatWeatherTemperature(weatherEntity);
     if (!temperature) return '';
 
-    return `${temperature} outside`;
+    return this._t('home.weather.outside_temp', { temp: temperature });
   }
 
   private _weatherDisplayEnabled(): boolean {
@@ -11330,9 +11330,9 @@ export class DwainsLayoutCard extends LitElement {
     const temperature = this._formatWeatherTemperature(weatherEntity);
     const condition = this._formatWeatherCondition(weatherEntity?.state);
 
-    if (temperature && condition) return `${temperature} outside, ${condition}`;
-    if (temperature) return `${temperature} outside`;
-    return condition || 'Outside weather';
+    if (temperature && condition) return this._t('home.weather.outside_temp_condition', { temp: temperature, condition });
+    if (temperature) return this._t('home.weather.outside_temp', { temp: temperature });
+    return condition || this._t('home.weather.title_fallback');
   }
 
   private _formatWeatherCondition(state?: string): string {
@@ -11415,7 +11415,7 @@ export class DwainsLayoutCard extends LitElement {
 
     return {
       kind,
-      label: kind === 'temperature' ? 'Average temp' : 'Average humidity',
+      label: kind === 'temperature' ? this._t('home.climate.average_temp') : this._t('home.climate.average_humidity'),
       value,
       count: values.length,
       icon: kind === 'temperature' ? getDeviceClassIcon('sensor', 'temperature') : getDeviceClassIcon('sensor', 'humidity'),
@@ -11446,14 +11446,14 @@ export class DwainsLayoutCard extends LitElement {
               <button
                 class="mobile-layout-toggle ${gridMode ? 'active' : ''}"
                 type="button"
-                title=${gridMode ? 'Swipe areas' : 'Show all areas'}
-                aria-label=${gridMode ? 'Switch areas to swipe cards' : 'Show all areas'}
+                title=${gridMode ? this._t('home.layout.swipe', { label: this._t('home_section.areas.label') }) : this._t('home.layout.show_all', { label: this._t('home_section.areas.label') })}
+                aria-label=${gridMode ? this._t('home.layout.switch_to_swipe', { label: this._t('home_section.areas.label') }) : this._t('home.layout.show_all', { label: this._t('home_section.areas.label') })}
                 @click=${this._toggleMobileHomeAreasLayout}
               >
                 <ha-icon icon=${gridMode ? 'mdi:view-carousel-outline' : 'mdi:view-grid-outline'}></ha-icon>
               </button>
             `}
-            <span class="mobile-section-title-label">Areas</span>
+            <span class="mobile-section-title-label">${this._t('home_section.areas.label')}</span>
           </div>
           ${desktopCollapsed ? nothing : html`
             <button
@@ -11461,7 +11461,7 @@ export class DwainsLayoutCard extends LitElement {
               type="button"
               @click=${this._openMobileAreaSwitcher}
             >
-              <span>See all</span>
+              <span>${this._t('home.see_all')}</span>
               <ha-icon icon="mdi:chevron-right"></ha-icon>
             </button>
           `}
@@ -11487,7 +11487,7 @@ export class DwainsLayoutCard extends LitElement {
       areaData.humidity,
       areaData.wattage
     ].filter(Boolean).join(' • ');
-    const meta = sensorSummary || (deviceCount === 1 ? '1 device' : `${deviceCount} devices`);
+    const meta = sensorSummary || this._t('home.device_count', { count: deviceCount });
     const badges: Array<{ className: string; icon: string; count: number; color: string }> = [];
     const pictureContrastClass = hasPicture ? this._getPictureContrastClass(area.picture) : '';
 
@@ -11551,9 +11551,9 @@ export class DwainsLayoutCard extends LitElement {
 
   private _getGreeting(): string {
     const hour = new Date().getHours();
-    if (hour < 12) return 'Good morning';
-    if (hour < 18) return 'Good afternoon';
-    return 'Good evening';
+    if (hour < 12) return this._t('home.greeting.morning');
+    if (hour < 18) return this._t('home.greeting.afternoon');
+    return this._t('home.greeting.evening');
   }
 
   private _renderHomeAlarm() {
@@ -11571,9 +11571,9 @@ export class DwainsLayoutCard extends LitElement {
     };
 
     const getAlarmText = () => {
-      if (isArmed) return 'Armed';
-      if (isDisarmed) return 'Disarmed';
-      return 'Alarm';
+      if (isArmed) return this._t('home.alarm.armed');
+      if (isDisarmed) return this._t('home.alarm.disarmed');
+      return this._t('home.alarm.alarm');
     };
 
     const getAlarmClass = () => {
@@ -11606,8 +11606,8 @@ export class DwainsLayoutCard extends LitElement {
             <button
               class="mobile-layout-toggle ${gridMode ? 'active' : ''}"
               type="button"
-              title=${gridMode ? 'Swipe favorites' : 'Show all favorites'}
-              aria-label=${gridMode ? 'Switch favorites to swipe cards' : 'Show all favorites'}
+              title=${gridMode ? this._t('home.layout.swipe', { label: this._t('favorites.title') }) : this._t('home.layout.show_all', { label: this._t('favorites.title') })}
+              aria-label=${gridMode ? this._t('home.layout.switch_to_swipe', { label: this._t('favorites.title') }) : this._t('home.layout.show_all', { label: this._t('favorites.title') })}
               @click=${this._toggleMobileHomeFavoritesLayout}
             >
               <ha-icon icon=${gridMode ? 'mdi:view-carousel-outline' : 'mdi:view-grid-outline'}></ha-icon>
@@ -11821,10 +11821,10 @@ export class DwainsLayoutCard extends LitElement {
 
   private _favoriteQuickTitle(state: any, domain: string): string {
     const value = String(state?.state || '').toLowerCase();
-    if (domain === 'cover') return ['open', 'opening'].includes(value) ? 'Close' : 'Open';
-    if (domain === 'lock') return value === 'unlocked' ? 'Lock' : 'Unlock';
-    if (['light', 'switch', 'fan', 'input_boolean'].includes(domain)) return value === 'off' ? 'Turn on' : 'Turn off';
-    return 'More info';
+    if (domain === 'cover') return ['open', 'opening'].includes(value) ? this._t('common.close') : this._t('area.tile.open');
+    if (domain === 'lock') return value === 'unlocked' ? this._t('area.tile.lock') : this._t('area.tile.unlock');
+    if (['light', 'switch', 'fan', 'input_boolean'].includes(domain)) return value === 'off' ? this._t('area.tile.turn_on') : this._t('area.tile.turn_off');
+    return this._t('area.tile.more_info');
   }
 
   private async _handleFavoriteQuickAction(event: Event, state: any, domain: string): Promise<void> {
@@ -11855,7 +11855,7 @@ export class DwainsLayoutCard extends LitElement {
     } catch (err) {
       this._clearOptimisticEntityStates(affectedEntityIds);
       console.warn(`Failed to run favorite quick action for ${entityId}:`, err);
-      this._showToast('Could not update entity');
+      this._showToast(this._t('area.toast.update_entity_failed'));
       return;
     }
 
@@ -11881,7 +11881,7 @@ export class DwainsLayoutCard extends LitElement {
       entity.entity_id.startsWith('switch.') ||
       entity.entity_id.startsWith('cover.')
     );
-    const deviceLabel = deviceCount === 1 ? '1 device' : `${deviceCount} devices`;
+    const deviceLabel = this._t('home.device_count', { count: deviceCount });
     const stickyMetrics = [
       areaData.temperature,
       areaData.humidity,
@@ -11897,8 +11897,8 @@ export class DwainsLayoutCard extends LitElement {
           <div class="area-mobile-toolbar">
             <button
               class="area-mobile-round area-mobile-home"
-              title="Home"
-              aria-label="Back to home"
+              title=${this._t('sidebar.home')}
+              aria-label=${this._t('area.back_to_home')}
               @click=${() => this._selectView('home')}
             >
               ${this._renderStaticIcon(ICON_ARROW_LEFT)}
@@ -11923,8 +11923,8 @@ export class DwainsLayoutCard extends LitElement {
               <button
                 class="area-desktop-back"
                 type="button"
-                title="Back to home"
-                aria-label="Back to home"
+                title=${this._t('area.back_to_home')}
+                aria-label=${this._t('area.back_to_home')}
                 @click=${() => this._selectView('home')}
               >
                 ${this._renderStaticIcon(ICON_ARROW_LEFT)}
@@ -12434,7 +12434,7 @@ export class DwainsLayoutCard extends LitElement {
       badges.push(html`
         <div class="area-badge light" style=${this._domainBadgeStyle('light')}>
           <ha-icon icon=${getDomainIcon('light')}></ha-icon>
-          <span>${areaData.domains.light.on} on</span>
+          <span>${this._t('area.badge.on', { count: areaData.domains.light.on })}</span>
         </div>
       `);
     }
@@ -12444,7 +12444,7 @@ export class DwainsLayoutCard extends LitElement {
       badges.push(html`
         <div class="area-badge switch" style=${this._domainBadgeStyle('switch')}>
           <ha-icon icon=${getDomainIcon('switch')}></ha-icon>
-          <span>${areaData.domains.switch.on} on</span>
+          <span>${this._t('area.badge.on', { count: areaData.domains.switch.on })}</span>
         </div>
       `);
     }
@@ -12454,7 +12454,7 @@ export class DwainsLayoutCard extends LitElement {
       badges.push(html`
         <div class="area-badge climate" style=${this._domainBadgeStyle('climate')}>
           <ha-icon icon=${getDomainIcon('climate')}></ha-icon>
-                            <span>${areaData.domains.climate.on} active</span>
+                            <span>${this._t('area.badge.active', { count: areaData.domains.climate.on })}</span>
         </div>
       `);
     }
@@ -12470,7 +12470,7 @@ export class DwainsLayoutCard extends LitElement {
       badges.push(html`
         <div class="area-badge motion active" style=${this._domainBadgeStyle('binary_sensor', 'motion')}>
           <ha-icon icon=${getDeviceClassIcon('binary_sensor', 'motion')}></ha-icon>
-                            <span>${motionEntities.length} active</span>
+                            <span>${this._t('area.badge.active', { count: motionEntities.length })}</span>
         </div>
       `);
     }
@@ -12480,7 +12480,7 @@ export class DwainsLayoutCard extends LitElement {
       badges.push(html`
         <div class="area-badge cover" style=${this._domainBadgeStyle('cover')}>
           <ha-icon icon=${getDomainIcon('cover')}></ha-icon>
-          <span>${areaData.domains.cover.on} open</span>
+          <span>${this._t('area.badge.open', { count: areaData.domains.cover.on })}</span>
         </div>
       `);
     }
@@ -12490,7 +12490,7 @@ export class DwainsLayoutCard extends LitElement {
       badges.push(html`
         <div class="area-badge media_player" style=${this._domainBadgeStyle('media_player')}>
           <ha-icon icon=${getDomainIcon('media_player')}></ha-icon>
-                            <span>${areaData.domains.media_player.on} active</span>
+                            <span>${this._t('area.badge.active', { count: areaData.domains.media_player.on })}</span>
         </div>
       `);
     }
@@ -12507,7 +12507,7 @@ export class DwainsLayoutCard extends LitElement {
           @click=${() => this._toggleAreaLights(area.area_id)}
         >
           <ha-icon icon=${allOff ? 'mdi:lightbulb-on' : 'mdi:lightbulb-off'}></ha-icon>
-                            <span>${allOff ? 'All lights on' : 'All lights off'}</span>
+                            <span>${allOff ? this._t('area.badge.all_lights_on') : this._t('area.badge.all_lights_off')}</span>
         </button>
       `);
     }
@@ -12522,7 +12522,7 @@ export class DwainsLayoutCard extends LitElement {
           @click=${() => this._toggleAreaSwitches(area.area_id)}
         >
           <ha-icon icon=${allOff ? 'mdi:toggle-switch' : 'mdi:toggle-switch-off'}></ha-icon>
-          <span>${allOff ? 'All switches on' : 'All switches off'}</span>
+          <span>${allOff ? this._t('area.badge.all_switches_on') : this._t('area.badge.all_switches_off')}</span>
         </button>
       `);
     }
@@ -12596,8 +12596,8 @@ export class DwainsLayoutCard extends LitElement {
         ${lights.length ? html`
           <button
             class="area-quick-control light ${lightsActive ? 'active' : ''}"
-            title=${lightsActive ? `Turn all lights off (${activeLights}/${lights.length} on)` : `Turn all lights on (${lights.length})`}
-            aria-label=${lightsActive ? `Turn all lights off, ${activeLights} of ${lights.length} are on` : `Turn all lights on, ${lights.length} lights`}
+            title=${lightsActive ? this._t('area.quick.lights_off_title', { active: activeLights, total: lights.length }) : this._t('area.quick.lights_on_title', { total: lights.length })}
+            aria-label=${lightsActive ? this._t('area.quick.lights_off_aria', { active: activeLights, total: lights.length }) : this._t('area.quick.lights_on_aria', { total: lights.length })}
             @click=${() => this._toggleAreaLights(areaId)}
           >
             <span class="area-quick-main">
@@ -12610,8 +12610,8 @@ export class DwainsLayoutCard extends LitElement {
         ${switches.length ? html`
           <button
             class="area-quick-control switch ${switchesActive ? 'active' : ''}"
-            title=${switchesActive ? `Turn all switches off (${activeSwitches}/${switches.length} on)` : `Turn all switches on (${switches.length})`}
-            aria-label=${switchesActive ? `Turn all switches off, ${activeSwitches} of ${switches.length} are on` : `Turn all switches on, ${switches.length} switches`}
+            title=${switchesActive ? this._t('area.quick.switches_off_title', { active: activeSwitches, total: switches.length }) : this._t('area.quick.switches_on_title', { total: switches.length })}
+            aria-label=${switchesActive ? this._t('area.quick.switches_off_aria', { active: activeSwitches, total: switches.length }) : this._t('area.quick.switches_on_aria', { total: switches.length })}
             @click=${() => this._toggleAreaSwitches(areaId)}
           >
             <span class="area-quick-main">
@@ -12624,8 +12624,8 @@ export class DwainsLayoutCard extends LitElement {
         ${covers.length ? html`
           <button
             class="area-quick-control cover ${coversOpen ? 'active' : ''}"
-            title=${coversOpen ? `Close all covers (${openCovers}/${covers.length} open)` : `Open all covers (${covers.length})`}
-            aria-label=${coversOpen ? `Close all covers, ${openCovers} of ${covers.length} are open` : `Open all covers, ${covers.length} covers`}
+            title=${coversOpen ? this._t('area.quick.covers_close_title', { open: openCovers, total: covers.length }) : this._t('area.quick.covers_open_title', { total: covers.length })}
+            aria-label=${coversOpen ? this._t('area.quick.covers_close_aria', { open: openCovers, total: covers.length }) : this._t('area.quick.covers_open_aria', { total: covers.length })}
             @click=${() => this._toggleAreaCovers(areaId, true)}
           >
             <span class="area-quick-main">
@@ -12652,8 +12652,8 @@ export class DwainsLayoutCard extends LitElement {
     return html`
       <button
         class="area-mobile-round area-mobile-camera"
-        title="Camera"
-        aria-label="Open camera"
+        title=${this._t('area.camera')}
+        aria-label=${this._t('area.open_camera')}
         @click=${() => this._showMoreInfo(camera.entity_id)}
       >
         <ha-icon icon="mdi:video-outline"></ha-icon>
@@ -12663,8 +12663,8 @@ export class DwainsLayoutCard extends LitElement {
 
   private _renderAreaHeaderMetrics(areaData: AreaData) {
     const metrics = [
-      areaData.temperature ? this._renderMobileAreaMetric('temperature', 'Temp', areaData.temperature, 0, 30, 'area-header-metric') : nothing,
-      areaData.humidity ? this._renderMobileAreaMetric('humidity', 'Humidity', areaData.humidity, 20, 90, 'area-header-metric') : nothing,
+      areaData.temperature ? this._renderMobileAreaMetric('temperature', this._t('area.metric.temp'), areaData.temperature, 0, 30, 'area-header-metric') : nothing,
+      areaData.humidity ? this._renderMobileAreaMetric('humidity', this._t('area.metric.humidity'), areaData.humidity, 20, 90, 'area-header-metric') : nothing,
     ].filter((item) => item !== nothing);
 
     if (!metrics.length) return nothing;
@@ -12739,15 +12739,15 @@ export class DwainsLayoutCard extends LitElement {
                   <button
                     class="mobile-layout-toggle ${gridMode ? 'active' : ''}"
                     type="button"
-                    title=${gridMode ? 'Swipe cards' : 'Show all cards'}
-                    aria-label=${gridMode ? 'Switch to swipe cards' : 'Show all cards'}
+                    title=${gridMode ? this._t('area.swipe_cards') : this._t('area.show_all_cards')}
+                    aria-label=${gridMode ? this._t('area.switch_to_swipe_cards') : this._t('area.show_all_cards')}
                     @click=${this._toggleMobileEntityLayout}
                   >
                     <ha-icon icon=${gridMode ? 'mdi:view-carousel-outline' : 'mdi:view-grid-outline'}></ha-icon>
                   </button>
                   <span class="mobile-domain-title-copy">
                     <span class="mobile-domain-title-label">${group.name}</span>
-                    <span class="mobile-domain-count">(${group.entities.length} ${group.entities.length === 1 ? 'item' : 'items'})</span>
+                    <span class="mobile-domain-count">${this._t('area.item_count', { count: group.entities.length })}</span>
                   </span>
                 </div>
                 ${hasActions ? html`
@@ -12919,8 +12919,8 @@ export class DwainsLayoutCard extends LitElement {
   private _mobileGroupActionLabels(groupKey: string): { offLabel: string; onLabel: string; offIcon: string; onIcon: string } {
     if (groupKey === 'cover') {
       return {
-        offLabel: 'Close All',
-        onLabel: 'Open All',
+        offLabel: this._t('area.group_action.close_all'),
+        onLabel: this._t('area.group_action.open_all'),
         offIcon: 'mdi:window-shutter',
         onIcon: 'mdi:window-shutter-open',
       };
@@ -12928,8 +12928,8 @@ export class DwainsLayoutCard extends LitElement {
 
     if (groupKey === 'lock') {
       return {
-        offLabel: 'Lock All',
-        onLabel: 'Unlock All',
+        offLabel: this._t('area.group_action.lock_all'),
+        onLabel: this._t('area.group_action.unlock_all'),
         offIcon: 'mdi:lock-outline',
         onIcon: 'mdi:lock-open-variant-outline',
       };
@@ -12937,8 +12937,8 @@ export class DwainsLayoutCard extends LitElement {
 
     if (groupKey === 'light') {
       return {
-        offLabel: 'Turn Off All',
-        onLabel: 'Turn On All',
+        offLabel: this._t('area.group_action.turn_off_all'),
+        onLabel: this._t('area.group_action.turn_on_all'),
         offIcon: 'mdi:lightbulb-off',
         onIcon: 'mdi:lightbulb',
       };
@@ -12946,16 +12946,16 @@ export class DwainsLayoutCard extends LitElement {
 
     if (groupKey === 'fan') {
       return {
-        offLabel: 'Turn Off All',
-        onLabel: 'Turn On All',
+        offLabel: this._t('area.group_action.turn_off_all'),
+        onLabel: this._t('area.group_action.turn_on_all'),
         offIcon: 'mdi:fan-off',
         onIcon: 'mdi:fan',
       };
     }
 
     return {
-      offLabel: 'Turn Off All',
-      onLabel: 'Turn On All',
+      offLabel: this._t('area.group_action.turn_off_all'),
+      onLabel: this._t('area.group_action.turn_on_all'),
       offIcon: 'mdi:toggle-switch-off',
       onIcon: 'mdi:toggle-switch',
     };
@@ -12998,11 +12998,11 @@ export class DwainsLayoutCard extends LitElement {
   }
 
   private _mobileGroupName(key: string): string {
-    if (key === 'light') return 'Lighting';
-    if (key === 'switch') return 'Switches';
-    if (key === 'cover') return 'Covers';
-    if (key === 'climate') return 'Climate Control';
-    if (key === 'motion') return 'Motion';
+    if (key === 'light') return this._t('area.group.lighting');
+    if (key === 'switch') return this._t('area.group.switches');
+    if (key === 'cover') return this._t('area.group.covers');
+    if (key === 'climate') return this._t('area.group.climate');
+    if (key === 'motion') return this._t('area.group.motion');
     return getDomainName(this.hass, key);
   }
 
@@ -13118,7 +13118,7 @@ export class DwainsLayoutCard extends LitElement {
         @keydown=${(event: KeyboardEvent) => event.stopPropagation()}
       >
         <select
-          aria-label="Select option"
+          aria-label=${this._t('area.tile.select_option')}
           ?disabled=${unavailable}
           @change=${(event: Event) => this._handleMobileSelectChange(event, state, domain)}
         >
@@ -13154,8 +13154,8 @@ export class DwainsLayoutCard extends LitElement {
         <button
           class="mobile-entity-action mobile-entity-toggle"
           type="button"
-          title=${active ? 'Turn off' : 'Turn on'}
-          aria-label=${active ? 'Turn off' : 'Turn on'}
+          title=${active ? this._t('area.tile.turn_off') : this._t('area.tile.turn_on')}
+          aria-label=${active ? this._t('area.tile.turn_off') : this._t('area.tile.turn_on')}
           ?disabled=${unavailable}
           @click=${(event: Event) => this._handleMobileEntityToggle(event, state, domain)}
         ></button>
@@ -13172,8 +13172,8 @@ export class DwainsLayoutCard extends LitElement {
         <button
           class="mobile-entity-action mobile-lock-action ${unlocked ? 'is-unlocked' : ''}"
           type="button"
-          title=${unlocked ? 'Lock' : 'Unlock'}
-          aria-label=${unlocked ? 'Lock' : 'Unlock'}
+          title=${unlocked ? this._t('area.tile.lock') : this._t('area.tile.unlock')}
+          aria-label=${unlocked ? this._t('area.tile.lock') : this._t('area.tile.unlock')}
           ?disabled=${unavailable}
           @click=${(event: Event) => this._handleMobileLockAction(event, state)}
         >
@@ -13187,8 +13187,8 @@ export class DwainsLayoutCard extends LitElement {
         <button
           class="mobile-entity-action mobile-scene-action"
           type="button"
-          title="Activate"
-          aria-label="Activate"
+          title=${this._t('area.tile.activate')}
+          aria-label=${this._t('area.tile.activate')}
           @click=${(event: Event) => this._handleMobileSceneAction(event, state)}
         >
           <ha-icon icon="mdi:play"></ha-icon>
@@ -13200,8 +13200,8 @@ export class DwainsLayoutCard extends LitElement {
       <button
         class="mobile-entity-action mobile-entity-more"
         type="button"
-        title="More info"
-        aria-label="More info"
+        title=${this._t('area.tile.more_info')}
+        aria-label=${this._t('area.tile.more_info')}
         @click=${(event: Event) => this._handleMobileMoreInfo(event, entityId)}
       >
         <ha-icon icon="mdi:chevron-right"></ha-icon>
@@ -13222,8 +13222,8 @@ export class DwainsLayoutCard extends LitElement {
           <button
             class="mobile-entity-action mobile-cover-action ${value === 'opening' ? 'active' : ''}"
             type="button"
-            title="Open"
-            aria-label="Open"
+            title=${this._t('area.tile.open')}
+            aria-label=${this._t('area.tile.open')}
             ?disabled=${unavailable}
             @click=${(event: Event) => this._handleMobileCoverAction(event, state, 'open')}
           >
@@ -13234,8 +13234,8 @@ export class DwainsLayoutCard extends LitElement {
           <button
             class="mobile-entity-action mobile-cover-action ${value === 'opening' || value === 'closing' ? 'active' : ''}"
             type="button"
-            title="Stop"
-            aria-label="Stop"
+            title=${this._t('area.tile.stop')}
+            aria-label=${this._t('area.tile.stop')}
             ?disabled=${unavailable}
             @click=${(event: Event) => this._handleMobileCoverAction(event, state, 'stop')}
           >
@@ -13246,8 +13246,8 @@ export class DwainsLayoutCard extends LitElement {
           <button
             class="mobile-entity-action mobile-cover-action ${value === 'closing' ? 'active' : ''}"
             type="button"
-            title="Close"
-            aria-label="Close"
+            title=${this._t('common.close')}
+            aria-label=${this._t('common.close')}
             ?disabled=${unavailable}
             @click=${(event: Event) => this._handleMobileCoverAction(event, state, 'close')}
           >
@@ -13273,7 +13273,7 @@ export class DwainsLayoutCard extends LitElement {
     } catch (err) {
       this._clearOptimisticEntityStates([entityId]);
       console.warn(`Failed to toggle mobile entity ${entityId}:`, err);
-      this._showToast('Could not update entity');
+      this._showToast(this._t('area.toast.update_entity_failed'));
       return;
     }
 
@@ -13297,7 +13297,7 @@ export class DwainsLayoutCard extends LitElement {
     } catch (err) {
       this._clearOptimisticEntityStates([entityId]);
       console.warn(`Failed to select option for ${entityId}:`, err);
-      this._showToast('Could not update selector');
+      this._showToast(this._t('area.toast.update_selector_failed'));
     }
   }
 
@@ -13315,7 +13315,7 @@ export class DwainsLayoutCard extends LitElement {
     } catch (err) {
       this._clearOptimisticEntityStates([entityId]);
       console.warn(`Failed to ${action} cover ${entityId}:`, err);
-      this._showToast('Could not update cover');
+      this._showToast(this._t('area.toast.update_cover_failed'));
     }
   }
 
@@ -13331,7 +13331,7 @@ export class DwainsLayoutCard extends LitElement {
     } catch (err) {
       this._clearOptimisticEntityStates([entityId]);
       console.warn(`Failed to toggle lock ${entityId}:`, err);
-      this._showToast('Could not update lock');
+      this._showToast(this._t('area.toast.update_lock_failed'));
     }
   }
 
@@ -13342,7 +13342,7 @@ export class DwainsLayoutCard extends LitElement {
 
     try {
       await this.hass.callService('scene', 'turn_on', { entity_id: entityId });
-      this._showToast('Scene activated');
+      this._showToast(this._t('area.toast.scene_activated'));
     } catch (err) {
       console.warn(`Failed to activate scene ${entityId}:`, err);
       this._showMoreInfo(entityId);
@@ -13405,11 +13405,11 @@ export class DwainsLayoutCard extends LitElement {
       }));
 
       const count = Object.values(grouped).reduce((total, entityIds) => total + entityIds.length, 0);
-      if (count) this._showToast(`${count} ${count === 1 ? 'entity' : 'entities'} turned ${turnOn ? 'on' : 'off'}`);
+      if (count) this._showToast(turnOn ? this._t('area.toast.group_turned_on', { count }) : this._t('area.toast.group_turned_off', { count }));
     } catch (err) {
       this._clearOptimisticEntityStates(affectedEntityIds);
       console.warn('Failed to run mobile group action:', err);
-      this._showToast('Could not update group');
+      this._showToast(this._t('area.toast.update_group_failed'));
     }
   }
 
@@ -13446,7 +13446,7 @@ export class DwainsLayoutCard extends LitElement {
     }
 
     if (domain === 'light' && state.state === 'on' && typeof state.attributes?.brightness === 'number') {
-      return `${Math.round((state.attributes.brightness / 255) * 100)}% brightness`;
+      return this._t('area.tile.brightness', { percent: Math.round((state.attributes.brightness / 255) * 100) });
     }
 
     if (domain === 'cover' && typeof state.attributes?.current_position === 'number') {
@@ -13457,7 +13457,7 @@ export class DwainsLayoutCard extends LitElement {
       const current = state.attributes?.current_temperature;
       const target = state.attributes?.temperature;
       const unit = this.hass?.config?.unit_system?.temperature || '°C';
-      if (current !== undefined && target !== undefined) return `${current}${unit} · set ${target}${unit}`;
+      if (current !== undefined && target !== undefined) return `${current}${unit} · ${this._t('area.tile.climate_set', { target: `${target}${unit}` })}`;
       if (current !== undefined) return `${current}${unit}`;
     }
 
@@ -13476,7 +13476,7 @@ export class DwainsLayoutCard extends LitElement {
     const timestamp = Date.parse(candidate);
 
     if (!Number.isFinite(timestamp)) {
-      return 'Not activated yet';
+      return this._t('area.tile.not_activated');
     }
 
     return this._formatRelativeTime(timestamp);
@@ -13484,11 +13484,11 @@ export class DwainsLayoutCard extends LitElement {
 
   private _eventLastTriggeredText(state: any): string {
     const value = String(state?.state || '').toLowerCase();
-    if (value === 'unavailable') return 'Unavailable';
+    if (value === 'unavailable') return this._t('home.unavailable');
 
     const timestamp = Date.parse(state?.last_changed || state?.last_updated || '');
     if (!Number.isFinite(timestamp)) {
-      return 'No events yet';
+      return this._t('area.tile.no_events');
     }
 
     if (value && value !== 'unknown') {
@@ -13608,7 +13608,7 @@ export class DwainsLayoutCard extends LitElement {
       result.unshift({
         domain: 'wattage',
         count: 0,
-        name: 'Power usage',
+        name: this._t('lc.header.power_usage'),
         value: totalWattage,
         icon: 'mdi:flash'
       });
@@ -13814,7 +13814,7 @@ export class DwainsLayoutCard extends LitElement {
       <button
         class="unavailable-entities-icon"
         @click=${() => this._showUnavailableEntitiesModal(areaId)}
-        title="Show ${totalUnavailable} hidden unavailable/unknown entities"
+        title=${this._t('area.unavailable.icon_title', { count: totalUnavailable })}
       >
         <ha-icon icon="mdi:information-outline"></ha-icon>
         <span class="unavailable-count">${totalUnavailable}</span>
@@ -13942,7 +13942,7 @@ export class DwainsLayoutCard extends LitElement {
   // Event Handlers
   private _confirmDiscardSettings(): boolean {
     if (this._selectedView !== 'settings' || !this._settingsDirty) return true;
-    return window.confirm('Discard unsaved dashboard settings?');
+    return window.confirm(this._t('lc.settings.discard_confirm'));
   }
 
   private _clearSettingsEditState(): void {
@@ -14330,7 +14330,7 @@ export class DwainsLayoutCard extends LitElement {
       this.requestUpdate();
     } catch (err) {
       console.error('Failed to save Dwains Dashboard settings:', err);
-      this._settingsSaveError = `Could not save dashboard settings: ${String(err)}`;
+      this._settingsSaveError = this._t('lc.settings.save_failed', { error: String(err) });
     } finally {
       this._settingsSavePending = false;
     }
@@ -14352,12 +14352,12 @@ export class DwainsLayoutCard extends LitElement {
             <ha-icon icon="mdi:close"></ha-icon>
           </button>
           <div class="settings-page-title">
-            <h1>Dashboard settings</h1>
-            <p>Configure Dwains Dashboard Next.</p>
+            <h1>${this._t('lc.settings.title')}</h1>
+            <p>${this._t('lc.settings.subtitle')}</p>
           </div>
           <div class="settings-page-actions">
             <button type="button" class="settings-secondary" @click=${this._closeSettingsPage}>
-              Back
+              ${this._t('common.back')}
             </button>
             <button
               type="button"
@@ -14365,7 +14365,7 @@ export class DwainsLayoutCard extends LitElement {
               ?disabled=${!canSave}
               @click=${this._saveSettingsPage}
             >
-              ${this._settingsSavePending ? 'Saving...' : 'Save'}
+              ${this._settingsSavePending ? this._t('lc.settings.saving') : this._t('common.save')}
             </button>
           </div>
         </header>
@@ -14377,7 +14377,7 @@ export class DwainsLayoutCard extends LitElement {
         </div>
         <div class="settings-page-bottom-actions">
           <button type="button" class="settings-secondary" @click=${this._closeSettingsPage}>
-            Back
+            ${this._t('common.back')}
           </button>
           <button
             type="button"
@@ -14385,7 +14385,7 @@ export class DwainsLayoutCard extends LitElement {
             ?disabled=${!canSave}
             @click=${this._saveSettingsPage}
           >
-            ${this._settingsSavePending ? 'Saving...' : 'Save'}
+            ${this._settingsSavePending ? this._t('lc.settings.saving') : this._t('common.save')}
           </button>
         </div>
       </section>
@@ -14463,7 +14463,7 @@ export class DwainsLayoutCard extends LitElement {
     } catch (err) {
       if (showError || this._notificationsOpen) {
         console.error('Failed to load persistent notifications:', err);
-        this._notificationsError = 'Could not load Home Assistant persistent notifications.';
+        this._notificationsError = this._t('home.notifications.load_error');
       }
     } finally {
       this._notificationsLoading = false;
@@ -14566,7 +14566,7 @@ export class DwainsLayoutCard extends LitElement {
     } catch (err) {
       console.error('Failed to dismiss persistent notification:', err);
       this._persistentNotifications = previous;
-      this._notificationsError = 'Could not dismiss this notification.';
+      this._notificationsError = this._t('home.notifications.dismiss_error');
     }
   };
 
@@ -14580,7 +14580,7 @@ export class DwainsLayoutCard extends LitElement {
     } catch (err) {
       console.error('Failed to dismiss all persistent notifications:', err);
       this._persistentNotifications = previous;
-      this._notificationsError = 'Could not dismiss all notifications.';
+      this._notificationsError = this._t('home.notifications.dismiss_all_error');
     }
   };
 
@@ -14607,7 +14607,7 @@ export class DwainsLayoutCard extends LitElement {
       deviceClass: domain.deviceClass,
       entityIds,
       customTitle: domain.name,
-      viewAllLabel: 'View all',
+      viewAllLabel: this._t('home.view_all'),
       onViewAll: () => this._openDeviceDomain(this._statusDeviceDomainKey(domain)),
     });
   }
@@ -14720,9 +14720,9 @@ export class DwainsLayoutCard extends LitElement {
       domain: 'unavailable',
       areaId: areaId,
       config: this.config,
-      customTitle: `Hidden Unavailable Entities - ${areaName}`,
+      customTitle: this._t('area.unavailable.modal_title', { area: areaName }),
       customEntities: allProblematicEntities,
-      customDescription: `These entities are currently hidden because they have 'unavailable' or 'unknown' states. You can disable this filtering in the dashboard configuration.`
+      customDescription: this._t('area.unavailable.modal_description')
     });
   }
 
@@ -14733,8 +14733,8 @@ export class DwainsLayoutCard extends LitElement {
 
     if (confirmAction) {
       const confirmed = await this._showConfirmation(
-        'Toggle Lights',
-        'Are you sure you want to toggle all lights in this area?'
+        this._t('area.confirm.toggle_lights_title'),
+        this._t('area.confirm.toggle_lights_message')
       );
 
       if (!confirmed) return;
@@ -14752,11 +14752,11 @@ export class DwainsLayoutCard extends LitElement {
         entity_id: entityIds
       });
 
-      this._showToast(`All lights turned ${allOff ? 'on' : 'off'}`);
+      this._showToast(allOff ? this._t('area.toast.all_lights_on') : this._t('area.toast.all_lights_off'));
     } catch (err) {
       this._clearOptimisticEntityStates(entityIds);
       console.warn(`Failed to toggle lights in area ${areaId}:`, err);
-      this._showToast('Could not update lights');
+      this._showToast(this._t('area.toast.update_lights_failed'));
     }
   }
 
@@ -14767,8 +14767,8 @@ export class DwainsLayoutCard extends LitElement {
 
     if (confirmAction) {
       const confirmed = await this._showConfirmation(
-        'Toggle Switches',
-        'Are you sure you want to toggle all switches in this area?'
+        this._t('area.confirm.toggle_switches_title'),
+        this._t('area.confirm.toggle_switches_message')
       );
 
       if (!confirmed) return;
@@ -14786,11 +14786,11 @@ export class DwainsLayoutCard extends LitElement {
         entity_id: entityIds
       });
 
-      this._showToast(`All switches turned ${allOff ? 'on' : 'off'}`);
+      this._showToast(allOff ? this._t('area.toast.all_switches_on') : this._t('area.toast.all_switches_off'));
     } catch (err) {
       this._clearOptimisticEntityStates(entityIds);
       console.warn(`Failed to toggle switches in area ${areaId}:`, err);
-      this._showToast('Could not update switches');
+      this._showToast(this._t('area.toast.update_switches_failed'));
     }
   }
 
@@ -14811,8 +14811,8 @@ export class DwainsLayoutCard extends LitElement {
 
     if (confirmAction) {
       const confirmed = await this._showConfirmation(
-        'Toggle Covers',
-        `Are you sure you want to ${hasOpen ? 'close' : 'open'} all covers in this area?`
+        this._t('area.confirm.toggle_covers_title'),
+        hasOpen ? this._t('area.confirm.toggle_covers_message_close') : this._t('area.confirm.toggle_covers_message_open')
       );
 
       if (!confirmed) return;
@@ -14828,11 +14828,11 @@ export class DwainsLayoutCard extends LitElement {
         entity_id: entityIds
       });
 
-      this._showToast(`All covers ${hasOpen ? 'closed' : 'opened'}`);
+      this._showToast(hasOpen ? this._t('area.toast.all_covers_closed') : this._t('area.toast.all_covers_opened'));
     } catch (err) {
       this._clearOptimisticEntityStates(entityIds);
       console.warn(`Failed to toggle covers in area ${areaId}:`, err);
-      this._showToast('Could not update covers');
+      this._showToast(this._t('area.toast.update_covers_failed'));
     }
   }
 

@@ -1,5 +1,5 @@
 import type { HomeAssistant } from '../types/home-assistant';
-import { prettifyDomain } from './domain-names';
+import { getDeviceClassName, getDomainName, prettifyDomain } from './domain-names';
 import { isEntityFromHiddenDevice } from './device-admission';
 import { getDeviceClassIcon, getDomainIcon } from './icons';
 import { buildHousePowerUsage } from './power-usage';
@@ -267,7 +267,7 @@ export function getStatusDomains(hass: HomeAssistant, config: any): DomainCount[
         result.push({
           domain,
           count: data.on,
-          name: config.name,
+          name: getDomainName(hass, domain),
           icon: config.icon,
           entities: data.entities
         });
@@ -284,7 +284,7 @@ export function getStatusDomains(hass: HomeAssistant, config: any): DomainCount[
           domain: 'binary_sensor',
           deviceClass,
           count: data.on,
-          name: config.name,
+          name: getDeviceClassName(hass, deviceClass),
           icon: config.icon,
           entities: data.entities
         });

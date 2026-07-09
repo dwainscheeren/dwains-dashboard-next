@@ -6,7 +6,15 @@ import { TRANSLATIONS, type Lang } from './translations';
  */
 export function ddLang(hass: any): Lang {
   const raw = (hass?.language || hass?.locale?.language || 'en').toString().toLowerCase();
-  return raw.startsWith('nl') ? 'nl' : 'en';
+  return raw.startsWith('nl')
+    ? 'nl'
+    : raw.startsWith('zh-hant')
+      ? 'zh-Hant'
+      : raw.startsWith('zh-hans')
+        ? 'zh-Hans'
+        : raw.startsWith('zh')
+          ? 'zh-Hant'
+          : 'en';
 }
 
 /**

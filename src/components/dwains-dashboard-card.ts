@@ -2,6 +2,7 @@ import { LitElement, html, css } from 'lit';
 import { property, state } from 'lit/decorators.js';
 import type { HomeAssistant } from '../types/home-assistant';
 import type { DwainsDashboardConfig, AreaConfig, DeviceConfig, EntityConfig, FloorConfig } from '../types/strategy';
+import { ddLocalize } from '../utils/localize';
 import './dwains-layout-card';  // Import the file to register the custom element
 
 /**
@@ -18,6 +19,9 @@ export class DwainsDashboardCard extends LitElement {
   @property({ attribute: false }) public config: any = {};
   @state() private _dashboardConfig?: DwainsDashboardConfig;
   @state() private _isLoading = true;
+
+  private _t = (key: string, vars?: Record<string, string | number>) =>
+    ddLocalize(this.hass, key, vars);
 
   /**
    * Called when card configuration is set
@@ -257,7 +261,7 @@ export class DwainsDashboardCard extends LitElement {
     if (this._isLoading || !this._dashboardConfig) {
       return html`
         <div style="display: flex; justify-content: center; align-items: center; height: 200px; font-size: 18px;">
-          Loading Dwains Dashboard...
+          ${this._t('dlg.card.loading')}
         </div>
       `;
     }
@@ -265,7 +269,7 @@ export class DwainsDashboardCard extends LitElement {
     if (!this.cards || this.cards.length === 0) {
       return html`
         <div style="display: flex; justify-content: center; align-items: center; height: 200px; font-size: 18px;">
-          No dashboard content available
+          ${this._t('dlg.card.empty')}
         </div>
       `;
     }

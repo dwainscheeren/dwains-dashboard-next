@@ -1,12 +1,16 @@
 import { LitElement, html, css } from 'lit';
 import { property, state } from 'lit/decorators.js';
 import type { HomeAssistant } from '../types/home-assistant';
+import { ddLocalize } from '../utils/localize';
 import './dwains-dashboard-strategy-editor';
 
 export class DwainsDashboardCardEditor extends LitElement {
   @property({ attribute: false }) public hass?: HomeAssistant;
   @state() private _config: any = {};
   @state() private _strategyEditor?: any;
+
+  private _t = (key: string, vars?: Record<string, string | number>) =>
+    ddLocalize(this.hass, key, vars);
 
   setConfig(config: any): void {
     this._config = config;
@@ -98,7 +102,7 @@ export class DwainsDashboardCardEditor extends LitElement {
       return html`
         <div style="padding: 16px; text-align: center;">
           <ha-circular-progress indeterminate></ha-circular-progress>
-          <p style="margin-top: 16px;">Loading editor...</p>
+          <p style="margin-top: 16px;">${this._t('card_editor.loading')}</p>
         </div>
       `;
     }

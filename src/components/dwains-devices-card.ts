@@ -178,6 +178,10 @@ export class DwainsDevicesCard extends LitElement {
   private _t = (key: string, vars?: Record<string, string | number>) =>
     ddLocalize(this._hass, key, vars);
 
+  // Kies enkelvoud/meervoud-sleutel (dev.count.<base>_one|_other) op basis van count.
+  private _countLabel = (base: string, count: number): string =>
+    this._t(count === 1 ? `dev.count.${base}_one` : `dev.count.${base}_other`, { count });
+
   // ---- URL-persistentie (?dd_device=<domain>) ------------------------------
 
   private _getUrlDomain(): string | null {
@@ -448,12 +452,12 @@ export class DwainsDevicesCard extends LitElement {
     const summary = this._maintenanceSummary(buckets);
     const parts: string[] = [];
     if (summary.lowBatteryCount) {
-      parts.push(`${summary.lowBatteryCount} low ${summary.lowBatteryCount === 1 ? 'battery' : 'batteries'}`);
+      parts.push(this._countLabel('low_battery', summary.lowBatteryCount));
     }
     if (summary.unavailableDeviceCount) {
-      parts.push(`${summary.unavailableDeviceCount} unavailable ${summary.unavailableDeviceCount === 1 ? 'device' : 'devices'}`);
+      parts.push(this._countLabel('unavailable', summary.unavailableDeviceCount));
     }
-    return parts.length ? parts.join(', ') : 'Everything looks good';
+    return parts.length ? parts.join(', ') : this._t('dev.maintenance.everything_good');
   }
 
   private _showEnergyMenu(): boolean {
@@ -515,7 +519,7 @@ export class DwainsDevicesCard extends LitElement {
 
   private _formatMaintenanceState(state: any, kind: MaintenanceItem['kind']): string {
     if (kind === 'unavailable') {
-      return state.state === 'unknown' ? 'Unknown' : 'Unavailable';
+      return state.state === 'unknown' ? this._t('dev.state.unknown') : this._t('dev.state.unavailable');
     }
 
     const unit = state.attributes?.unit_of_measurement || '%';
@@ -602,9 +606,9 @@ export class DwainsDevicesCard extends LitElement {
 
   // Leesbare naam voor een type-sleutel (domein of binary_sensor.<class>).
   private _typeName(key: string): string {
-    if (key === MAINTENANCE_KEY) return 'Maintenance';
-    if (key === ENERGY_KEY) return 'Energy';
-    if (key === DEVICES_OVERVIEW_KEY) return 'Overview';
+    if (key === MAINTENANCE_KEY) return this._t('dev.maintenance');
+    if (key === ENERGY_KEY) return this._t('dev.energy');
+    if (key === DEVICES_OVERVIEW_KEY) return this._t('dev.overview');
     if (key.startsWith('binary_sensor.')) {
       return getDeviceClassName(this._hass, key.slice('binary_sensor.'.length));
     }
@@ -650,11 +654,11 @@ export class DwainsDevicesCard extends LitElement {
             ? this._typeIcon(domain)
             : 'mdi:format-list-bulleted-type',
         label: domain === NEW_DEVICES_KEY
-          ? 'New devices'
+          ? this._t('dev.new_devices')
           : domain === MAINTENANCE_KEY
-            ? 'Maintenance'
+            ? this._t('dev.maintenance')
           : domain === ENERGY_KEY
-            ? 'Energy'
+            ? this._t('dev.energy')
           : domain === DEVICES_OVERVIEW_KEY || !domain
             ? this._t('devices.title')
           : domain
@@ -775,7 +779,7 @@ export class DwainsDevicesCard extends LitElement {
 
   render() {
     if (!this._hass || !this.config) {
-      return html`<div class="loading">Loading...</div>`;
+      return html`<div class="loading">${this._t('dev.loading')}</div>`;
     }
 
     const data = this._buildData();
@@ -882,8 +886,8 @@ export class DwainsDevicesCard extends LitElement {
               <ha-icon icon="mdi:view-grid-outline"></ha-icon>
             </div>
             <div class="area-info">
-              <div class="area-name">Overview</div>
-              <div class="device-menu-subtitle">All device groups</div>
+              <div class="area-name">${this._t('dev.overview')}</div>
+              <div class="device-menu-subtitle">${this._t('dev.overview_subtitle')}</div>
             </div>
             <span class="domain-count">${domains.length}</span>
             <ha-icon class="device-menu-chevron" icon="mdi:chevron-right"></ha-icon>
@@ -898,9 +902,9 @@ export class DwainsDevicesCard extends LitElement {
                     <ha-icon icon="mdi:new-box"></ha-icon>
                   </div>
                   <div class="area-info">
-                    <div class="area-name">New devices</div>
+                    <div class="area-name">${this._t('dev.new_devices')}</div>
                     <div class="device-menu-subtitle">
-                      ${newDevices.length === 1 ? '1 new device' : `${newDevices.length} new devices`}
+                      ${this._countLabel('new_device', newDevices.length)}
                     </div>
                   </div>
                   <span class="domain-count">${newDevices.length}</span>
@@ -919,7 +923,7 @@ export class DwainsDevicesCard extends LitElement {
                     <ha-icon icon="mdi:wrench"></ha-icon>
                   </div>
                   <div class="area-info">
-                    <div class="area-name">Maintenance</div>
+                    <div class="area-name">${this._t('dev.maintenance')}</div>
                     <div class="device-menu-subtitle">${this._maintenanceSubtitle(maintenance)}</div>
                   </div>
                   <span class="domain-count">${this._maintenanceSummary(maintenance).totalCount}</span>
@@ -938,11 +942,9 @@ export class DwainsDevicesCard extends LitElement {
                     <ha-icon icon="mdi:flash"></ha-icon>
                   </div>
                   <div class="area-info">
-                    <div class="area-name">Energy</div>
+                    <div class="area-name">${this._t('dev.energy')}</div>
                     <div class="device-menu-subtitle">
-                      ${energySummary.sensorCount === 1
-                        ? '1 live power sensor'
-                        : `${energySummary.sensorCount} live power sensors`}
+                      ${this._countLabel('power_sensor', energySummary.sensorCount)}
                     </div>
                   </div>
                   <span class="domain-count">${energySummary.sensorCount}</span>
@@ -965,7 +967,7 @@ export class DwainsDevicesCard extends LitElement {
                 </div>
                 <div class="area-info">
                   <div class="area-name">${this._typeName(domain)}</div>
-                  <div class="device-menu-subtitle">${count === 1 ? '1 entity' : `${count} entities`}</div>
+                  <div class="device-menu-subtitle">${this._countLabel('entity', count)}</div>
                 </div>
                 <span class="domain-count">${count}</span>
                 <ha-icon class="device-menu-chevron" icon="mdi:chevron-right"></ha-icon>
@@ -1000,8 +1002,8 @@ export class DwainsDevicesCard extends LitElement {
       cards.push({
         key: NEW_DEVICES_KEY,
         icon: 'mdi:new-box',
-        title: 'New devices',
-        subtitle: newDevices.length === 1 ? '1 new device' : `${newDevices.length} new devices`,
+        title: this._t('dev.new_devices'),
+        subtitle: this._countLabel('new_device', newDevices.length),
         count: newDevices.length,
         color: 'var(--primary-color)',
       });
@@ -1012,7 +1014,7 @@ export class DwainsDevicesCard extends LitElement {
       cards.push({
         key: MAINTENANCE_KEY,
         icon: 'mdi:wrench',
-        title: 'Maintenance',
+        title: this._t('dev.maintenance'),
         subtitle: this._maintenanceSubtitle(maintenance),
         count: summary.totalCount,
         color: this._typeColor(MAINTENANCE_KEY),
@@ -1023,8 +1025,8 @@ export class DwainsDevicesCard extends LitElement {
       cards.push({
         key: ENERGY_KEY,
         icon: 'mdi:flash',
-        title: 'Energy',
-        subtitle: energySummary.sensorCount === 1 ? '1 live power sensor' : `${energySummary.sensorCount} live power sensors`,
+        title: this._t('dev.energy'),
+        subtitle: this._countLabel('power_sensor', energySummary.sensorCount),
         count: energySummary.sensorCount,
         color: this._typeColor(ENERGY_KEY),
       });
@@ -1038,7 +1040,7 @@ export class DwainsDevicesCard extends LitElement {
         key: domain,
         icon: this._typeIcon(domain),
         title: this._typeName(domain),
-        subtitle: count === 1 ? '1 entity' : `${count} entities`,
+        subtitle: this._countLabel('entity', count),
         count,
         color: this._typeColor(domain),
       });
@@ -1049,7 +1051,7 @@ export class DwainsDevicesCard extends LitElement {
         ${this._renderDevicePageHeader({
           icon: 'mdi:format-list-bulleted-type',
           title: this._t('devices.title'),
-          subtitle: cards.length === 1 ? '1 device group' : `${cards.length} device groups`,
+          subtitle: this._countLabel('group', cards.length),
           color: this._typeColor(DEVICES_OVERVIEW_KEY),
         })}
 
@@ -1101,8 +1103,8 @@ export class DwainsDevicesCard extends LitElement {
           <button
             class="device-header-back"
             type="button"
-            title="Back to devices overview"
-            aria-label="Back to devices overview"
+            title=${this._t('dev.back_to_overview')}
+            aria-label=${this._t('dev.back_to_overview')}
             @click=${() => this._selectDomain(DEVICES_OVERVIEW_KEY)}
           >
             <ha-icon icon="mdi:arrow-left"></ha-icon>
@@ -1141,7 +1143,7 @@ export class DwainsDevicesCard extends LitElement {
         ${this._renderDevicePageHeader({
           icon: this._typeIcon(domain),
           title: this._typeName(domain),
-          subtitle: this._domainCount(byArea) === 1 ? '1 entity' : `${this._domainCount(byArea)} entities`,
+          subtitle: this._countLabel('entity', this._domainCount(byArea)),
           color: this._typeColor(domain),
           back: true,
         })}
@@ -1182,14 +1184,14 @@ export class DwainsDevicesCard extends LitElement {
       <div class="device-view energy-view">
         ${this._renderDevicePageHeader({
           icon: 'mdi:flash',
-          title: 'Energy',
-          subtitle: 'Live power usage by area',
+          title: this._t('dev.energy'),
+          subtitle: this._t('dev.energy_subtitle'),
           color: this._typeColor(ENERGY_KEY),
           back: true,
           actions: html`
             <div class="energy-header-total">
               <span>${summary.formattedTotal}</span>
-              <small>${summary.sensorCount === 1 ? '1 live power sensor' : `${summary.sensorCount} live power sensors`}</small>
+              <small>${this._countLabel('power_sensor', summary.sensorCount)}</small>
             </div>
           `,
         })}
@@ -1203,12 +1205,12 @@ export class DwainsDevicesCard extends LitElement {
                       <ha-icon icon="mdi:home-lightning-bolt-outline"></ha-icon>
                     </span>
                     <div>
-                      <h2>Whole house</h2>
-                      <p>${summary.sensorCount === 1 ? '1 live power sensor' : `${summary.sensorCount} live power sensors`}</p>
+                      <h2>${this._t('dev.energy.whole_house')}</h2>
+                      <p>${this._countLabel('power_sensor', summary.sensorCount)}</p>
                     </div>
                     <strong>${summary.formattedTotal}</strong>
                   </div>
-                  ${this._renderEnergyStatisticsGraph(wholeHouseStatisticsEntities, 'Whole house power history')}
+                  ${this._renderEnergyStatisticsGraph(wholeHouseStatisticsEntities, this._t('dev.energy.whole_house_history'))}
                 </section>
 
                 ${topArea ? html`
@@ -1218,7 +1220,7 @@ export class DwainsDevicesCard extends LitElement {
                         <ha-icon icon=${topArea.icon}></ha-icon>
                       </span>
                       <div>
-                        <h2>Top area</h2>
+                        <h2>${this._t('dev.energy.top_area')}</h2>
                         <p>${topArea.name}</p>
                       </div>
                       <strong>${topArea.formattedTotal}</strong>
@@ -1241,8 +1243,8 @@ export class DwainsDevicesCard extends LitElement {
           : html`
               <div class="energy-empty">
                 <ha-icon icon="mdi:flash-off-outline"></ha-icon>
-                <h2>No live power sensors found</h2>
-                <p>Energy will appear here when Home Assistant has visible power sensors with W, kW or MW units.</p>
+                <h2>${this._t('dev.energy.empty_title')}</h2>
+                <p>${this._t('dev.energy.empty_desc')}</p>
               </div>
             `}
       </div>
@@ -1265,18 +1267,18 @@ export class DwainsDevicesCard extends LitElement {
             </span>
             <span>
               <strong>${area.name}</strong>
-              <small>${area.entities.length === 1 ? '1 power entity' : `${area.entities.length} power entities`}</small>
+              <small>${this._countLabel('power_entity', area.entities.length)}</small>
             </span>
           </button>
           <div class="energy-area-total">
             <span>${area.formattedTotal}</span>
-            <small>Total now</small>
+            <small>${this._t('dev.energy.total_now')}</small>
           </div>
         </header>
 
         ${this._renderEnergyStatisticsGraph(
           this._energyStatisticsEntities(area.entities, 6),
-          `${area.name} power history`
+          this._t('dev.energy.area_history', { area: area.name })
         )}
 
         <div class="energy-entity-list">
@@ -1379,7 +1381,7 @@ export class DwainsDevicesCard extends LitElement {
       <div class="device-view maintenance-view">
         ${this._renderDevicePageHeader({
           icon: 'mdi:wrench',
-          title: 'Maintenance',
+          title: this._t('dev.maintenance'),
           subtitle: this._maintenanceSubtitle(maintenance),
           color: this._typeColor(MAINTENANCE_KEY),
           back: true,
@@ -1422,7 +1424,7 @@ export class DwainsDevicesCard extends LitElement {
           : html`
               <div class="maintenance-empty">
                 <ha-icon icon="mdi:check-circle-outline"></ha-icon>
-                <span>No low batteries or unavailable devices right now.</span>
+                <span>${this._t('dev.maintenance.empty')}</span>
               </div>
             `}
       </div>
@@ -1518,8 +1520,8 @@ export class DwainsDevicesCard extends LitElement {
       <div class="device-view">
         ${this._renderDevicePageHeader({
           icon: 'mdi:new-box',
-          title: 'New devices',
-          subtitle: `Devices added to Home Assistant in the last ${NEW_DEVICE_WINDOW_HOURS} hours.`,
+          title: this._t('dev.new_devices'),
+          subtitle: this._t('dev.new_devices.subtitle', { hours: NEW_DEVICE_WINDOW_HOURS }),
           color: this._typeColor(NEW_DEVICES_KEY),
           back: true,
           actions: html`<span class="device-header-count">${devices.length}</span>`,
@@ -1530,7 +1532,7 @@ export class DwainsDevicesCard extends LitElement {
               ? devices.map((device) => this._renderRecentDevice(device))
               : html`
                   <div class="recent-empty">
-                    No devices were added to Home Assistant in the last ${NEW_DEVICE_WINDOW_HOURS} hours.
+                    ${this._t('dev.new_devices.empty', { hours: NEW_DEVICE_WINDOW_HOURS })}
                   </div>
                 `}
           </div>
@@ -1565,7 +1567,7 @@ export class DwainsDevicesCard extends LitElement {
             <div class="recent-device-name">${summary.device.name}</div>
             <div class="recent-device-meta">
               <span>${summary.areaName}</span>
-              <span>${summary.entityCount} entities</span>
+              <span>${this._t('dev.count.entity_other', { count: summary.entityCount })}</span>
               <span>${this._formatAddedAge(summary.createdAtMs)}</span>
             </div>
             <div class="recent-domains">
@@ -1588,9 +1590,9 @@ export class DwainsDevicesCard extends LitElement {
   private _formatAddedAge(createdAtMs: number): string {
     const diffMs = Math.max(0, Date.now() - createdAtMs);
     const hours = Math.floor(diffMs / (60 * 60 * 1000));
-    if (hours < 1) return 'Added just now';
-    if (hours < 24) return `Added ${hours}h ago`;
-    return `Added ${Math.floor(hours / 24)}d ago`;
+    if (hours < 1) return this._t('dev.added_just_now');
+    if (hours < 24) return this._t('dev.added_hours', { hours });
+    return this._t('dev.added_days', { days: Math.floor(hours / 24) });
   }
 
   private async _saveDeviceAdmission(nextAdmission: DeviceAdmission, silent = false): Promise<void> {
@@ -1619,7 +1621,7 @@ export class DwainsDevicesCard extends LitElement {
     } catch (e) {
       console.error('❌ Device visibility save failed:', e);
       if (!silent) {
-        alert(`Could not save device visibility:\n${String(e)}`);
+        alert(this._t('dev.save_failed', { error: String(e) }));
       }
     }
   }
