@@ -55,7 +55,7 @@ More desktop, mobile, light-mode and dark-mode screenshots are available in the 
 
 ## Status
 
-Current release: `1.5.3`
+Current release: `1.5.4`
 
 ## Community And Support
 
@@ -173,6 +173,6 @@ dist/dwains-dashboard-next.js
 
 ## License
 
-Dwains Dashboard Next is proprietary software. The source is published for transparency and project development, but it is not open source. You may install and use official, unmodified releases for your own Home Assistant setup. You may not copy, modify, redistribute, rebrand, sell, publish, or use this software in another project without prior written permission from Dwain Scheeren.
+Dwains Dashboard Next is released under the MIT License.
 
 See [LICENSE](LICENSE) for the full license terms.
