@@ -86,9 +86,12 @@ export interface AreaOptions {
   custom_cards?: AreaCustomCard[];
 }
 
+export type AreaSortMode = 'home_assistant' | 'custom' | 'alphabetical';
+
 export interface AreasDisplay {
   hidden?: string[];
   order?: string[];
+  sort_mode?: AreaSortMode;
 }
 
 // Een blueprint-pagina die de gebruiker heeft toegevoegd (DD3-stijl), volledig

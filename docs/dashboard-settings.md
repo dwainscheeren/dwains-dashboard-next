@@ -39,10 +39,15 @@ Choose which people are shown in Dwains Dashboard.
 Configure:
 
 - Visible areas
-- Area order
+- Area order mode:
+  - **Home Assistant** follows the order configured in Home Assistant
+  - **Custom order** stores a separate order for Dwains Dashboard
+  - **Alphabetical** sorts areas by their localized name
 - Area icons
 - Area entity ordering
 - Whether unavailable area entities are shown
+
+Custom order supports dragging on desktop and move up/down controls on touch devices. New areas that are added later are appended without changing the order of existing areas. The selected order is used consistently in the desktop sidebar, mobile area menu and area overviews.
 
 ## Devices Page
 

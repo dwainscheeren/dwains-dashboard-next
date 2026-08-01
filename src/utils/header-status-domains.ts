@@ -1,5 +1,6 @@
 import type { HomeAssistant } from '../types/home-assistant';
-import { prettifyDomain } from './domain-names';
+import { getDeviceClassName, getDomainName, prettifyDomain } from './domain-names';
+import { ddLocalize } from './localize';
 import { isEntityFromHiddenDevice } from './device-admission';
 import { getDeviceClassIcon, getDomainIcon } from './icons';
 import { buildHousePowerUsage } from './power-usage';
@@ -22,34 +23,34 @@ const ACTIVE_VACUUM_STATES = ['cleaning', 'returning'];
 const ACTIVE_ALARM_STATES = ['arming', 'pending', 'triggered'];
 
 // Domain configuration with icons and names
-const DOMAIN_CONFIG: Record<string, { icon: string; name: string }> = {
-  light: { icon: getDomainIcon('light'), name: 'Lights' },
-  switch: { icon: getDomainIcon('switch'), name: 'Switches' },
-  fan: { icon: getDomainIcon('fan'), name: 'Fans' },
-  cover: { icon: getDomainIcon('cover'), name: 'Covers' },
-  lock: { icon: getDomainIcon('lock'), name: 'Locks' },
-  climate: { icon: getDomainIcon('climate'), name: 'Climate' },
-  media_player: { icon: getDomainIcon('media_player'), name: 'Media Players' },
-  camera: { icon: getDomainIcon('camera'), name: 'Cameras' },
-  person: { icon: getDomainIcon('person'), name: 'People' },
-  vacuum: { icon: getDomainIcon('vacuum'), name: 'Vacuums' },
-  alarm_control_panel: { icon: getDomainIcon('alarm_control_panel'), name: 'Alarm Systems' }
+const DOMAIN_CONFIG: Record<string, { icon: string }> = {
+  light: { icon: getDomainIcon('light') },
+  switch: { icon: getDomainIcon('switch') },
+  fan: { icon: getDomainIcon('fan') },
+  cover: { icon: getDomainIcon('cover') },
+  lock: { icon: getDomainIcon('lock') },
+  climate: { icon: getDomainIcon('climate') },
+  media_player: { icon: getDomainIcon('media_player') },
+  camera: { icon: getDomainIcon('camera') },
+  person: { icon: getDomainIcon('person') },
+  vacuum: { icon: getDomainIcon('vacuum') },
+  alarm_control_panel: { icon: getDomainIcon('alarm_control_panel') }
 };
 
 // Binary sensor device classes configuration
-const BINARY_SENSOR_CONFIG: Record<string, { icon: string; name: string }> = {
-  window: { icon: getDeviceClassIcon('binary_sensor', 'window'), name: 'Windows' },
-  door: { icon: getDeviceClassIcon('binary_sensor', 'door'), name: 'Doors' },
-  motion: { icon: getDeviceClassIcon('binary_sensor', 'motion'), name: 'Motion' },
-  smoke: { icon: getDeviceClassIcon('binary_sensor', 'smoke'), name: 'Smoke Detectors' },
-  gas: { icon: getDeviceClassIcon('binary_sensor', 'gas'), name: 'Gas Detectors' },
-  moisture: { icon: getDeviceClassIcon('binary_sensor', 'moisture'), name: 'Moisture' },
-  occupancy: { icon: getDeviceClassIcon('binary_sensor', 'occupancy'), name: 'Occupancy' },
-  opening: { icon: getDeviceClassIcon('binary_sensor', 'opening'), name: 'Openings' },
-  presence: { icon: getDeviceClassIcon('binary_sensor', 'presence'), name: 'Presence' },
-  safety: { icon: getDeviceClassIcon('binary_sensor', 'safety'), name: 'Safety' },
-  tamper: { icon: 'mdi:lock-alert', name: 'Tamper' },
-  vibration: { icon: getDeviceClassIcon('binary_sensor', 'vibration'), name: 'Vibration' }
+const BINARY_SENSOR_CONFIG: Record<string, { icon: string }> = {
+  window: { icon: getDeviceClassIcon('binary_sensor', 'window') },
+  door: { icon: getDeviceClassIcon('binary_sensor', 'door') },
+  motion: { icon: getDeviceClassIcon('binary_sensor', 'motion') },
+  smoke: { icon: getDeviceClassIcon('binary_sensor', 'smoke') },
+  gas: { icon: getDeviceClassIcon('binary_sensor', 'gas') },
+  moisture: { icon: getDeviceClassIcon('binary_sensor', 'moisture') },
+  occupancy: { icon: getDeviceClassIcon('binary_sensor', 'occupancy') },
+  opening: { icon: getDeviceClassIcon('binary_sensor', 'opening') },
+  presence: { icon: getDeviceClassIcon('binary_sensor', 'presence') },
+  safety: { icon: getDeviceClassIcon('binary_sensor', 'safety') },
+  tamper: { icon: 'mdi:lock-alert' },
+  vibration: { icon: getDeviceClassIcon('binary_sensor', 'vibration') }
 };
 
 export function getStatusDomains(hass: HomeAssistant, config: any): DomainCount[] {
@@ -242,8 +243,9 @@ export function getStatusDomains(hass: HomeAssistant, config: any): DomainCount[
         result.push({
           domain: 'person',
           count: personData.on,
-                  name: personData.on === personData.total ? `${personData.on} home` :
-          personData.on === 0 ? 'Nobody home' : `${personData.on} home`,
+          name: personData.on === 0
+            ? ddLocalize(hass, 'person.nobody_home')
+            : `${personData.on} ${ddLocalize(hass, 'person.home').toLowerCase()}`,
           icon: config.icon
         });
       } else {
@@ -251,7 +253,7 @@ export function getStatusDomains(hass: HomeAssistant, config: any): DomainCount[
         result.push({
           domain: 'person',
           count: personData.on,
-          name: `${personData.on}/${personData.total} home`,
+          name: `${personData.on}/${personData.total} ${ddLocalize(hass, 'person.home').toLowerCase()}`,
           icon: config.icon
         });
       }
@@ -267,7 +269,7 @@ export function getStatusDomains(hass: HomeAssistant, config: any): DomainCount[
         result.push({
           domain,
           count: data.on,
-          name: config.name,
+          name: getDomainName(hass, domain),
           icon: config.icon,
           entities: data.entities
         });
@@ -284,7 +286,7 @@ export function getStatusDomains(hass: HomeAssistant, config: any): DomainCount[
           domain: 'binary_sensor',
           deviceClass,
           count: data.on,
-          name: config.name,
+          name: getDeviceClassName(hass, deviceClass),
           icon: config.icon,
           entities: data.entities
         });
@@ -302,6 +304,6 @@ export function getTotalWattage(hass: HomeAssistant, config?: any): string | und
   return summary.sensorCount ? summary.formattedTotal : undefined;
 }
 
-export function getDomainTitle(domain: string): string {
-  return DOMAIN_CONFIG[domain]?.name || prettifyDomain(domain);
+export function getDomainTitle(domain: string, hass?: HomeAssistant): string {
+  return hass ? getDomainName(hass, domain) : prettifyDomain(domain);
 }

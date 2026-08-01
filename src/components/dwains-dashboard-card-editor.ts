@@ -1,6 +1,7 @@
 import { LitElement, html, css } from 'lit';
 import { property, state } from 'lit/decorators.js';
 import type { HomeAssistant } from '../types/home-assistant';
+import { ddLocalize } from '../utils/localize';
 import './dwains-dashboard-strategy-editor';
 
 export class DwainsDashboardCardEditor extends LitElement {
@@ -98,7 +99,7 @@ export class DwainsDashboardCardEditor extends LitElement {
       return html`
         <div style="padding: 16px; text-align: center;">
           <ha-circular-progress indeterminate></ha-circular-progress>
-          <p style="margin-top: 16px;">Loading editor...</p>
+          <p style="margin-top: 16px;">${ddLocalize(this.hass, 'common.loading')}</p>
         </div>
       `;
     }

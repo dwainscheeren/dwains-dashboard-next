@@ -2,6 +2,16 @@
 
 Area pages show the entities that belong to one Home Assistant area.
 
+## Area Order
+
+Dashboard settings offers three ordering modes for area lists:
+
+- **Home Assistant** follows the area registry order
+- **Custom order** uses a separate Dwains Dashboard order
+- **Alphabetical** sorts by area name
+
+The same order is used throughout the dashboard, including the desktop sidebar and mobile area picker.
+
 ## Area Header
 
 The area header can show:

@@ -57,10 +57,12 @@ async function loadUiElements(): Promise<void> {
       { DwainsDashboardCard },
       { DwainsDashboardCardEditor },
       { DwainsFlexboxCard },
+      { DwainsHeadingCard },
     ] = await Promise.all([
       import('./components/dwains-dashboard-card'),
       import('./components/dwains-dashboard-card-editor'),
       import('./components/cards/dwains-flexbox-card'),
+      import('./components/cards/dwains-heading-card'),
       import('./components/dwains-layout-card'),
       import('./components/dwains-domain-entities-dialog'),
       import('./components/dwains-dashboard-strategy-editor'),
@@ -73,6 +75,7 @@ async function loadUiElements(): Promise<void> {
     safeDefine(DASHBOARD_CARD_TYPE, DwainsDashboardCard);
     safeDefine('dwains-dashboard-next-card-editor', DwainsDashboardCardEditor);
     safeDefine('dwains-flexbox-card', class extends DwainsFlexboxCard {});
+    safeDefine('dwains-heading-card', DwainsHeadingCard);
 
     // Legacy card aliases for early Next configs when old DD is not installed.
     safeDefine('dwains-dashboard-card', class extends DwainsDashboardCard {});
@@ -186,8 +189,18 @@ installDefaultDashboardRedirect();
 
 // Register the dashboard strategy in Home Assistant's Add dashboard dialog.
 // This appears under Community dashboards and requires HA 2026.5+.
-window.customStrategies = window.customStrategies || [];
-if (!window.customStrategies.some((s) => s?.type === DASHBOARD_STRATEGY_TYPE && s?.strategyType === 'dashboard')) {
+if (window.customStrategies == null) {
+  window.customStrategies = [];
+}
+
+if (!Array.isArray(window.customStrategies)) {
+  console.warn(
+    'Dwains Dashboard Next - Skipped Add dashboard registration because window.customStrategies is not an array.',
+    window.customStrategies,
+  );
+} else if (!window.customStrategies.some((s) =>
+  s?.type === DASHBOARD_STRATEGY_TYPE && s?.strategyType === 'dashboard'
+)) {
   window.customStrategies.push({
     type: DASHBOARD_STRATEGY_TYPE,
     strategyType: 'dashboard',
@@ -199,8 +212,16 @@ if (!window.customStrategies.some((s) => s?.type === DASHBOARD_STRATEGY_TYPE && 
 }
 
 // Register custom card in card picker
-window.customCards = window.customCards || [];
-if (!window.customCards.some((card) => card?.type === DASHBOARD_CARD_TYPE)) {
+if (window.customCards == null) {
+  window.customCards = [];
+}
+
+if (!Array.isArray(window.customCards)) {
+  console.warn(
+    'Dwains Dashboard Next - Skipped card picker registration because window.customCards is not an array.',
+    window.customCards,
+  );
+} else if (!window.customCards.some((card) => card?.type === DASHBOARD_CARD_TYPE)) {
   window.customCards.push({
     type: DASHBOARD_CARD_TYPE,
     name: "Dwains Dashboard Next",

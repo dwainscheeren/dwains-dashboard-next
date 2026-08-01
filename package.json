@@ -1,6 +1,6 @@
 {
   "name": "dwains-dashboard-next",
-  "version": "1.5.4",
+  "version": "1.6.0",
   "description": "Dwains Dashboard Next for Home Assistant",
   "main": "dist/dwains-dashboard-next.js",
   "type": "module",
@@ -9,6 +9,7 @@
     "watch": "rollup -c -w",
     "clean": "rm -rf dist",
     "type-check": "tsc --noEmit",
+    "i18n:check": "node scripts/check-translations.mjs",
     "build:release": "npm run clean && npm run build",
     "screenshots": "node scripts/screenshot-dashboard.mjs",
     "screenshots:install": "playwright install chromium",

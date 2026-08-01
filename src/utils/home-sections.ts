@@ -1,4 +1,5 @@
 import type { HomeInformationCardKey, HomeSectionKey } from '../types/strategy';
+import type { TranslationKey } from '../i18n';
 
 export const DEFAULT_HOME_SECTIONS_ORDER: HomeSectionKey[] = [
   'cameras',
@@ -8,31 +9,37 @@ export const DEFAULT_HOME_SECTIONS_ORDER: HomeSectionKey[] = [
   'summaries',
 ];
 
-export const HOME_SECTION_META: Record<HomeSectionKey, { label: string; icon: string; description: string }> = {
+interface LocalizedMeta {
+  labelKey: TranslationKey;
+  icon: string;
+  descriptionKey: TranslationKey;
+}
+
+export const HOME_SECTION_META: Record<HomeSectionKey, LocalizedMeta> = {
   summaries: {
-    label: 'Summaries',
+    labelKey: 'home_section.summaries.label',
     icon: 'mdi:clipboard-list-outline',
-    description: 'Repairs, updates and newly discovered devices from Home Assistant.',
+    descriptionKey: 'home_section.summaries.description',
   },
   cameras: {
-    label: 'Cameras',
+    labelKey: 'home_section.cameras.label',
     icon: 'mdi:cctv',
-    description: 'Area cameras on the home page.',
+    descriptionKey: 'home_section.cameras.description',
   },
   areas: {
-    label: 'Areas',
+    labelKey: 'home_section.areas.label',
     icon: 'mdi:floor-plan',
-    description: 'Mobile and small-screen room cards; desktop uses the left area menu.',
+    descriptionKey: 'home_section.areas.description',
   },
   devices: {
-    label: 'House information',
+    labelKey: 'home_section.devices.label',
     icon: 'mdi:view-dashboard-outline',
-    description: 'People, indoor climate, power usage and device groups.',
+    descriptionKey: 'home_section.devices.description',
   },
   favorites: {
-    label: 'Favorites',
+    labelKey: 'home_section.favorites.label',
     icon: 'mdi:star',
-    description: 'Pinned entities selected by you.',
+    descriptionKey: 'home_section.favorites.description',
   },
 };
 
@@ -43,26 +50,26 @@ export const DEFAULT_HOME_INFORMATION_CARDS: HomeInformationCardKey[] = [
   'device_groups',
 ];
 
-export const HOME_INFORMATION_CARD_META: Record<HomeInformationCardKey, { label: string; icon: string; description: string }> = {
+export const HOME_INFORMATION_CARD_META: Record<HomeInformationCardKey, LocalizedMeta> = {
   people: {
-    label: 'People',
+    labelKey: 'home_card.people.label',
     icon: 'mdi:account-group',
-    description: 'Presence cards for the people in this home.',
+    descriptionKey: 'home_card.people.description',
   },
   climate: {
-    label: 'Indoor climate',
+    labelKey: 'home_card.climate.label',
     icon: 'mdi:home-thermometer-outline',
-    description: 'Average temperature and humidity from room sensors.',
+    descriptionKey: 'home_card.climate.description',
   },
   power: {
-    label: 'House power usage',
+    labelKey: 'home_card.power.label',
     icon: 'mdi:flash',
-    description: 'Current whole-house power usage and top rooms.',
+    descriptionKey: 'home_card.power.description',
   },
   device_groups: {
-    label: 'Device groups',
+    labelKey: 'home_card.device_groups.label',
     icon: 'mdi:view-grid-outline',
-    description: 'Status cards such as lights, switches, covers and motion.',
+    descriptionKey: 'home_card.device_groups.description',
   },
 };
 
