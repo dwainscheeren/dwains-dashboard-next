@@ -71,7 +71,7 @@
   </a>
   <a class="doc-card" href="translations.html">
     <strong>Languages</strong>
-    <span>Use English, Dutch, German, French or Spanish automatically.</span>
+    <span>Use English, Dutch, German, French, Spanish or Chinese automatically.</span>
   </a>
   <a class="doc-card" href="screenshots.html">
     <strong>Screenshots</strong>

@@ -3,7 +3,14 @@ import path from 'node:path';
 import ts from 'typescript';
 
 const localesDir = path.resolve('src/i18n/locales');
-const localeFiles = ['en.ts', 'nl.ts', 'de.ts', 'fr.ts', 'es.ts'];
+const localeFiles = fs
+  .readdirSync(localesDir)
+  .filter((file) => file.endsWith('.ts'))
+  .sort((left, right) => {
+    if (left === 'en.ts') return -1;
+    if (right === 'en.ts') return 1;
+    return left.localeCompare(right);
+  });
 const placeholderPattern = /\{[a-zA-Z0-9_]+\}/g;
 
 function readLocale(file) {
