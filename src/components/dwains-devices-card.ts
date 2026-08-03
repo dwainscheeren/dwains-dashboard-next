@@ -739,6 +739,10 @@ export class DwainsDevicesCard extends LitElement {
   }
 
   private _entityCardConfig(entityId: string): any {
+    if (entityId.startsWith('todo.')) {
+      return { type: 'todo-list', entity: entityId };
+    }
+
     return resolveEntityCardConfig({
       hass: this._hass,
       config: this.config,
@@ -1499,6 +1503,7 @@ export class DwainsDevicesCard extends LitElement {
       typeKey === 'light' ? 'light-entities-grid' : '',
       typeKey === 'sensor' ? 'sensor-entities-grid' : '',
       typeKey === 'binary_sensor.motion' ? 'motion-entities-grid' : '',
+      typeKey === 'todo' ? 'todo-entities-grid' : '',
     ].filter(Boolean).join(' ');
   }
 
@@ -2834,6 +2839,11 @@ export class DwainsDevicesCard extends LitElement {
     .entities-grid.motion-entities-grid {
       grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
       gap: 10px;
+    }
+
+    .entities-grid.todo-entities-grid {
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 760px));
+      align-items: start;
     }
 
     .entity-card-wrapper {

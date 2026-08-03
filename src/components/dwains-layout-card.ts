@@ -108,7 +108,6 @@ interface HomeAreaCamera {
   name: string;
   state: string;
   imageUrl?: string;
-  count: number;
 }
 
 type HomeSummaryKey = 'repairs' | 'updates' | 'discovered';
@@ -482,6 +481,7 @@ export class DwainsLayoutCard extends LitElement {
     .mobile-home-section,
     .home-camera-section,
     .home-status-section,
+    .home-todos-section,
     .home-favorites-section,
     .home-summaries-section,
     .mobile-domain-group {
@@ -1865,6 +1865,30 @@ export class DwainsLayoutCard extends LitElement {
         inset 0 0 0 1px color-mix(in srgb, #f59e0b 9%, transparent);
     }
 
+    .home-todos-section {
+      margin-bottom: 36px;
+    }
+
+    .home-todos-section .home-status-heading ha-icon {
+      color: #7c3aed;
+      background: color-mix(in srgb, #7c3aed 12%, transparent);
+      box-shadow: inset 0 0 0 1px color-mix(in srgb, #7c3aed 8%, transparent);
+    }
+
+    .home-todos-grid {
+      width: 100%;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr));
+      align-items: start;
+      gap: 12px;
+    }
+
+    .home-todo-card,
+    .home-todo-card dwains-dashboard-next-card-host {
+      display: block;
+      min-width: 0;
+    }
+
     .home-summary-list {
       width: min(100%, 980px);
       display: grid;
@@ -3154,6 +3178,11 @@ export class DwainsLayoutCard extends LitElement {
       --mdc-icon-size: 17px;
     }
 
+    .mobile-layout-toggle.static {
+      cursor: default;
+      pointer-events: none;
+    }
+
     .mobile-domain-title-copy {
       min-width: 0;
       display: inline-flex;
@@ -3296,8 +3325,29 @@ export class DwainsLayoutCard extends LitElement {
       width: 100%;
     }
 
+    .mobile-todo-list-card {
+      box-sizing: border-box;
+      flex: 0 0 min(100%, 520px);
+      width: min(100%, 520px);
+      min-width: min(100%, 320px);
+      scroll-snap-align: start;
+    }
+
+    .mobile-todo-list-card dwains-dashboard-next-card-host {
+      display: block;
+      width: 100%;
+    }
+
     .mobile-entities-section.layout-grid .mobile-entity-replacement-card {
       width: 100%;
+      flex: none;
+      scroll-snap-align: none;
+    }
+
+    .mobile-entities-section.layout-grid .mobile-todo-list-card {
+      grid-column: 1 / -1;
+      width: 100%;
+      min-width: 0;
       flex: none;
       scroll-snap-align: none;
     }
@@ -3709,6 +3759,16 @@ export class DwainsLayoutCard extends LitElement {
         flex: none;
         scroll-snap-align: none;
       }
+
+      .area-view .mobile-todo-list-card,
+      .area-view .mobile-entities-section.layout-grid .mobile-todo-list-card {
+        grid-column: 1 / -1;
+        width: 100%;
+        max-width: 760px;
+        min-width: 0;
+        flex: none;
+        scroll-snap-align: none;
+      }
     }
 
     @media (min-width: 1200px) {
@@ -4042,6 +4102,7 @@ export class DwainsLayoutCard extends LitElement {
       .mobile-home-section,
       .home-camera-section,
       .home-status-section,
+      .home-todos-section,
       .home-favorites-section,
       .home-summaries-section,
       .mobile-domain-group,
@@ -5517,6 +5578,21 @@ export class DwainsLayoutCard extends LitElement {
 
       .home-summaries-section .home-status-heading {
         display: none;
+      }
+
+      .home-todos-section {
+        margin: 0 -10px 18px;
+      }
+
+      .home-todos-section .home-status-heading {
+        display: none;
+      }
+
+      .home-todos-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        gap: 10px;
+        padding: 2px 18px 16px;
       }
 
       .home-summary-list {
@@ -10648,6 +10724,8 @@ export class DwainsLayoutCard extends LitElement {
         return this._renderMobileHomeAreas();
       case 'devices':
         return this._renderHomeStatusCards();
+      case 'todos':
+        return this._renderHomeTodos();
       case 'favorites':
         return this._renderFavorites();
       default:
@@ -10668,7 +10746,7 @@ export class DwainsLayoutCard extends LitElement {
         <div class="mobile-section-heading">
           <div class="mobile-section-title">
             <button
-              class="mobile-layout-toggle active"
+              class="mobile-layout-toggle active static"
               type="button"
               title=${this._t('home.summaries')}
               aria-label=${this._t('home.summaries')}
@@ -10705,6 +10783,76 @@ export class DwainsLayoutCard extends LitElement {
         </div>
       </section>
     `;
+  }
+
+  private _renderHomeTodos() {
+    const todoEntities = this._getHomeTodoEntities();
+    if (!todoEntities.length) return nothing;
+
+    const sectionTitle = this._t('home_section.todos.label');
+
+    return html`
+      <section class="home-todos-section">
+        <div class="home-status-heading">
+          <ha-icon icon="mdi:format-list-checks"></ha-icon>
+          <span>${sectionTitle}</span>
+        </div>
+        <div class="mobile-section-heading">
+          <div class="mobile-section-title">
+            <button
+              class="mobile-layout-toggle active"
+              type="button"
+              title=${sectionTitle}
+              aria-label=${sectionTitle}
+            >
+              <ha-icon icon="mdi:format-list-checks"></ha-icon>
+            </button>
+            <span class="mobile-section-title-label">${sectionTitle}</span>
+          </div>
+        </div>
+        <div class="home-todos-grid">
+          ${repeat(
+            todoEntities,
+            entityId => entityId,
+            entityId => html`
+              <div class="home-todo-card" data-entity=${entityId}>
+                <dwains-dashboard-next-card-host
+                  eager
+                  .hass=${this.hass}
+                  .config=${{
+                    type: 'todo-list',
+                    entity: entityId,
+                    title: this.hass.states[entityId]?.attributes?.friendly_name ||
+                      this.hass.entities?.[entityId]?.name ||
+                      entityId,
+                  }}
+                ></dwains-dashboard-next-card-host>
+              </div>
+            `
+          )}
+        </div>
+      </section>
+    `;
+  }
+
+  private _getHomeTodoEntities(): string[] {
+    return Object.keys(this.hass?.states || {})
+      .filter(entityId => entityId.startsWith('todo.'))
+      .filter(entityId => {
+        const state = this.hass.states[entityId];
+        const registry = this.hass.entities?.[entityId] as any;
+        if (!state) return false;
+        return !['unavailable', 'unknown'].includes(String(state.state).toLowerCase()) &&
+          !registry?.hidden_by &&
+          !registry?.disabled_by &&
+          registry?.entity_category !== 'diagnostic' &&
+          registry?.entity_category !== 'config';
+      })
+      .sort((left, right) => {
+        const leftName = this.hass.states[left]?.attributes?.friendly_name || this.hass.entities?.[left]?.name || left;
+        const rightName = this.hass.states[right]?.attributes?.friendly_name || this.hass.entities?.[right]?.name || right;
+        return String(leftName).localeCompare(String(rightName), this.hass.language);
+      });
   }
 
   private _getHomeSummaryCards(): HomeSummaryCard[] {
@@ -10968,16 +11116,10 @@ export class DwainsLayoutCard extends LitElement {
             <div class="home-camera-area-icon">
               <ha-icon icon=${camera.areaIcon}></ha-icon>
             </div>
-            ${camera.count > 1 ? html`
-              <div class="home-camera-count">
-                <ha-icon icon="mdi:cctv"></ha-icon>
-                <span>${camera.count}</span>
-              </div>
-            ` : nothing}
           </div>
           <div class="home-camera-copy">
-            <div class="home-camera-name">${camera.areaName}</div>
-            <div class="home-camera-meta">${camera.name} · ${camera.state}</div>
+            <div class="home-camera-name">${camera.name}</div>
+            <div class="home-camera-meta">${camera.areaName} · ${camera.state}</div>
           </div>
         </div>
       </button>
@@ -10986,40 +11128,46 @@ export class DwainsLayoutCard extends LitElement {
 
   private _getHomeAreaCameras(): HomeAreaCamera[] {
     const cameras: HomeAreaCamera[] = [];
+    const hiddenCameras = new Set(this.config?.settings?.home_cameras_hidden || []);
+    const configuredOrder = this.config?.settings?.home_camera_order || [];
+    const orderIndex = new Map(configuredOrder.map((entityId, index) => [entityId, index]));
 
     this._getVisibleSortedAreas().forEach(area => {
       const cameraEntities = this._getFilteredAreaEntities(area.area_id)
         .filter(entity => entity.entity_id.startsWith('camera.'))
+        .filter(entity => !hiddenCameras.has(entity.entity_id))
         .filter(entity => {
           const state = this.hass?.states?.[entity.entity_id]?.state;
           return Boolean(state && state !== 'unavailable' && state !== 'unknown');
         });
 
-      if (!cameraEntities.length) return;
+      cameraEntities.forEach(cameraEntity => {
+        const stateObj = this.hass.states[cameraEntity.entity_id];
+        const name = stateObj?.attributes?.friendly_name || cameraEntity.entity_id;
+        const state = stateObj ? this.hass.formatEntityState(stateObj) : this._t('common.unknown');
+        const imageUrl = this._getCameraImageUrl(cameraEntity.entity_id);
+        const camera: HomeAreaCamera = {
+          areaId: area.area_id,
+          areaName: area.name,
+          areaIcon: getAreaIcon(area),
+          entityId: cameraEntity.entity_id,
+          name,
+          state,
+        };
 
-      const cameraEntity = cameraEntities[0]!;
-      const stateObj = this.hass.states[cameraEntity.entity_id];
-      const name = stateObj?.attributes?.friendly_name || cameraEntity.entity_id;
-      const state = stateObj ? this.hass.formatEntityState(stateObj) : this._t('common.unknown');
-      const imageUrl = this._getCameraImageUrl(cameraEntity.entity_id);
-      const camera: HomeAreaCamera = {
-        areaId: area.area_id,
-        areaName: area.name,
-        areaIcon: getAreaIcon(area),
-        entityId: cameraEntity.entity_id,
-        name,
-        state,
-        count: cameraEntities.length,
-      };
-
-      if (imageUrl) {
-        camera.imageUrl = imageUrl;
-      }
-
-      cameras.push(camera);
+        if (imageUrl) camera.imageUrl = imageUrl;
+        cameras.push(camera);
+      });
     });
 
-    return cameras;
+    return cameras.sort((a, b) => {
+      const ai = orderIndex.get(a.entityId);
+      const bi = orderIndex.get(b.entityId);
+      if (ai !== undefined || bi !== undefined) {
+        return (ai ?? Number.MAX_SAFE_INTEGER) - (bi ?? Number.MAX_SAFE_INTEGER);
+      }
+      return 0;
+    });
   }
 
   private _getCameraImageUrl(entityId: string): string | undefined {
@@ -12757,15 +12905,19 @@ export class DwainsLayoutCard extends LitElement {
             <div class="mobile-domain-group ${this._isMobileDomainMenuOpen(area.area_id, group.key) ? 'menu-open' : ''}">
               <div class="mobile-domain-header">
                 <div class="mobile-domain-title">
-                  <button
-                    class="mobile-layout-toggle ${gridMode ? 'active' : ''}"
-                    type="button"
-                    title=${gridMode ? this._t('layout.swipe_cards') : this._t('layout.show_all_cards')}
-                    aria-label=${gridMode ? this._t('layout.switch_swipe_cards') : this._t('layout.show_all_cards')}
-                    @click=${this._toggleMobileEntityLayout}
-                  >
-                    <ha-icon icon=${gridMode ? 'mdi:view-carousel-outline' : 'mdi:view-grid-outline'}></ha-icon>
-                  </button>
+                  ${group.key === 'todo'
+                    ? html`<span class="mobile-layout-toggle static"><ha-icon icon="mdi:clipboard-list-outline"></ha-icon></span>`
+                    : html`
+                        <button
+                          class="mobile-layout-toggle ${gridMode ? 'active' : ''}"
+                          type="button"
+                          title=${gridMode ? this._t('layout.swipe_cards') : this._t('layout.show_all_cards')}
+                          aria-label=${gridMode ? this._t('layout.switch_swipe_cards') : this._t('layout.show_all_cards')}
+                          @click=${this._toggleMobileEntityLayout}
+                        >
+                          <ha-icon icon=${gridMode ? 'mdi:view-carousel-outline' : 'mdi:view-grid-outline'}></ha-icon>
+                        </button>
+                      `}
                   <span class="mobile-domain-title-copy">
                     <span class="mobile-domain-title-label">${group.name}</span>
                     <span class="mobile-domain-count">(${group.entities.length} ${group.entities.length === 1 ? 'item' : 'items'})</span>
@@ -12991,7 +13143,7 @@ export class DwainsLayoutCard extends LitElement {
       return acc;
     }, {} as Record<string, EntityConfig[]>);
 
-    const order = ['light', 'switch', 'cover', 'climate', 'scene', 'event', 'motion', 'binary_sensor', 'sensor', 'media_player', 'fan', 'lock', 'camera', 'vacuum'];
+    const order = ['light', 'switch', 'cover', 'climate', 'todo', 'scene', 'event', 'motion', 'binary_sensor', 'sensor', 'media_player', 'fan', 'lock', 'camera', 'vacuum'];
 
     return Object.entries(grouped)
       .sort(([a], [b]) => {
@@ -13062,6 +13214,8 @@ export class DwainsLayoutCard extends LitElement {
 
     const state = this._getEffectiveEntityState(rawState);
     const domain = entity.entity_id.split('.')[0] || 'unknown';
+    if (domain === 'todo') return this._renderTodoListCard(entity);
+
     const deviceClass = state.attributes?.device_class;
     const replacementConfig = this._areaReplacementCardConfig(entity.entity_id);
     if (replacementConfig) {
@@ -13107,6 +13261,18 @@ export class DwainsLayoutCard extends LitElement {
         </div>
         ${hasInlineSelect ? this._renderMobileEntitySelect(state, domain) : nothing}
       </article>
+    `;
+  }
+
+  private _renderTodoListCard(entity: EntityConfig) {
+    return html`
+      <div class="mobile-todo-list-card" data-entity=${entity.entity_id}>
+        <dwains-dashboard-next-card-host
+          eager
+          .hass=${this.hass}
+          .config=${{ type: 'todo-list', entity: entity.entity_id }}
+        ></dwains-dashboard-next-card-host>
+      </div>
     `;
   }
 

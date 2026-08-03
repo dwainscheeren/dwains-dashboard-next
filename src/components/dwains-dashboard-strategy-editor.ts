@@ -92,6 +92,14 @@ interface DeviceVisibilityTypeGroup {
   areas: DeviceVisibilityAreaGroup[];
 }
 
+interface HomeCameraSetting {
+  entityId: string;
+  name: string;
+  areaId: string;
+  areaName: string;
+  state: string;
+}
+
 let rememberedSettingsPage: SettingsPageKey = "overview";
 let rememberedSettingsPageAt = 0;
 const SETTINGS_PAGE_RESTORE_MS = 8000;
@@ -172,6 +180,12 @@ export class DwainsDashboardStrategyEditor extends LitElement {
 
   @state()
   private _dragOverHomeSectionIndex?: number;
+
+  @state()
+  private _draggedHomeCamera?: string;
+
+  @state()
+  private _dragOverHomeCameraIndex?: number;
 
   @state()
   private _draggedEntityId?: string;
@@ -790,6 +804,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
       this._t('settings.home_layout_description'),
       html`
         ${this._renderHomeSectionOrder()}
+        ${this._renderHomeCameraSettings()}
         ${this._renderHomeInformationCardSettings()}
       `
     );
@@ -1341,6 +1356,96 @@ export class DwainsDashboardStrategyEditor extends LitElement {
     return new Set(normalizeHiddenHomeInformationCards(this._config?.settings?.home_information_cards_hidden));
   }
 
+  private _getHomeCameraSettings(): HomeCameraSetting[] {
+    if (!this._config || !this.hass) return [];
+
+    const areas = sortAreas(this._config.areas || [], this._config.areas_display, ddLocale(this.hass));
+    const areaById = new Map(areas.map(area => [area.area_id, area]));
+    const areaIndex = new Map(areas.map((area, index) => [area.area_id, index]));
+    const deviceArea = new Map((this._config.devices || []).map(device => [device.device_id, device.area_id || '']));
+    const configuredEntities = new Map((this._config.entities || []).map(entity => [entity.entity_id, entity]));
+    const cameraIds = new Set([
+      ...(this._config.entities || []).map(entity => entity.entity_id),
+      ...Object.keys(this.hass.states || {}),
+    ].filter(entityId => entityId.startsWith('camera.')));
+
+    const cameras = [...cameraIds].flatMap(entityId => {
+      const state = this.hass!.states[entityId];
+      const registry = this.hass!.entities?.[entityId];
+      const configured = configuredEntities.get(entityId);
+      if (!state || registry?.hidden_by || registry?.entity_category === 'diagnostic' || registry?.entity_category === 'config') return [];
+
+      const deviceId = configured?.device_id || registry?.device_id || '';
+      const areaId = configured?.area_id || registry?.area_id || deviceArea.get(deviceId) || '';
+      const area = areaById.get(areaId);
+      if (!area) return [];
+
+      return [{
+        entityId,
+        name: state.attributes?.friendly_name || registry?.name || entityId,
+        areaId,
+        areaName: area.name,
+        state: this.hass!.formatEntityState(state),
+      }];
+    });
+
+    cameras.sort((a, b) => {
+      const areaDifference = (areaIndex.get(a.areaId) ?? Number.MAX_SAFE_INTEGER) -
+        (areaIndex.get(b.areaId) ?? Number.MAX_SAFE_INTEGER);
+      return areaDifference || a.name.localeCompare(b.name);
+    });
+
+    const configuredOrder = this._config.settings?.home_camera_order || [];
+    const orderIndex = new Map(configuredOrder.map((entityId, index) => [entityId, index]));
+    return cameras.sort((a, b) => {
+      const ai = orderIndex.get(a.entityId);
+      const bi = orderIndex.get(b.entityId);
+      if (ai !== undefined || bi !== undefined) {
+        return (ai ?? Number.MAX_SAFE_INTEGER) - (bi ?? Number.MAX_SAFE_INTEGER);
+      }
+      return 0;
+    });
+  }
+
+  private _setHomeCameraOrder(order: string[]): void {
+    if (!this._config) return;
+    this._fireConfigChanged({
+      ...this._config,
+      settings: { ...this._config.settings, home_camera_order: order },
+    });
+  }
+
+  private _moveHomeCamera(entityId: string, direction: -1 | 1): void {
+    const order = this._getHomeCameraSettings().map(camera => camera.entityId);
+    const index = order.indexOf(entityId);
+    const target = index + direction;
+    if (index < 0 || target < 0 || target >= order.length) return;
+    [order[index], order[target]] = [order[target]!, order[index]!];
+    this._setHomeCameraOrder(order);
+  }
+
+  private _toggleHomeCamera(entityId: string): void {
+    if (!this._config) return;
+    const hidden = new Set(this._config.settings?.home_cameras_hidden || []);
+    hidden.has(entityId) ? hidden.delete(entityId) : hidden.add(entityId);
+    this._fireConfigChanged({
+      ...this._config,
+      settings: { ...this._config.settings, home_cameras_hidden: [...hidden] },
+    });
+  }
+
+  private _resetHomeCameraSettings = (): void => {
+    if (!this._config) return;
+    this._fireConfigChanged({
+      ...this._config,
+      settings: {
+        ...this._config.settings,
+        home_camera_order: [],
+        home_cameras_hidden: [],
+      },
+    });
+  };
+
   private _setHomeSectionsOrder(order: HomeSectionKey[]): void {
     if (!this._config) return;
 
@@ -1535,6 +1640,87 @@ export class DwainsDashboardStrategyEditor extends LitElement {
             `;
           })}
         </div>
+      </div>
+    `;
+  }
+
+  private _renderHomeCameraSettings() {
+    const cameras = this._getHomeCameraSettings();
+    const hidden = new Set(this._config?.settings?.home_cameras_hidden || []);
+    const visibleCount = cameras.filter(camera => !hidden.has(camera.entityId)).length;
+
+    return html`
+      <div class="home-info-card-section home-camera-settings-section">
+        <div class="home-info-card-header">
+          <div>
+            <h4>${this._t('settings.home_camera_cards')}</h4>
+            <p>${this._t('settings.home_camera_cards_description')}</p>
+          </div>
+          ${cameras.length
+            ? html`<span>${this._t('settings.visible_count', { visible: visibleCount, total: cameras.length })}</span>`
+            : nothing}
+        </div>
+        ${cameras.length ? html`
+          <div class="home-camera-settings-list ${this._draggedHomeCamera ? 'dragging' : ''}">
+            ${repeat(
+              cameras,
+              camera => camera.entityId,
+              (camera, index) => {
+                const enabled = !hidden.has(camera.entityId);
+                const unavailable = ['unavailable', 'unknown'].includes(String(this.hass?.states[camera.entityId]?.state || '').toLowerCase());
+                const isDragging = this._draggedHomeCamera === camera.entityId;
+                const isDragOver = this._dragOverHomeCameraIndex === index && isDragging === false && Boolean(this._draggedHomeCamera);
+                return html`
+                  <div
+                    class="home-section-item home-camera-settings-item ${enabled ? '' : 'disabled'} ${isDragging ? 'dragging' : ''} ${isDragOver ? 'drag-over' : ''}"
+                    draggable="true"
+                    @dragstart=${(event: DragEvent) => this._handleHomeCameraDragStart(event, camera.entityId)}
+                    @dragend=${this._handleHomeCameraDragEnd}
+                    @dragover=${(event: DragEvent) => this._handleHomeCameraDragOver(event, index)}
+                    @dragleave=${this._handleHomeCameraDragLeave}
+                    @drop=${(event: DragEvent) => this._handleHomeCameraDrop(event, index)}
+                  >
+                    <div class="home-section-handle"><ha-svg-icon .path=${mdiDrag}></ha-svg-icon></div>
+                    <div class="home-section-icon"><ha-icon icon="mdi:cctv"></ha-icon></div>
+                    <div class="home-section-copy">
+                      <div class="home-section-title">${camera.name}</div>
+                      <div class="home-section-description">
+                        ${camera.areaName} · ${unavailable ? this._t('common.unavailable') : camera.state}
+                      </div>
+                    </div>
+                    <div class="home-section-actions">
+                      <button
+                        class="home-section-toggle ${enabled ? 'enabled' : ''}"
+                        type="button"
+                        title=${enabled ? this._t('settings.hide_section') : this._t('settings.show_section')}
+                        aria-label=${enabled ? this._t('settings.hide_section') : this._t('settings.show_section')}
+                        aria-pressed=${enabled ? 'true' : 'false'}
+                        @click=${() => this._toggleHomeCamera(camera.entityId)}
+                      >
+                        <ha-icon icon=${enabled ? 'mdi:eye-outline' : 'mdi:eye-off-outline'}></ha-icon>
+                      </button>
+                      <ha-icon-button
+                        .label=${this._t('settings.move_up')}
+                        .path=${mdiArrowUp}
+                        .disabled=${index === 0}
+                        @click=${() => this._moveHomeCamera(camera.entityId, -1)}
+                      ></ha-icon-button>
+                      <ha-icon-button
+                        .label=${this._t('settings.move_down')}
+                        .path=${mdiArrowDown}
+                        .disabled=${index === cameras.length - 1}
+                        @click=${() => this._moveHomeCamera(camera.entityId, 1)}
+                      ></ha-icon-button>
+                    </div>
+                  </div>
+                `;
+              }
+            )}
+          </div>
+          <button class="home-layout-reset" type="button" @click=${this._resetHomeCameraSettings}>
+            ${this._t('settings.reset_camera_cards')}
+          </button>
+        ` : html`<div class="home-camera-settings-empty">${this._t('settings.home_camera_cards_empty')}</div>`}
       </div>
     `;
   }
@@ -2127,7 +2313,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
       } else if (domain === 'binary_sensor' && state?.attributes?.device_class &&
                  ['motion', 'occupancy', 'presence'].includes(state.attributes.device_class)) {
         grouped.motion.push(entityId);
-      } else if (domain === 'script' || domain === 'scene' || domain === 'automation') {
+      } else if (domain === 'script' || domain === 'scene' || domain === 'automation' || domain === 'todo') {
         grouped.actions.push(entityId);
       } else if (domain === 'switch' || domain === 'button' || domain === 'input_boolean' ||
                  domain === 'vacuum' || domain === 'lawn_mower' || domain === 'valve' ||
@@ -2192,6 +2378,49 @@ export class DwainsDashboardStrategyEditor extends LitElement {
     next.splice(dropIndex, 0, item!);
     this._setHomeSectionsOrder(next);
     this._handleHomeSectionDragEnd();
+  }
+
+  private _handleHomeCameraDragStart(event: DragEvent, entityId: string): void {
+    this._draggedHomeCamera = entityId;
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('text/plain', entityId);
+    }
+  }
+
+  private _handleHomeCameraDragEnd = (): void => {
+    this._draggedHomeCamera = undefined;
+    this._dragOverHomeCameraIndex = undefined;
+  };
+
+  private _handleHomeCameraDragOver(event: DragEvent, index: number): void {
+    event.preventDefault();
+    this._dragOverHomeCameraIndex = index;
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+  }
+
+  private _handleHomeCameraDragLeave = (event: DragEvent): void => {
+    const currentTarget = event.currentTarget as HTMLElement | null;
+    const relatedTarget = event.relatedTarget as Node | null;
+    if (!currentTarget?.contains(relatedTarget)) this._dragOverHomeCameraIndex = undefined;
+  };
+
+  private _handleHomeCameraDrop(event: DragEvent, dropIndex: number): void {
+    event.preventDefault();
+    const dragged = this._draggedHomeCamera;
+    if (!dragged) return;
+
+    const order = this._getHomeCameraSettings().map(camera => camera.entityId);
+    const draggedIndex = order.indexOf(dragged);
+    if (draggedIndex === -1 || draggedIndex === dropIndex) {
+      this._handleHomeCameraDragEnd();
+      return;
+    }
+
+    const [camera] = order.splice(draggedIndex, 1);
+    order.splice(dropIndex, 0, camera!);
+    this._setHomeCameraOrder(order);
+    this._handleHomeCameraDragEnd();
   }
 
   private _setAreaSortMode(sortMode: AreaSortMode): void {
@@ -3608,6 +3837,24 @@ export class DwainsDashboardStrategyEditor extends LitElement {
         gap: 10px;
       }
 
+      .home-camera-settings-section {
+        padding: 0 16px 16px;
+      }
+
+      .home-camera-settings-list {
+        display: grid;
+        gap: 8px;
+      }
+
+      .home-camera-settings-empty {
+        padding: 18px;
+        border: 1px dashed var(--divider-color);
+        border-radius: 10px;
+        color: var(--secondary-text-color);
+        background: var(--secondary-background-color);
+        text-align: center;
+      }
+
       .home-info-card-header {
         display: flex;
         justify-content: space-between;
@@ -3767,6 +4014,10 @@ export class DwainsDashboardStrategyEditor extends LitElement {
           align-items: start;
           flex-direction: column;
           gap: 8px;
+        }
+
+        .home-camera-settings-section {
+          padding-inline: 10px;
         }
       }
 

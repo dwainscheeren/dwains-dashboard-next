@@ -94,7 +94,7 @@ export function getAreaGroupedEntities(
     } else if (domain === 'binary_sensor' && state?.attributes?.device_class &&
                ['motion', 'occupancy', 'presence'].includes(state.attributes.device_class)) {
       grouped.motion.push(entityId);
-    } else if (domain === 'script' || domain === 'scene' || domain === 'automation') {
+    } else if (domain === 'script' || domain === 'scene' || domain === 'automation' || domain === 'todo') {
       grouped.actions.push(entityId);
     } else if (domain === 'switch' || domain === 'button' || domain === 'input_boolean' ||
                domain === 'vacuum' || domain === 'lawn_mower' || domain === 'valve' ||
@@ -180,7 +180,7 @@ export function getAreaGroupedEntitiesFromConfig(
       grouped.media_players.push(entityId);
     } else if (domain === 'alarm_control_panel' || domain === 'lock' || domain === 'camera') {
       grouped.security.push(entityId);
-    } else if (domain === 'script' || domain === 'scene' || domain === 'automation') {
+    } else if (domain === 'script' || domain === 'scene' || domain === 'automation' || domain === 'todo') {
       grouped.actions.push(entityId);
     } else if (domain === 'switch' || domain === 'button' || domain === 'input_boolean' ||
                domain === 'vacuum' || domain === 'lawn_mower' || domain === 'valve' ||

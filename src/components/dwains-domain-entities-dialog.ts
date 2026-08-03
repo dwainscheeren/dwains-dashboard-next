@@ -9,6 +9,7 @@ import { getDomainName } from '../utils/domain-names';
 import { getDeviceClassIcon, getDomainColor, getDomainIcon } from '../utils/icons';
 import { ddLocalize, ddLocalizePlural } from '../utils/localize';
 import { fireEvent } from './utils/fire-event';
+import './utils/dd-card-host';
 
 export interface DomainEntitiesDialogParams {
   domain: string;
@@ -154,6 +155,16 @@ export class DwainsDomainEntitiesDialog extends LitElement {
       grid-template-columns: repeat(auto-fill, minmax(164px, 1fr));
       gap: 12px;
       padding: 16px;
+    }
+
+    .domain-todo-list-card {
+      grid-column: 1 / -1;
+      min-width: 0;
+    }
+
+    .domain-todo-list-card dwains-dashboard-next-card-host {
+      display: block;
+      width: 100%;
     }
 
     .domain-actions {
@@ -1067,6 +1078,18 @@ export class DwainsDomainEntitiesDialog extends LitElement {
 
     const state = this._getEffectiveEntityState(rawState);
     const domain = entity.entity_id.split('.')[0] || 'unknown';
+    if (domain === 'todo') {
+      return html`
+        <div class="domain-todo-list-card" data-entity=${entity.entity_id}>
+          <dwains-dashboard-next-card-host
+            eager
+            .hass=${this.hass}
+            .config=${{ type: 'todo-list', entity: entity.entity_id }}
+          ></dwains-dashboard-next-card-host>
+        </div>
+      `;
+    }
+
     const deviceClass = state.attributes?.device_class;
     const icon = this.hass.entities?.[entity.entity_id]?.icon ||
       state.attributes?.icon ||

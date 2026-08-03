@@ -35,6 +35,9 @@ Entities are grouped by type, for example:
 - Sensors
 - Scenes
 - Selectors
+- To-do lists
+
+To-do entities use Home Assistant's editable to-do list card, so list items can be viewed, completed and added directly from the area page.
 
 ## Quick Controls
 
