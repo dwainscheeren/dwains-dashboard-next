@@ -101,9 +101,6 @@ export class DwainsBottomNav extends LitElement {
     return this._hass;
   }
 
-  private _t = (key: string, vars?: Record<string, string | number>) =>
-    ddLocalize(this._hass, key, vars);
-
   set dashboardSettings(settings: DwainsDashboardSettings | undefined) {
     this._settings = settings;
     if (!this._isHaMenuRestricted()) this._restrictedMenuOpen = false;
@@ -194,7 +191,7 @@ export class DwainsBottomNav extends LitElement {
       ? [{
           path: PAGES_PATH,
           icon: 'mdi:puzzle',
-          label: this._t('dev.nav.pages'),
+          label: ddLocalize(this._hass, 'navigation.pages'),
           action: 'pages',
         }]
       : this._pages.map((p) => ({ ...p }));
@@ -361,7 +358,9 @@ export class DwainsBottomNav extends LitElement {
 
   private _renderStandaloneMenuButton() {
     const isArea = this._areaContext.view === 'area' && Boolean(this._areaContext.areaId);
-    const label = isArea ? this._t('dev.back_to_home') : this._t('dev.open_menu');
+    const label = isArea
+      ? ddLocalize(this._hass, 'navigation.back_home')
+      : ddLocalize(this._hass, 'navigation.open_menu');
     return html`
       <button
         class="standalone-menu ${isArea ? 'is-back' : ''}"
@@ -393,21 +392,21 @@ export class DwainsBottomNav extends LitElement {
     return html`
       <button
         class="pages-backdrop ${this._restrictedMenuOpen ? 'open' : ''}"
-        aria-label=${this._t('dev.close_menu')}
+        aria-label=${ddLocalize(this._hass, 'common.close')}
         @click=${this._closeRestrictedMenu}
       ></button>
       <section class="pages-sheet ${this._restrictedMenuOpen ? 'open' : ''}" aria-hidden=${this._restrictedMenuOpen ? 'false' : 'true'}>
         <div class="pages-handle"></div>
         <div class="pages-heading">
           ${this._renderIcon('mdi:account-circle')}
-          <span>${this._t('dev.menu')}</span>
+          <span>${ddLocalize(this._hass, 'navigation.menu')}</span>
         </div>
         <div class="pages-list">
           <button class="page-row" @click=${this._openProfileSettings}>
             <span class="page-icon">${this._renderIcon('mdi:account-cog')}</span>
             <span class="page-copy">
-              <span class="page-name">${this._t('dev.profile_settings')}</span>
-              <span class="page-subtitle">${this._t('dev.profile_settings_subtitle')}</span>
+              <span class="page-name">${ddLocalize(this._hass, 'navigation.profile_settings')}</span>
+              <span class="page-subtitle">${ddLocalize(this._hass, 'navigation.profile_description')}</span>
             </span>
             <span class="page-chevron">${this._renderIcon('mdi:chevron-right')}</span>
           </button>
@@ -421,14 +420,14 @@ export class DwainsBottomNav extends LitElement {
     return html`
       <button
         class="pages-backdrop ${this._pagesOpen ? 'open' : ''}"
-        aria-label=${this._t('dev.close_pages')}
+        aria-label=${ddLocalize(this._hass, 'common.close')}
         @click=${this._closePages}
       ></button>
       <section class="pages-sheet ${this._pagesOpen ? 'open' : ''}" aria-hidden=${this._pagesOpen ? 'false' : 'true'}>
         <div class="pages-handle"></div>
         <div class="pages-heading">
           ${this._renderIcon('mdi:puzzle')}
-          <span>${this._t('dev.nav.pages')}</span>
+          <span>${ddLocalize(this._hass, 'navigation.pages')}</span>
         </div>
         <div class="pages-list">
           ${this._pages.map((page) => {
@@ -442,7 +441,9 @@ export class DwainsBottomNav extends LitElement {
                 <span class="page-icon">${this._renderIcon(page.icon)}</span>
                 <span class="page-copy">
                   <span class="page-name">${page.label}</span>
-                  <span class="page-subtitle">${active ? this._t('dev.page.current') : this._t('dev.page.open')}</span>
+                  <span class="page-subtitle">${active
+                    ? ddLocalize(this._hass, 'navigation.current_page')
+                    : ddLocalize(this._hass, 'navigation.open_page')}</span>
                 </span>
                 <span class="page-chevron">${this._renderIcon(active ? 'mdi:check' : 'mdi:chevron-right')}</span>
               </button>
@@ -479,7 +480,7 @@ export class DwainsBottomNav extends LitElement {
     ) {
       return {
         icon: this._areaContext.icon || 'mdi:cog-outline',
-        label: this._areaContext.name || this._t('dev.nav.settings'),
+        label: this._areaContext.name || ddLocalize(this._hass, 'settings.title'),
       };
     }
 
@@ -1596,7 +1597,7 @@ function _buildSidebarSection(
 
   if (haMenuRestricted) {
     wrap.appendChild(
-      mkItem('mdi:account-cog', t('dev.profile_settings'), () => {
+      mkItem('mdi:account-cog', 'Profile settings', () => {
         _closeSidebar();
         _navigateProfile();
       })
@@ -1620,7 +1621,7 @@ function _buildSidebarSection(
     );
   } else {
     wrap.appendChild(
-      mkItem('mdi:account-cog', t('dev.profile_settings'), () => {
+      mkItem('mdi:account-cog', 'Profile settings', () => {
         _closeSidebar();
         _navigateProfile();
       })

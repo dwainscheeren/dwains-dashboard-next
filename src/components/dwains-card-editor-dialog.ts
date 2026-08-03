@@ -206,7 +206,7 @@ export class DwainsCardEditorDialog extends LitElement {
       this._previewEl = el;
       container.appendChild(el);
     } catch (e) {
-      container.textContent = this._t("dlg.card_editor.preview_error", { error: String(e) });
+      container.textContent = "Preview error: " + e;
     }
   }
 

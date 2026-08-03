@@ -69,6 +69,10 @@
     <strong>Custom cards</strong>
     <span>Add manual cards above, below or inside generated area sections.</span>
   </a>
+  <a class="doc-card" href="translations.html">
+    <strong>Languages</strong>
+    <span>Use English, Dutch, German, French, Spanish or Chinese automatically.</span>
+  </a>
   <a class="doc-card" href="screenshots.html">
     <strong>Screenshots</strong>
     <span>View desktop and mobile screenshots in light and dark mode.</span>

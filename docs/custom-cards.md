@@ -28,3 +28,12 @@ entity: light.living_room
 ## Best Practice
 
 Keep manual cards specific and intentional. Let Dwains Dashboard generate the common entities, then use custom cards for exceptions or richer controls.
+
+## Dwains Dashboard 3 Compatibility
+
+Next includes `custom:dwains-heading-card` for older Dwains Dashboard blueprints. It is built in and does not need to be downloaded separately.
+
+```yaml
+type: custom:dwains-heading-card
+title: Living room
+```

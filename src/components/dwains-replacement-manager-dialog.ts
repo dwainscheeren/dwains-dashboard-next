@@ -62,9 +62,6 @@ const SYNTHETIC_INPUTS = new Set([
 export class DwainsReplacementManagerDialog extends LitElement {
   @property({ attribute: false }) public hass!: HomeAssistant;
 
-  private _t = (key: string, vars?: Record<string, string | number>) =>
-    ddLocalize(this.hass, key, vars);
-
   @state() private _open = false;
   @state() private _params?: ReplacementManagerParams;
   @state() private _config?: DwainsDashboardConfig;
@@ -81,6 +78,10 @@ export class DwainsReplacementManagerDialog extends LitElement {
   @state() private _inputs: Record<string, any> = {};
   @state() private _loadingBlueprint = false;
   @state() private _error = '';
+
+  private _t(key: string, replacements?: Record<string, string | number>): string {
+    return ddLocalize(this.hass, key, replacements);
+  }
 
   public showDialog(params: ReplacementManagerParams): void {
     this._params = params;
@@ -104,7 +105,7 @@ export class DwainsReplacementManagerDialog extends LitElement {
   protected render() {
     if (!this._open || !this._config) return nothing;
     return html`
-      <ha-dialog open @closed=${this.closeDialog} .heading=${this._t('dlg.replace.title')} hideActions>
+      <ha-dialog open @closed=${this.closeDialog} .heading=${this._t('settings.blueprint_replacements')} hideActions>
         <ha-dialog-header slot="header">
           <ha-icon-button
             slot="navigationIcon"
@@ -112,7 +113,7 @@ export class DwainsReplacementManagerDialog extends LitElement {
             .label=${this._t('common.close')}
             @click=${this.closeDialog}
           ></ha-icon-button>
-          <span slot="title">${this._t('dlg.replace.title')}</span>
+          <span slot="title">${this._t('settings.blueprint_replacements')}</span>
         </ha-dialog-header>
 
         <div class="content">
@@ -132,9 +133,9 @@ export class DwainsReplacementManagerDialog extends LitElement {
     return html`
       <div class="surface-summary">
         <div>
-          <div class="surface-title">${this._t('dlg.replace.surface_title')}</div>
+          <div class="surface-title">${this._t('replacement.views_title')}</div>
           <div class="surface-desc">
-            ${this._t('dlg.replace.surface_desc')}
+            ${this._t('replacement.views_description')}
           </div>
         </div>
         <span class="count">${count}</span>
@@ -148,7 +149,7 @@ export class DwainsReplacementManagerDialog extends LitElement {
       <section class="assignment-section">
         <div class="section-header">
           <ha-icon icon="mdi:shape-outline"></ha-icon>
-          <h3>${this._t('dlg.replace.section_title')}</h3>
+          <h3>${this._t('replacement.domain_replacements')}</h3>
         </div>
         ${entries.length
           ? html`
@@ -160,7 +161,7 @@ export class DwainsReplacementManagerDialog extends LitElement {
                 )}
               </div>
             `
-          : html`<div class="empty">${this._t('dlg.replace.empty')}</div>`}
+          : html`<div class="empty">${this._t('replacement.empty')}</div>`}
       </section>
     `;
   }
@@ -172,7 +173,7 @@ export class DwainsReplacementManagerDialog extends LitElement {
     return html`
       <div class="assignment ${assignment.enabled === false ? 'disabled' : ''}">
         <div class="assignment-main">
-          <div class="target-pill">${this._t('dlg.replace.domain_pill', { name: getDomainName(this.hass, target) })}</div>
+          <div class="target-pill">${this._t('replacement.target', { domain: getDomainName(this.hass, target) })}</div>
           <div class="assignment-name">${assignment.name}</div>
           <div class="assignment-meta">
             ${assignment.version ? html`<span>v${assignment.version}</span>` : nothing}
@@ -182,14 +183,14 @@ export class DwainsReplacementManagerDialog extends LitElement {
         <div class="assignment-actions">
           <button
             class="icon-button"
-            title=${assignment.enabled === false ? this._t('dlg.replace.enable') : this._t('dlg.replace.disable')}
+            title=${assignment.enabled === false ? this._t('common.enable') : this._t('common.disable')}
             @click=${() => this._toggleAssignment(target)}
           >
             <ha-icon icon=${assignment.enabled === false ? 'mdi:eye-off' : 'mdi:eye'}></ha-icon>
           </button>
           <button
             class="icon-button danger"
-            title=${this._t('dlg.replace.remove')}
+            title=${this._t('common.remove')}
             @click=${() => this._removeAssignment(target)}
           >
             <ha-icon icon="mdi:delete-outline"></ha-icon>
@@ -204,14 +205,14 @@ export class DwainsReplacementManagerDialog extends LitElement {
       <section class="builder">
         <div class="section-header">
           <ha-icon icon="mdi:puzzle-edit-outline"></ha-icon>
-          <h3>${this._t('dlg.replace.assign_title')}</h3>
+          <h3>${this._t('replacement.assign')}</h3>
         </div>
         ${this._error ? html`<div class="error">${this._error}</div>` : nothing}
         <div class="builder-grid">
           <div class="control-block domain-control">
-            <label>${this._t('dlg.replace.domain_label')}</label>
+            <label>${this._t('replacement.domain')}</label>
             ${this._renderDomainControl()}
-            <div class="hint">${this._t('dlg.replace.domain_hint')}</div>
+            <div class="hint">${this._t('replacement.applies_hint')}</div>
           </div>
         </div>
 
@@ -219,11 +220,11 @@ export class DwainsReplacementManagerDialog extends LitElement {
           <input
             class="search"
             type="search"
-            placeholder=${this._t('dlg.replace.search_placeholder')}
+            placeholder=${this._t('replacement.search')}
             .value=${this._search}
             @input=${(e: Event) => (this._search = (e.target as HTMLInputElement).value)}
           />
-          ${this._galleryLoading ? html`<span class="loading">${this._t('dlg.replace.loading')}</span>` : nothing}
+          ${this._galleryLoading ? html`<span class="loading">${this._t('common.loading')}</span>` : nothing}
         </div>
         ${this._galleryError ? html`<div class="error">${this._galleryError}</div>` : nothing}
 
@@ -281,19 +282,19 @@ export class DwainsReplacementManagerDialog extends LitElement {
             @click=${this._applyAssignment}
           >
             <ha-icon icon="mdi:check"></ha-icon>
-            ${this._t('dlg.replace.apply')}
+            ${this._t('common.apply')}
           </ha-button>
         </div>
 
-        ${this._loadingBlueprint ? html`<div class="loading">${this._t('dlg.replace.loading_blueprint')}</div>` : nothing}
-        <div class="hint">${this._t('dlg.replace.apply_hint', { domain: getDomainName(this.hass, this._domain) })}</div>
+        ${this._loadingBlueprint ? html`<div class="loading">${this._t('replacement.loading_blueprint')}</div>` : nothing}
+        <div class="hint">${this._t('replacement.applies_to', { domain: getDomainName(this.hass, this._domain) })}</div>
         ${inputKeys.length
           ? html`
               <div class="input-grid">
                 ${inputKeys.map((key) => this._renderInputField(key))}
               </div>
             `
-          : html`<div class="hint">${this._t('dlg.replace.auto_fill_hint')}</div>`}
+          : html`<div class="hint">${this._t('replacement.entity_hint')}</div>`}
       </div>
     `;
   }
@@ -358,7 +359,10 @@ export class DwainsReplacementManagerDialog extends LitElement {
         this._domain = inferredDomain;
       }
     } catch (e: any) {
-      this._error = this._t('dlg.replace.load_failed', { name: item.name, error: String(e?.message || e) });
+      this._error = this._t('replacement.load_failed', {
+        name: item.name,
+        error: String(e?.message || e),
+      });
     } finally {
       this._loadingBlueprint = false;
     }

@@ -38,7 +38,7 @@ export interface LovelaceCardConfig {
   [key: string]: any;
 }
 
-export type HomeSectionKey = 'summaries' | 'cameras' | 'areas' | 'devices' | 'favorites';
+export type HomeSectionKey = 'summaries' | 'cameras' | 'areas' | 'devices' | 'todos' | 'favorites';
 export type HomeInformationCardKey = 'people' | 'climate' | 'power' | 'device_groups';
 
 export interface DwainsDashboardSettings {
@@ -62,6 +62,8 @@ export interface DwainsDashboardSettings {
   home_sections_order?: HomeSectionKey[];
   home_sections_hidden?: HomeSectionKey[];
   home_information_cards_hidden?: HomeInformationCardKey[];
+  home_camera_order?: string[];
+  home_cameras_hidden?: string[];
   hidden_device_types?: string[];
 }
 
@@ -86,9 +88,12 @@ export interface AreaOptions {
   custom_cards?: AreaCustomCard[];
 }
 
+export type AreaSortMode = 'home_assistant' | 'custom' | 'alphabetical';
+
 export interface AreasDisplay {
   hidden?: string[];
   order?: string[];
+  sort_mode?: AreaSortMode;
 }
 
 // Een blueprint-pagina die de gebruiker heeft toegevoegd (DD3-stijl), volledig

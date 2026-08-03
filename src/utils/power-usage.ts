@@ -90,7 +90,7 @@ export function buildHousePowerUsage(
 
   return {
     totalWatts,
-    formattedTotal: entities.length ? formatPowerWatts(totalWatts) : 'No data',
+    formattedTotal: entities.length ? formatPowerWatts(totalWatts) : '',
     sensorCount: entities.length,
     areas: areasWithPercent,
   };
@@ -154,7 +154,7 @@ export function getLivePowerValueWatts(state: HassEntity | undefined): number | 
 }
 
 export function formatPowerWatts(watts: number): string {
-  if (!Number.isFinite(watts)) return 'No data';
+  if (!Number.isFinite(watts)) return '';
   if (watts >= 10000) return `${(watts / 1000).toFixed(0)} kW`;
   if (watts >= 1000) return `${(watts / 1000).toFixed(1)} kW`;
   return `${Math.round(watts)} W`;

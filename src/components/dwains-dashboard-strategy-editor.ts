@@ -22,17 +22,19 @@ import { css, html, LitElement, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { repeat } from "lit/directives/repeat.js";
 import type { HomeAssistant } from "../types/home-assistant";
-import type { DeviceConfig, DwainsDashboardConfig, HomeInformationCardKey, HomeSectionKey } from "../types/strategy";
+import type { AreaSortMode, DeviceConfig, DwainsDashboardConfig, HomeInformationCardKey, HomeSectionKey } from "../types/strategy";
 import { openReplacementManager } from "./dwains-replacement-manager-dialog";
 import {
   AREA_STRATEGY_GROUPS,
   AREA_STRATEGY_GROUP_ICONS,
+  resolveAreaSortMode,
+  sortAreas,
   type AreaStrategyGroup
 } from "../utils/area-entities";
 import { countReplacementRules } from "../utils/blueprint-replacements";
 import { getDeviceClassName, getDomainName } from "../utils/domain-names";
 import { getDeviceClassIcon, getDomainColor, getDomainIcon } from "../utils/icons";
-import { ddLocalize } from "../utils/localize";
+import { ddLocale, ddLocalize, ddLocalizePlural } from "../utils/localize";
 import {
   DEFAULT_HOME_INFORMATION_CARDS,
   HOME_INFORMATION_CARD_META,
@@ -88,6 +90,14 @@ interface DeviceVisibilityTypeGroup {
   color: string;
   devices: DeviceVisibilityDevice[];
   areas: DeviceVisibilityAreaGroup[];
+}
+
+interface HomeCameraSetting {
+  entityId: string;
+  name: string;
+  areaId: string;
+  areaName: string;
+  state: string;
 }
 
 let rememberedSettingsPage: SettingsPageKey = "overview";
@@ -147,6 +157,9 @@ export class DwainsDashboardStrategyEditor extends LitElement {
   private _t = (key: string, vars?: Record<string, string | number>) =>
     ddLocalize(this._hass, key, vars);
 
+  private _tp = (key: string, count: number) =>
+    ddLocalizePlural(this._hass, key, count);
+
   @state()
   private _config?: DwainsDashboardConfig;
 
@@ -167,6 +180,12 @@ export class DwainsDashboardStrategyEditor extends LitElement {
 
   @state()
   private _dragOverHomeSectionIndex?: number;
+
+  @state()
+  private _draggedHomeCamera?: string;
+
+  @state()
+  private _dragOverHomeCameraIndex?: number;
 
   @state()
   private _draggedEntityId?: string;
@@ -400,18 +419,18 @@ export class DwainsDashboardStrategyEditor extends LitElement {
       <div class="editor-container settings-loading-shell" aria-busy="true">
         <div class="settings-overview-hero settings-overview-hero-skeleton">
           <div>
-            <h2>${this._t('set.title')}</h2>
-            <p>${this._t('set.loading_data')}</p>
+            <h2>${this._t('settings.title')}</h2>
+            <p>${this._t('settings.loading')}</p>
             <div class="settings-version-chip">
               ${this._renderSettingsIcon("mdi:package-variant-closed-check")}
-              <span>${this._t('set.loaded_version')}</span>
+              <span>${this._t('settings.loaded_version')}</span>
               <strong>v${DD_NEXT_VERSION}</strong>
             </div>
           </div>
           ${this._renderSettingsIcon("mdi:tune-variant", "settings-hero-icon")}
         </div>
         <section class="settings-nav-section">
-          <h3>${this._t('set.loading')}</h3>
+          <h3>${this._t('settings.loading')}</h3>
           <div class="settings-nav-list">
             ${[0, 1, 2, 3].map(() => html`
               <div class="settings-nav-item settings-nav-item-skeleton">
@@ -440,9 +459,9 @@ export class DwainsDashboardStrategyEditor extends LitElement {
 
   private _renderSettingsOverview() {
     const groups: Array<{ key: SettingsPageItem["group"]; title: string }> = [
-      { key: "general", title: this._t('set.overview.general') },
-      { key: "layout", title: this._t('set.overview.layout') },
-      { key: "advanced", title: this._t('set.overview.advanced') },
+      { key: "general", title: this._t('settings.general') },
+      { key: "layout", title: this._t('settings.dashboard_layout') },
+      { key: "advanced", title: this._t('settings.advanced') },
     ];
     const items = this._settingsOverviewItems();
 
@@ -450,11 +469,11 @@ export class DwainsDashboardStrategyEditor extends LitElement {
       <div class="editor-container">
         <div class="settings-overview-hero">
           <div>
-            <h2>${this._t('set.title')}</h2>
-            <p>${this._t('set.overview.intro')}</p>
+            <h2>${this._t('settings.title')}</h2>
+            <p>${this._t('settings.subtitle')}</p>
             <div class="settings-version-chip">
               ${this._renderSettingsIcon("mdi:package-variant-closed-check")}
-              <span>${this._t('set.loaded_version')}</span>
+              <span>${this._t('settings.loaded_version')}</span>
               <strong>v${DD_NEXT_VERSION}</strong>
             </div>
           </div>
@@ -495,11 +514,12 @@ export class DwainsDashboardStrategyEditor extends LitElement {
     const replacementCount = this._replacementCount();
     const hiddenDeviceCount = this._getHiddenDeviceIds().size;
     const devicesUnavailableMode = this._config?.settings?.hide_unavailable_entities_on_devices === false
-      ? this._t('set.unavailable_shown')
-      : this._t('set.unavailable_hidden');
+      ? this._t('settings.unavailable_shown')
+      : this._t('settings.unavailable_hidden');
     const areasUnavailableMode = this._config?.settings?.hide_unavailable_entities === false
-      ? this._t('set.unavailable_shown')
-      : this._t('set.unavailable_hidden');
+      ? this._t('settings.unavailable_shown')
+      : this._t('settings.unavailable_hidden');
+    const areaSortMode = resolveAreaSortMode(this._config?.areas_display);
 
     return [
       {
@@ -507,83 +527,83 @@ export class DwainsDashboardStrategyEditor extends LitElement {
         group: "general",
         icon: "mdi:view-dashboard-edit",
         color: "var(--primary-color)",
-        title: this._t('set.dashboard.label'),
-        description: this._t('set.dashboard.desc'),
-        summary: this._dashboardTitle || this._t('set.dashboard.current'),
+        title: this._t('settings.dashboard'),
+        description: this._t('settings.dashboard_description'),
+        summary: this._dashboardTitle || this._t('settings.current_dashboard'),
       },
       {
         page: "home",
         group: "general",
         icon: "mdi:home-edit-outline",
         color: "#0ea5e9",
-        title: this._t('set.home_page.label'),
-        description: this._t('set.home_page.desc'),
-        summary: this._t('set.home_page.summary', { sections: visibleHomeSections, cards: visibleHouseInfoCards, total: DEFAULT_HOME_INFORMATION_CARDS.length, favs: favoriteCount }),
+        title: this._t('settings.home_page'),
+        description: this._t('settings.home_page_description'),
+        summary: `${visibleHomeSections} · ${this._t('settings.house_cards', { visible: visibleHouseInfoCards, total: DEFAULT_HOME_INFORMATION_CARDS.length })} · ${this._tp('common.favorite', favoriteCount)}`,
       },
       {
         page: "header",
         group: "general",
         icon: "mdi:card-account-details-star-outline",
         color: "#22a06b",
-        title: this._t('set.header.label'),
-        description: this._t('set.header.desc'),
-        summary: `${this._config?.settings?.show_notifications === false ? this._t('set.header.notifications_hidden') : this._t('set.header.notifications_shown')} · ${this._config?.settings?.alarm_entity_id ? this._t('set.header.alarm_selected') : this._t('set.header.no_alarm_selected')}`,
+        title: this._t('settings.header_status'),
+        description: this._t('settings.header_status_description'),
+        summary: `${this._config?.settings?.show_notifications === false ? this._t('settings.notifications_hidden') : this._t('settings.notifications_shown')} · ${this._config?.settings?.alarm_entity_id ? this._t('settings.alarm_selected') : this._t('settings.no_alarm_selected')}`,
       },
       {
         page: "people",
         group: "layout",
         icon: "mdi:account-group-outline",
         color: "#8b5cf6",
-        title: this._t('set.people.label'),
-        description: this._t('set.people.desc'),
-        summary: this._t('set.people.summary', { count: personCount }),
+        title: this._t('settings.people'),
+        description: this._t('settings.people_description'),
+        summary: this._tp('common.person', personCount),
       },
       {
         page: "areas",
         group: "layout",
         icon: "mdi:floor-plan",
         color: "#14b8a6",
-        title: this._t('set.areas.label'),
-        description: this._t('set.areas.desc'),
-        summary: this._t('set.areas.summary', { count: areaCount, mode: areasUnavailableMode }),
+        title: this._t('settings.areas'),
+        description: this._t('settings.areas_description'),
+        summary: `${this._tp('common.area', areaCount)} · ${this._t(`settings.area_order_${areaSortMode}`)} · ${areasUnavailableMode}`,
       },
       {
         page: "devices",
         group: "layout",
         icon: "mdi:format-list-bulleted-type",
         color: "#0891b2",
-        title: this._t('set.devices.label'),
-        description: this._t('set.devices.desc'),
-        summary: this._t('set.devices.summary', { visible: deviceTypeCount - hiddenDeviceTypeCount, total: deviceTypeCount, hidden: hiddenDeviceCount, mode: devicesUnavailableMode }),
+        title: this._t('settings.devices_page'),
+        description: this._t('settings.devices_page_description'),
+        summary: `${this._t('settings.types_visible', { visible: deviceTypeCount - hiddenDeviceTypeCount, total: deviceTypeCount })} · ${this._t('settings.hidden_devices_count', { count: hiddenDeviceCount })} · ${devicesUnavailableMode}`,
       },
       {
         page: "replacements",
         group: "layout",
         icon: "mdi:puzzle-edit-outline",
         color: "#7c3aed",
-        title: this._t('set.replacements.label'),
-        description: this._t('set.replacements.desc'),
-        summary: this._t('set.replacements.summary', { count: replacementCount }),
+        title: this._t('settings.blueprint_replacements'),
+        description: this._t('settings.blueprint_replacements_description'),
+        summary: this._tp('common.active', replacementCount),
       },
       {
         page: "permissions",
         group: "advanced",
         icon: "mdi:shield-account",
         color: "#ef4444",
-        title: this._t('set.permissions.label'),
-        description: this._t('set.permissions.desc'),
+        title: this._t('settings.user_permissions'),
+        description: this._t('settings.user_permissions_description'),
         summary: this._config?.settings?.restrict_non_admin_ha_sidebar || this._config?.settings?.restrict_non_admin_dashboard_settings
-          ? this._t('set.permissions.restrictions_enabled')
-          : this._t('set.permissions.default_access'),
+          ? this._t('settings.restrictions_enabled')
+          : this._t('settings.default_access'),
       },
       {
         page: "support",
         group: "advanced",
         icon: "mdi:heart-outline",
         color: "#f59e0b",
-        title: this._t('set.support.label'),
-        description: this._t('set.support.desc'),
-        summary: this._t('set.optional'),
+        title: this._t('settings.support'),
+        description: this._t('settings.support_description'),
+        summary: this._t('settings.optional'),
       },
     ];
   }
@@ -649,7 +669,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
         <div class="settings-detail-toolbar">
           <button class="settings-back-button" type="button" @click=${this._backToSettingsOverview}>
             <ha-icon icon="mdi:arrow-left"></ha-icon>
-            <span>${this._t('set.all_settings')}</span>
+            <span>${this._t('settings.all_settings')}</span>
           </button>
           <div class="settings-detail-title">
             <span>${item.title}</span>
@@ -714,31 +734,28 @@ export class DwainsDashboardStrategyEditor extends LitElement {
       <div class="sponsoring-section">
         <div class="sponsoring-header">
           <ha-icon icon="mdi:heart"></ha-icon>
-          <h3>${this._t('set.support.heading')}</h3>
+          <h3>${this._t('support.title')}</h3>
         </div>
-        <p class="sponsoring-text">
-          ${this._t('set.support.about_1')}
-          <strong>SmartHomeShop.io</strong>${this._t('set.support.about_2')}
-        </p>
+        <p class="sponsoring-text">${this._t('support.description')}</p>
 
-        <div class="sponsor-label">${this._t('set.support.donate_label')}</div>
+        <div class="sponsor-label">${this._t('support.donation')}</div>
         <div class="sponsor-chips">
           <a class="sponsor-chip" href="https://github.com/sponsors/dwainscheeren" target="_blank" rel="noopener noreferrer">
-            <ha-icon icon="mdi:github"></ha-icon><span>${this._t('set.support.github')}</span>
+            <ha-icon icon="mdi:github"></ha-icon><span>${this._t('support.github')}</span>
           </a>
           <a class="sponsor-chip" href="https://www.paypal.me/dwainscheeren" target="_blank" rel="noopener noreferrer">
             <ha-icon icon="mdi:cash"></ha-icon><span>PayPal</span>
           </a>
           <a class="sponsor-chip" href="https://www.buymeacoffee.com/FAkYvrx" target="_blank" rel="noopener noreferrer">
-            <ha-icon icon="mdi:coffee"></ha-icon><span>${this._t('set.support.coffee')}</span>
+            <ha-icon icon="mdi:coffee"></ha-icon><span>${this._t('support.buy_coffee')}</span>
           </a>
         </div>
 
         <div class="sponsor-divider"></div>
 
-        <div class="sponsor-label">${this._t('set.support.shop_label')}</div>
+        <div class="sponsor-label">${this._t('support.shop_prompt')}</div>
         <a class="sponsor-chip primary" href="https://smarthomeshop.io/en" target="_blank" rel="noopener noreferrer">
-          <ha-icon icon="mdi:shopping"></ha-icon><span>${this._t('set.support.visit_shop')}</span>
+          <ha-icon icon="mdi:shopping"></ha-icon><span>${this._t('support.visit_shop')}</span>
         </a>
       </div>
     `;
@@ -748,15 +765,15 @@ export class DwainsDashboardStrategyEditor extends LitElement {
     if (!this._dashboardId) {
       return this._renderSettingsPanel(
         "mdi:view-dashboard",
-        this._t('set.dashboard.label'),
-        this._t('set.dashboard.default_desc'),
-        html`<div class="empty-settings-card">${this._t('set.dashboard.empty')}</div>`
+        this._t('settings.dashboard'),
+        this._t('settings.default_dashboard_locked'),
+        html`<div class="empty-settings-card">${this._t('settings.open_instance')}</div>`
       );
     }
 
     return this._renderSettingsPanel(
       "mdi:view-dashboard",
-      this._t('set.dashboard.label'),
+      this._t('settings.dashboard'),
       this._t('strategy.dashboard_desc'),
       html`
         <div class="dashboard-settings">
@@ -783,10 +800,11 @@ export class DwainsDashboardStrategyEditor extends LitElement {
   private _renderHomeLayoutSettingsPanel() {
     return this._renderSettingsPanel(
       "mdi:home-edit-outline",
-      this._t('set.home_layout.label'),
-      this._t('set.home_layout.desc'),
+      this._t('settings.home_layout'),
+      this._t('settings.home_layout_description'),
       html`
         ${this._renderHomeSectionOrder()}
+        ${this._renderHomeCameraSettings()}
         ${this._renderHomeInformationCardSettings()}
       `
     );
@@ -795,18 +813,18 @@ export class DwainsDashboardStrategyEditor extends LitElement {
   private _renderReplacementsSettingsPanel() {
     return this._renderSettingsPanel(
       "mdi:puzzle-edit-outline",
-      this._t('set.replacements.label'),
-      this._t('set.replacements.panel_desc'),
+      this._t('settings.blueprint_replacements'),
+      this._t('settings.replace_description'),
       html`
         <div class="replacement-section">
           <div class="replacement-summary">
             <div>
-              <div class="replacement-count">${this._replacementCount() === 1 ? this._t('set.replacements.active_one') : this._t('set.replacements.active_other', { count: this._replacementCount() })}</div>
-              <div class="replacement-help">${this._t('set.replacements.help')}</div>
+              <div class="replacement-count">${this._tp('common.active', this._replacementCount())}</div>
+              <div class="replacement-help">${this._t('replacement.views_description')}</div>
             </div>
             <ha-button appearance="accent" @click=${this._openReplacementManager}>
               <ha-icon icon="mdi:puzzle-edit-outline"></ha-icon>
-              ${this._t('set.replacements.manage')}
+              ${this._t('common.manage')}
             </ha-button>
           </div>
         </div>
@@ -817,29 +835,29 @@ export class DwainsDashboardStrategyEditor extends LitElement {
   private _renderFavoritesSettingsPanel() {
     return this._renderSettingsPanel(
       "mdi:star",
-      this._t('set.favorites.label'),
-      this._t('set.favorites.desc'),
+      this._t('home_section.favorites.label'),
+      this._t('settings.favorites_description'),
       html`
         <div class="favorites-section">
           <div class="favorite-suggestions-toggle">
-            <ha-formfield label=${this._t('set.favorites.show_suggested')}>
+            <ha-formfield .label=${this._t('settings.show_suggested_favorites')}>
               <ha-switch
                 .checked=${this._config?.settings?.show_suggested_favorites !== false}
                 @change=${this._toggleSuggestedFavorites}
               ></ha-switch>
             </ha-formfield>
             <p class="toggle-description">
-              ${this._t('set.favorites.suggested_desc')}
+              ${this._t('settings.suggested_favorites_description')}
             </p>
           </div>
           <div class="entity-picker">
             <div class="entity-picker-header">
-              <h4>${this._t('set.favorites.selected')}</h4>
+              <h4>${this._t('settings.selected_entities')}</h4>
               <mwc-button @click=${this._addFavoriteEntity} outlined>
                 <svg viewBox="0 0 24 24" width="20" height="20" style="margin-right: 8px;">
                   <path fill="currentColor" d="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z" />
                 </svg>
-                ${this._t('set.favorites.add_entity')}
+                ${this._t('settings.add_entity')}
               </mwc-button>
             </div>
 
@@ -855,12 +873,12 @@ export class DwainsDashboardStrategyEditor extends LitElement {
   private _renderTimeSettingsPanel() {
     return this._renderSettingsPanel(
       "mdi:clock-outline",
-      this._t('set.time.label'),
-      this._t('set.time.desc'),
+      this._t('settings.time_date'),
+      this._t('settings.time_date_description'),
       html`
         <div class="time-section">
           <div class="time-toggle">
-            <ha-formfield label=${this._t('set.time.show')}>
+            <ha-formfield .label=${this._t('settings.show_time')}>
               <ha-switch
                 .checked=${this._config?.settings?.show_time !== false}
                 @change=${this._toggleTimeDisplay}
@@ -875,12 +893,12 @@ export class DwainsDashboardStrategyEditor extends LitElement {
   private _renderNotificationSettingsPanel() {
     return this._renderSettingsPanel(
       "mdi:bell-outline",
-      this._t('set.notifications.label'),
-      this._t('set.notifications.desc'),
+      this._t('home.notifications'),
+      this._t('settings.notifications_description'),
       html`
         <div class="notifications-section">
           <div class="notifications-toggle">
-            <ha-formfield label=${this._t('set.notifications.show')}>
+            <ha-formfield .label=${this._t('settings.show_notifications')}>
               <ha-switch
                 .checked=${this._config?.settings?.show_notifications !== false}
                 @change=${this._toggleNotificationsDisplay}
@@ -895,12 +913,12 @@ export class DwainsDashboardStrategyEditor extends LitElement {
   private _renderWeatherSettingsPanel() {
     return this._renderSettingsPanel(
       "mdi:weather-cloudy",
-      this._t('set.weather.label'),
-      this._t('set.weather.desc'),
+      this._t('domain.weather'),
+      this._t('settings.weather_description'),
       html`
         <div class="weather-section">
           <div class="weather-toggle">
-            <ha-formfield label=${this._t('set.weather.show')}>
+            <ha-formfield .label=${this._t('settings.show_weather')}>
               <ha-switch
                 .checked=${this._config?.settings?.show_weather !== false}
                 @change=${this._toggleWeatherDisplay}
@@ -911,12 +929,12 @@ export class DwainsDashboardStrategyEditor extends LitElement {
           ${this._config?.settings?.show_weather !== false ? html`
             <div class="weather-picker">
               <div class="weather-picker-header">
-                <h4>${this._t('set.weather.selected')}</h4>
+                <h4>${this._t('settings.selected_weather')}</h4>
                 <mwc-button @click=${this._addWeatherEntity} outlined>
                   <svg viewBox="0 0 24 24" width="20" height="20" style="margin-right: 8px;">
                     <path fill="currentColor" d="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z" />
                   </svg>
-                  ${this._t('set.weather.select')}
+                  ${this._t('settings.select_weather')}
                 </mwc-button>
               </div>
 
@@ -933,18 +951,18 @@ export class DwainsDashboardStrategyEditor extends LitElement {
   private _renderAlarmSettingsPanel() {
     return this._renderSettingsPanel(
       "mdi:shield-home-outline",
-      this._t('set.alarm.label'),
-      this._t('set.alarm.desc'),
+      this._t('domain.alarm_control_panel'),
+      this._t('settings.alarm_description'),
       html`
         <div class="alarm-section">
           <div class="alarm-picker">
             <div class="alarm-picker-header">
-              <h4>${this._t('set.alarm.selected')}</h4>
+              <h4>${this._t('settings.selected_alarm')}</h4>
               <mwc-button @click=${this._addAlarmEntity} outlined>
                 <svg viewBox="0 0 24 24" width="20" height="20" style="margin-right: 8px;">
                   <path fill="currentColor" d="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z" />
                 </svg>
-                ${this._t('set.alarm.select')}
+                ${this._t('settings.select_alarm')}
               </mwc-button>
             </div>
 
@@ -960,31 +978,27 @@ export class DwainsDashboardStrategyEditor extends LitElement {
   private _renderEntityDisplaySettingsPanel() {
     return this._renderSettingsPanel(
       "mdi:eye-off",
-      this._t('set.devices.label'),
-      this._t('set.devices.panel_desc'),
+      this._t('settings.devices_page'),
+      this._t('settings.devices_description'),
       html`
         <div class="entity-display-section">
           <div class="hide-unavailable-toggle">
-            <ha-formfield label=${this._t('set.devices.hide_unavailable')}>
+            <ha-formfield .label=${this._t('settings.hide_unavailable_devices')}>
               <ha-switch
                 .checked=${this._config?.settings?.hide_unavailable_entities_on_devices !== false}
                 @change=${this._toggleHideUnavailableEntities}
               ></ha-switch>
             </ha-formfield>
-            <p class="toggle-description">
-              ${this._t('set.devices.hide_unavailable_desc')}
-            </p>
+            <p class="toggle-description">${this._t('settings.hide_unavailable_devices_description')}</p>
           </div>
           <div class="hide-unavailable-toggle">
-            <ha-formfield label=${this._t('set.devices.show_new')}>
+            <ha-formfield .label=${this._t('settings.show_new_devices')}>
               <ha-switch
                 .checked=${this._config?.settings?.show_recent_devices_panel !== false}
                 @change=${this._toggleRecentDevicesPanel}
               ></ha-switch>
             </ha-formfield>
-            <p class="toggle-description">
-              ${this._t('set.devices.show_new_desc')}
-            </p>
+            <p class="toggle-description">${this._t('settings.show_new_devices_description')}</p>
           </div>
           ${this._renderDeviceTypeVisibilitySettings()}
           ${this._renderHiddenDeviceVisibility()}
@@ -996,31 +1010,27 @@ export class DwainsDashboardStrategyEditor extends LitElement {
   private _renderPermissionsSettingsPanel() {
     return this._renderSettingsPanel(
       "mdi:shield-account",
-      this._t('set.permissions.label'),
-      this._t('set.permissions.panel_desc'),
+      this._t('settings.user_permissions'),
+      this._t('settings.permissions_description'),
       html`
         <div class="entity-display-section">
           <div class="hide-unavailable-toggle">
-            <ha-formfield label=${this._t('set.permissions.restrict_sidebar')}>
+            <ha-formfield .label=${this._t('settings.restrict_ha_menu')}>
               <ha-switch
                 .checked=${this._config?.settings?.restrict_non_admin_ha_sidebar === true}
                 @change=${this._toggleRestrictNonAdminHaSidebar}
               ></ha-switch>
             </ha-formfield>
-            <p class="toggle-description">
-              ${this._t('set.permissions.restrict_sidebar_desc')}
-            </p>
+            <p class="toggle-description">${this._t('settings.restrict_ha_menu_description')}</p>
           </div>
           <div class="hide-unavailable-toggle">
-            <ha-formfield label=${this._t('set.permissions.restrict_editing')}>
+            <ha-formfield .label=${this._t('settings.restrict_editing')}>
               <ha-switch
                 .checked=${this._config?.settings?.restrict_non_admin_dashboard_settings === true}
                 @change=${this._toggleRestrictNonAdminDashboardSettings}
               ></ha-switch>
             </ha-formfield>
-            <p class="toggle-description">
-              ${this._t('set.permissions.restrict_editing_desc')}
-            </p>
+            <p class="toggle-description">${this._t('settings.restrict_editing_description')}</p>
           </div>
         </div>
       `
@@ -1030,8 +1040,8 @@ export class DwainsDashboardStrategyEditor extends LitElement {
   private _renderPersonsSettingsPanel() {
     return this._renderSettingsPanel(
       "mdi:account-multiple",
-      this._t('set.people.label'),
-      this._t('set.people.panel_desc'),
+      this._t('settings.people'),
+      this._t('settings.people_page_description'),
       html`
         <div class="persons-section">
           ${this._renderPersonsConfiguration()}
@@ -1043,20 +1053,18 @@ export class DwainsDashboardStrategyEditor extends LitElement {
   private _renderAreasSettingsPanel() {
     return this._renderSettingsPanel(
       "mdi:floor-plan",
-      this._t('set.areas.label'),
-      this._t('set.areas.panel_desc'),
+      this._t('settings.areas'),
+      this._t('settings.areas_page_description'),
       html`
         <div class="entity-display-section">
           <div class="hide-unavailable-toggle">
-            <ha-formfield label=${this._t('set.areas.hide_unavailable')}>
+            <ha-formfield .label=${this._t('settings.hide_unavailable_areas')}>
               <ha-switch
                 .checked=${this._config?.settings?.hide_unavailable_entities !== false}
                 @change=${this._toggleHideUnavailableAreaEntities}
               ></ha-switch>
             </ha-formfield>
-            <p class="toggle-description">
-              ${this._t('set.areas.hide_unavailable_desc')}
-            </p>
+            <p class="toggle-description">${this._t('settings.hide_unavailable_areas_description')}</p>
           </div>
           ${this._renderAreasConfiguration()}
         </div>
@@ -1069,18 +1077,47 @@ export class DwainsDashboardStrategyEditor extends LitElement {
 
     const areas = Object.values(this.hass.areas || {});
     const hiddenAreas = new Set(this._config.areas_display?.hidden || []);
-    const areaOrder = this._config.areas_display?.order || [];
-    const sortedAreas = [...areas].sort((a, b) => {
-      const aIndex = areaOrder.indexOf(a.area_id);
-      const bIndex = areaOrder.indexOf(b.area_id);
-      if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex;
-      if (aIndex !== -1) return -1;
-      if (bIndex !== -1) return 1;
-      return a.name.localeCompare(b.name);
-    });
+    const sortMode = resolveAreaSortMode(this._config.areas_display);
+    const sortedAreas = sortAreas(
+      areas,
+      { ...this._config.areas_display, hidden: [] },
+      ddLocale(this.hass)
+    );
+    const sortModes: Array<{ mode: AreaSortMode; icon: string }> = [
+      { mode: 'home_assistant', icon: 'mdi:home-assistant' },
+      { mode: 'custom', icon: 'mdi:drag-vertical' },
+      { mode: 'alphabetical', icon: 'mdi:sort-alphabetical-ascending' },
+    ];
 
     return html`
-      <div class="sortable-container ${this._draggedAreaId ? 'dragging' : ''}">
+      <section class="area-order-settings" aria-labelledby="area-order-title">
+        <div class="area-order-heading">
+          <strong id="area-order-title">${this._t('settings.area_order_title')}</strong>
+          <span>${this._t('settings.area_order_description')}</span>
+        </div>
+        <div class="area-order-modes" role="radiogroup" aria-label=${this._t('settings.area_order_title')}>
+          ${sortModes.map(({ mode, icon }) => html`
+            <button
+              type="button"
+              class="area-order-mode ${sortMode === mode ? 'selected' : ''}"
+              role="radio"
+              aria-checked=${sortMode === mode ? 'true' : 'false'}
+              @click=${() => this._setAreaSortMode(mode)}
+            >
+              <ha-icon .icon=${icon}></ha-icon>
+              <span>
+                <strong>${this._t(`settings.area_order_${mode}`)}</strong>
+                <small>${this._t(`settings.area_order_${mode}_description`)}</small>
+              </span>
+            </button>
+          `)}
+        </div>
+        ${sortMode === 'custom' ? html`
+          <p class="area-order-hint">${this._t('settings.area_order_drag_hint')}</p>
+        ` : nothing}
+      </section>
+
+      <div class="sortable-container ${sortMode === 'custom' ? 'is-custom-order' : ''} ${this._draggedAreaId ? 'dragging' : ''}">
         ${repeat(
           sortedAreas,
           (area) => area.area_id,
@@ -1094,15 +1131,15 @@ export class DwainsDashboardStrategyEditor extends LitElement {
                 class="sortable-item ${isHidden ? "hidden" : ""} ${isDragging ? "dragging" : ""} ${isDragOver ? "drag-over" : ""}"
                 data-area-id="${area.area_id}"
                 data-index="${index}"
-                draggable="true"
-                @dragstart=${(e: DragEvent) => this._handleAreaDragStart(e, area.area_id)}
+                .draggable=${sortMode === 'custom'}
+                @dragstart=${(e: DragEvent) => sortMode === 'custom' && this._handleAreaDragStart(e, area.area_id)}
                 @dragend=${this._handleAreaDragEnd}
-                @dragover=${(e: DragEvent) => this._handleAreaDragOver(e, index)}
+                @dragover=${(e: DragEvent) => sortMode === 'custom' && this._handleAreaDragOver(e, index)}
                 @dragleave=${this._handleAreaDragLeave}
-                @drop=${(e: DragEvent) => this._handleAreaDrop(e, index)}
+                @drop=${(e: DragEvent) => sortMode === 'custom' && this._handleAreaDrop(e, index)}
               >
                 <div class="area-item">
-                  <div class="handle">
+                  <div class="handle ${sortMode !== 'custom' ? 'disabled' : ''}" aria-hidden="true">
                     <ha-svg-icon .path=${mdiDrag}></ha-svg-icon>
                   </div>
                   ${area.icon ? html`
@@ -1116,8 +1153,22 @@ export class DwainsDashboardStrategyEditor extends LitElement {
                     <ha-icon icon="mdi:chevron-right" class="chevron"></ha-icon>
                   </span>
                   <div class="area-actions">
+                    ${sortMode === 'custom' ? html`
+                      <ha-icon-button
+                        .label=${this._t('settings.move_up')}
+                        .path=${mdiArrowUp}
+                        .disabled=${index === 0}
+                        @click=${() => this._moveArea(area.area_id, -1)}
+                      ></ha-icon-button>
+                      <ha-icon-button
+                        .label=${this._t('settings.move_down')}
+                        .path=${mdiArrowDown}
+                        .disabled=${index === sortedAreas.length - 1}
+                        @click=${() => this._moveArea(area.area_id, 1)}
+                      ></ha-icon-button>
+                    ` : nothing}
                     <ha-icon-button
-                      .label=${isHidden ? this._t('set.show') : this._t('set.hide')}
+                      .label=${this._t(isHidden ? 'common.show' : 'common.hide')}
                       .path=${isHidden ? mdiEye : mdiEyeOff}
                       @click=${() => this._toggleAreaVisibility(area.area_id)}
                     ></ha-icon-button>
@@ -1200,11 +1251,11 @@ export class DwainsDashboardStrategyEditor extends LitElement {
           <ha-svg-icon .path=${mdiThermometerWater} class="area-help-icon"></ha-svg-icon>
           <div class="area-help-text">
             <p>
-              ${this._t('set.area.sensor_help_pre')}
-              <button class="link" @click=${this._editAreaRegistry}>${this._t('set.area.edit_room')}</button>${this._t('set.area.sensor_help_post')}
+              To show temperature and humidity sensors in the overview, link a sensor to this room in Home Assistant via
+              <button class="link" @click=${this._editAreaRegistry}>${this._t('settings.edit_room')}</button>.
             </p>
             <p>
-              ${this._t('set.area.wattage_help')}
+              The wattage badge automatically sums all power sensors (unit 'W') in this room that are visible (not hidden in the UI).
             </p>
           </div>
         </div>
@@ -1276,7 +1327,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
                             ${state?.attributes?.friendly_name || entityId}
                           </span>
                           <ha-icon-button
-                            .label=${isHidden ? this._t('set.show') : this._t('set.hide')}
+                            .label=${isHidden ? "Show" : "Hide"}
                             .path=${isHidden ? mdiEye : mdiEyeOff}
                             @click=${() => this._toggleEntityVisibility(entityId, group)}
                           ></ha-icon-button>
@@ -1304,6 +1355,96 @@ export class DwainsDashboardStrategyEditor extends LitElement {
   private _getHiddenHomeInformationCards(): Set<HomeInformationCardKey> {
     return new Set(normalizeHiddenHomeInformationCards(this._config?.settings?.home_information_cards_hidden));
   }
+
+  private _getHomeCameraSettings(): HomeCameraSetting[] {
+    if (!this._config || !this.hass) return [];
+
+    const areas = sortAreas(this._config.areas || [], this._config.areas_display, ddLocale(this.hass));
+    const areaById = new Map(areas.map(area => [area.area_id, area]));
+    const areaIndex = new Map(areas.map((area, index) => [area.area_id, index]));
+    const deviceArea = new Map((this._config.devices || []).map(device => [device.device_id, device.area_id || '']));
+    const configuredEntities = new Map((this._config.entities || []).map(entity => [entity.entity_id, entity]));
+    const cameraIds = new Set([
+      ...(this._config.entities || []).map(entity => entity.entity_id),
+      ...Object.keys(this.hass.states || {}),
+    ].filter(entityId => entityId.startsWith('camera.')));
+
+    const cameras = [...cameraIds].flatMap(entityId => {
+      const state = this.hass!.states[entityId];
+      const registry = this.hass!.entities?.[entityId];
+      const configured = configuredEntities.get(entityId);
+      if (!state || registry?.hidden_by || registry?.entity_category === 'diagnostic' || registry?.entity_category === 'config') return [];
+
+      const deviceId = configured?.device_id || registry?.device_id || '';
+      const areaId = configured?.area_id || registry?.area_id || deviceArea.get(deviceId) || '';
+      const area = areaById.get(areaId);
+      if (!area) return [];
+
+      return [{
+        entityId,
+        name: state.attributes?.friendly_name || registry?.name || entityId,
+        areaId,
+        areaName: area.name,
+        state: this.hass!.formatEntityState(state),
+      }];
+    });
+
+    cameras.sort((a, b) => {
+      const areaDifference = (areaIndex.get(a.areaId) ?? Number.MAX_SAFE_INTEGER) -
+        (areaIndex.get(b.areaId) ?? Number.MAX_SAFE_INTEGER);
+      return areaDifference || a.name.localeCompare(b.name);
+    });
+
+    const configuredOrder = this._config.settings?.home_camera_order || [];
+    const orderIndex = new Map(configuredOrder.map((entityId, index) => [entityId, index]));
+    return cameras.sort((a, b) => {
+      const ai = orderIndex.get(a.entityId);
+      const bi = orderIndex.get(b.entityId);
+      if (ai !== undefined || bi !== undefined) {
+        return (ai ?? Number.MAX_SAFE_INTEGER) - (bi ?? Number.MAX_SAFE_INTEGER);
+      }
+      return 0;
+    });
+  }
+
+  private _setHomeCameraOrder(order: string[]): void {
+    if (!this._config) return;
+    this._fireConfigChanged({
+      ...this._config,
+      settings: { ...this._config.settings, home_camera_order: order },
+    });
+  }
+
+  private _moveHomeCamera(entityId: string, direction: -1 | 1): void {
+    const order = this._getHomeCameraSettings().map(camera => camera.entityId);
+    const index = order.indexOf(entityId);
+    const target = index + direction;
+    if (index < 0 || target < 0 || target >= order.length) return;
+    [order[index], order[target]] = [order[target]!, order[index]!];
+    this._setHomeCameraOrder(order);
+  }
+
+  private _toggleHomeCamera(entityId: string): void {
+    if (!this._config) return;
+    const hidden = new Set(this._config.settings?.home_cameras_hidden || []);
+    hidden.has(entityId) ? hidden.delete(entityId) : hidden.add(entityId);
+    this._fireConfigChanged({
+      ...this._config,
+      settings: { ...this._config.settings, home_cameras_hidden: [...hidden] },
+    });
+  }
+
+  private _resetHomeCameraSettings = (): void => {
+    if (!this._config) return;
+    this._fireConfigChanged({
+      ...this._config,
+      settings: {
+        ...this._config.settings,
+        home_camera_order: [],
+        home_cameras_hidden: [],
+      },
+    });
+  };
 
   private _setHomeSectionsOrder(order: HomeSectionKey[]): void {
     if (!this._config) return;
@@ -1425,28 +1566,28 @@ export class DwainsDashboardStrategyEditor extends LitElement {
                     <ha-icon icon=${meta.icon}></ha-icon>
                   </div>
                   <div class="home-section-copy">
-                    <div class="home-section-title">${this._t(meta.label)}</div>
-                    <div class="home-section-description">${this._t(meta.description)}</div>
+                    <div class="home-section-title">${this._t(meta.labelKey)}</div>
+                    <div class="home-section-description">${this._t(meta.descriptionKey)}</div>
                   </div>
                   <div class="home-section-actions">
                     <button
                       class="home-section-toggle ${enabled ? 'enabled' : ''}"
                       type="button"
-                      title=${enabled ? this._t('set.hide_section') : this._t('set.show_section')}
-                      aria-label=${enabled ? this._t('set.hide_named', { name: this._t(meta.label) }) : this._t('set.show_named', { name: this._t(meta.label) })}
+                      title=${enabled ? this._t('settings.hide_section') : this._t('settings.show_section')}
+                      aria-label=${enabled ? this._t('settings.hide_section') : this._t('settings.show_section')}
                       aria-pressed=${enabled ? 'true' : 'false'}
                       @click=${() => this._toggleHomeSectionEnabled(section)}
                     >
                       <ha-icon icon=${enabled ? 'mdi:eye-outline' : 'mdi:eye-off-outline'}></ha-icon>
                     </button>
                     <ha-icon-button
-                      .label=${this._t('set.move_up')}
+                      .label=${this._t('settings.move_up')}
                       .path=${mdiArrowUp}
                       .disabled=${index === 0}
                       @click=${() => this._moveHomeSection(section, -1)}
                     ></ha-icon-button>
                     <ha-icon-button
-                      .label=${this._t('set.move_down')}
+                      .label=${this._t('settings.move_down')}
                       .path=${mdiArrowDown}
                       .disabled=${index === order.length - 1}
                       @click=${() => this._moveHomeSection(section, 1)}
@@ -1458,7 +1599,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
           )}
         </div>
         <button class="home-layout-reset" type="button" @click=${this._resetHomeSectionsOrder}>
-          ${this._t('set.home_layout.reset')}
+          ${this._t('settings.reset_layout')}
         </button>
       </div>
     `;
@@ -1472,10 +1613,10 @@ export class DwainsDashboardStrategyEditor extends LitElement {
       <div class="home-info-card-section">
         <div class="home-info-card-header">
           <div>
-            <h4>${this._t('set.house_info.label')}</h4>
-            <p>${this._t('set.house_info.desc')}</p>
+            <h4>${this._t('settings.house_information_cards')}</h4>
+            <p>${this._t('settings.house_information_cards_description')}</p>
           </div>
-          <span>${this._t('set.visible_count', { visible: visibleCount, total: DEFAULT_HOME_INFORMATION_CARDS.length })}</span>
+          <span>${this._t('settings.visible_count', { visible: visibleCount, total: DEFAULT_HOME_INFORMATION_CARDS.length })}</span>
         </div>
         <div class="home-info-card-list">
           ${DEFAULT_HOME_INFORMATION_CARDS.map(card => {
@@ -1488,8 +1629,8 @@ export class DwainsDashboardStrategyEditor extends LitElement {
                   <ha-icon icon=${meta.icon}></ha-icon>
                 </div>
                 <div class="home-section-copy">
-                  <div class="home-section-title">${this._t(meta.label)}</div>
-                  <div class="home-section-description">${this._t(meta.description)}</div>
+                  <div class="home-section-title">${this._t(meta.labelKey)}</div>
+                  <div class="home-section-description">${this._t(meta.descriptionKey)}</div>
                 </div>
                 <ha-switch
                   .checked=${enabled}
@@ -1499,6 +1640,87 @@ export class DwainsDashboardStrategyEditor extends LitElement {
             `;
           })}
         </div>
+      </div>
+    `;
+  }
+
+  private _renderHomeCameraSettings() {
+    const cameras = this._getHomeCameraSettings();
+    const hidden = new Set(this._config?.settings?.home_cameras_hidden || []);
+    const visibleCount = cameras.filter(camera => !hidden.has(camera.entityId)).length;
+
+    return html`
+      <div class="home-info-card-section home-camera-settings-section">
+        <div class="home-info-card-header">
+          <div>
+            <h4>${this._t('settings.home_camera_cards')}</h4>
+            <p>${this._t('settings.home_camera_cards_description')}</p>
+          </div>
+          ${cameras.length
+            ? html`<span>${this._t('settings.visible_count', { visible: visibleCount, total: cameras.length })}</span>`
+            : nothing}
+        </div>
+        ${cameras.length ? html`
+          <div class="home-camera-settings-list ${this._draggedHomeCamera ? 'dragging' : ''}">
+            ${repeat(
+              cameras,
+              camera => camera.entityId,
+              (camera, index) => {
+                const enabled = !hidden.has(camera.entityId);
+                const unavailable = ['unavailable', 'unknown'].includes(String(this.hass?.states[camera.entityId]?.state || '').toLowerCase());
+                const isDragging = this._draggedHomeCamera === camera.entityId;
+                const isDragOver = this._dragOverHomeCameraIndex === index && isDragging === false && Boolean(this._draggedHomeCamera);
+                return html`
+                  <div
+                    class="home-section-item home-camera-settings-item ${enabled ? '' : 'disabled'} ${isDragging ? 'dragging' : ''} ${isDragOver ? 'drag-over' : ''}"
+                    draggable="true"
+                    @dragstart=${(event: DragEvent) => this._handleHomeCameraDragStart(event, camera.entityId)}
+                    @dragend=${this._handleHomeCameraDragEnd}
+                    @dragover=${(event: DragEvent) => this._handleHomeCameraDragOver(event, index)}
+                    @dragleave=${this._handleHomeCameraDragLeave}
+                    @drop=${(event: DragEvent) => this._handleHomeCameraDrop(event, index)}
+                  >
+                    <div class="home-section-handle"><ha-svg-icon .path=${mdiDrag}></ha-svg-icon></div>
+                    <div class="home-section-icon"><ha-icon icon="mdi:cctv"></ha-icon></div>
+                    <div class="home-section-copy">
+                      <div class="home-section-title">${camera.name}</div>
+                      <div class="home-section-description">
+                        ${camera.areaName} · ${unavailable ? this._t('common.unavailable') : camera.state}
+                      </div>
+                    </div>
+                    <div class="home-section-actions">
+                      <button
+                        class="home-section-toggle ${enabled ? 'enabled' : ''}"
+                        type="button"
+                        title=${enabled ? this._t('settings.hide_section') : this._t('settings.show_section')}
+                        aria-label=${enabled ? this._t('settings.hide_section') : this._t('settings.show_section')}
+                        aria-pressed=${enabled ? 'true' : 'false'}
+                        @click=${() => this._toggleHomeCamera(camera.entityId)}
+                      >
+                        <ha-icon icon=${enabled ? 'mdi:eye-outline' : 'mdi:eye-off-outline'}></ha-icon>
+                      </button>
+                      <ha-icon-button
+                        .label=${this._t('settings.move_up')}
+                        .path=${mdiArrowUp}
+                        .disabled=${index === 0}
+                        @click=${() => this._moveHomeCamera(camera.entityId, -1)}
+                      ></ha-icon-button>
+                      <ha-icon-button
+                        .label=${this._t('settings.move_down')}
+                        .path=${mdiArrowDown}
+                        .disabled=${index === cameras.length - 1}
+                        @click=${() => this._moveHomeCamera(camera.entityId, 1)}
+                      ></ha-icon-button>
+                    </div>
+                  </div>
+                `;
+              }
+            )}
+          </div>
+          <button class="home-layout-reset" type="button" @click=${this._resetHomeCameraSettings}>
+            ${this._t('settings.reset_camera_cards')}
+          </button>
+        ` : html`<div class="home-camera-settings-empty">${this._t('settings.home_camera_cards_empty')}</div>`}
       </div>
     `;
   }
@@ -1514,10 +1736,10 @@ export class DwainsDashboardStrategyEditor extends LitElement {
       <div class="device-types-visibility">
         <div class="device-types-header">
           <div>
-            <h4>${this._t('set.device_types.label')}</h4>
-            <p>${this._t('set.device_types.desc')}</p>
+            <h4>${this._t('settings.devices_page_types')}</h4>
+            <p>${this._t('settings.devices_page_types_description')}</p>
           </div>
-          <span>${this._t('set.visible_count', { visible: visibleCount, total: options.length })}</span>
+          <span>${this._t('settings.visible_count', { visible: visibleCount, total: options.length })}</span>
         </div>
         <div class="device-types-grid">
           ${options.map((option) => {
@@ -1532,7 +1754,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
                 </div>
                 <div class="device-type-copy">
                   <div class="device-type-name">${option.label}</div>
-                  <div class="device-type-count">${option.count === 1 ? this._t('set.one_entity') : this._t('set.n_entities', { count: option.count })}</div>
+                  <div class="device-type-count">${this._tp('common.entity', option.count)}</div>
                 </div>
                 <ha-switch
                   .checked=${enabled}
@@ -1557,8 +1779,8 @@ export class DwainsDashboardStrategyEditor extends LitElement {
         <div class="device-admission-section">
           <div class="device-types-header">
             <div>
-              <h4>${this._t('set.hidden_devices.label')}</h4>
-              <p>${this._t('set.hidden_devices.none')}</p>
+              <h4>${this._t('settings.hidden_devices')}</h4>
+              <p>${this._t('settings.no_hidden_devices')}</p>
             </div>
           </div>
         </div>
@@ -1569,10 +1791,10 @@ export class DwainsDashboardStrategyEditor extends LitElement {
       <div class="device-admission-section">
         <div class="device-types-header">
           <div>
-            <h4>${this._t('set.hidden_devices.label')}</h4>
-            <p>${this._t('set.hidden_devices.desc')}</p>
+            <h4>${this._t('settings.hidden_devices')}</h4>
+            <p>${this._t('settings.hidden_devices_description')}</p>
           </div>
-          <span>${this._t('set.hidden_count', { hidden: hiddenKnownDeviceCount, total: allDeviceIds.length })}</span>
+          <span>${hiddenKnownDeviceCount}/${allDeviceIds.length} hidden</span>
         </div>
 
         <div class="device-admission-global-actions">
@@ -1582,7 +1804,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
             @click=${() => this._setDevicesHidden(allDeviceIds, false)}
           >
             <ha-icon icon="mdi:eye-outline"></ha-icon>
-            ${this._t('set.hidden_devices.show_all')}
+            Show all devices
           </button>
           <button
             type="button"
@@ -1590,7 +1812,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
             @click=${() => this._setDevicesHidden(allDeviceIds, true)}
           >
             <ha-icon icon="mdi:eye-off-outline"></ha-icon>
-            ${this._t('set.hidden_devices.hide_all')}
+            Hide all devices
           </button>
         </div>
 
@@ -1608,7 +1830,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
                       <ha-icon icon=${group.icon}></ha-icon>
                     </span>
                     <span>${group.label}</span>
-                    <small>${this._t('set.visible_count', { visible: groupDeviceIds.length - hiddenInGroup, total: groupDeviceIds.length })}</small>
+                    <small>${groupDeviceIds.length - hiddenInGroup}/${groupDeviceIds.length} visible</small>
                   </div>
 
                   <div class="device-admission-panel">
@@ -1618,14 +1840,14 @@ export class DwainsDashboardStrategyEditor extends LitElement {
                         ?disabled=${hiddenInGroup === 0}
                         @click=${() => this._setDevicesHidden(groupDeviceIds, false)}
                       >
-                        ${this._t('set.hidden_devices.show_type')}
+                        Show type
                       </button>
                       <button
                         type="button"
                         ?disabled=${hiddenInGroup === groupDeviceIds.length}
                         @click=${() => this._setDevicesHidden(groupDeviceIds, true)}
                       >
-                        ${this._t('set.hidden_devices.hide_type')}
+                        Hide type
                       </button>
                     </div>
 
@@ -1640,7 +1862,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
                             <div class="device-admission-area-header">
                               <div>
                                 <strong>${areaGroup.areaName}</strong>
-                                <span>${this._t('set.visible_count', { visible: areaDeviceIds.length - hiddenInArea, total: areaDeviceIds.length })}</span>
+                                <span>${areaDeviceIds.length - hiddenInArea}/${areaDeviceIds.length} visible</span>
                               </div>
                               <div class="device-admission-area-actions">
                                 <button
@@ -1648,14 +1870,14 @@ export class DwainsDashboardStrategyEditor extends LitElement {
                                   ?disabled=${hiddenInArea === 0}
                                   @click=${() => this._setDevicesHidden(areaDeviceIds, false)}
                                 >
-                                  ${this._t('set.hidden_devices.show_area')}
+                                  Show area
                                 </button>
                                 <button
                                   type="button"
                                   ?disabled=${hiddenInArea === areaDeviceIds.length}
                                   @click=${() => this._setDevicesHidden(areaDeviceIds, true)}
                                 >
-                                  ${this._t('set.hidden_devices.hide_area')}
+                                  Hide area
                                 </button>
                               </div>
                             </div>
@@ -1693,7 +1915,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
         <div class="device-admission-copy">
           <div class="device-type-name">${device.name}</div>
           <div class="device-type-count">
-            ${device.entityCount === 1 ? this._t('set.one_entity') : this._t('set.n_entities', { count: device.entityCount })} · ${visible ? this._t('set.visible_in_dd') : this._t('set.hidden_in_dd')}
+            ${device.entityCount === 1 ? "1 entity" : `${device.entityCount} entities`} · ${visible ? "Visible in DD" : "Hidden in DD"}
           </div>
         </div>
         <ha-switch
@@ -1709,6 +1931,21 @@ export class DwainsDashboardStrategyEditor extends LitElement {
 
     const deviceById = this._getAllDevicesById();
     const hiddenDevices = this._getHiddenDeviceIds();
+    const collator = new Intl.Collator(ddLocale(this.hass), {
+      numeric: true,
+      sensitivity: "base",
+    });
+    const orderedAreas = sortAreas(
+      this._config.areas || [],
+      { ...this._config.areas_display, hidden: [] },
+      ddLocale(this.hass)
+    );
+    const areaOrder = new Map(orderedAreas.map((area, index) => [area.area_id, index]));
+    const compareArea = (a: { areaId: string; areaName: string }, b: { areaId: string; areaName: string }) => {
+      const aIndex = areaOrder.get(a.areaId) ?? Number.MAX_SAFE_INTEGER;
+      const bIndex = areaOrder.get(b.areaId) ?? Number.MAX_SAFE_INTEGER;
+      return aIndex - bIndex || collator.compare(a.areaName, b.areaName);
+    };
     const entityRecords = new Map<string, { entityId: string; deviceId?: string | null; areaId?: string | null }>();
 
     (this._config.entities || []).forEach((entity) => {
@@ -1768,7 +2005,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
             };
           })
           .filter((device): device is DeviceVisibilityDevice => Boolean(device))
-          .sort((a, b) => a.areaName.localeCompare(b.areaName) || a.name.localeCompare(b.name));
+          .sort((a, b) => compareArea(a, b) || collator.compare(a.name, b.name));
 
         const areaMap = new Map<string, DeviceVisibilityAreaGroup>();
         devices.forEach((device) => {
@@ -1784,7 +2021,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
           areaGroup.devices.push(device);
         });
 
-        const areas = [...areaMap.values()].sort((a, b) => a.areaName.localeCompare(b.areaName));
+        const areas = [...areaMap.values()].sort(compareArea);
 
         return {
           key,
@@ -1796,7 +2033,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
         };
       })
       .filter((group) => group.devices.length > 0)
-      .sort((a, b) => a.label.localeCompare(b.label));
+      .sort((a, b) => collator.compare(a.label, b.label));
   }
 
   private _getAllDevicesById(): Map<string, DeviceConfig> {
@@ -2018,18 +2255,17 @@ export class DwainsDashboardStrategyEditor extends LitElement {
   }
 
   private _getGroupTitle(group: string): string {
-    const keys: Record<string, string> = {
-      lights: "set.area_group.lights",
-      climate: "set.area_group.climate",
-      media_players: "set.area_group.media_players",
-      covers: "set.area_group.covers",
-      security: "set.area_group.security",
-      motion: "set.area_group.motion",
-      actions: "set.area_group.actions",
-      others: "set.area_group.others"
+    const titles: Record<string, string> = {
+      lights: "Lighting",
+      climate: "Climate",
+      media_players: "Media Players",
+      covers: "Covers",
+      security: "Security",
+      motion: "Motion",
+      actions: "Actions",
+      others: "Sensors"
     };
-    const key = keys[group];
-    return key ? this._t(key) : group;
+    return titles[group] || group;
   }
 
   private _getAreaGroupedEntitiesWithoutFiltering(
@@ -2077,7 +2313,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
       } else if (domain === 'binary_sensor' && state?.attributes?.device_class &&
                  ['motion', 'occupancy', 'presence'].includes(state.attributes.device_class)) {
         grouped.motion.push(entityId);
-      } else if (domain === 'script' || domain === 'scene' || domain === 'automation') {
+      } else if (domain === 'script' || domain === 'scene' || domain === 'automation' || domain === 'todo') {
         grouped.actions.push(entityId);
       } else if (domain === 'switch' || domain === 'button' || domain === 'input_boolean' ||
                  domain === 'vacuum' || domain === 'lawn_mower' || domain === 'valve' ||
@@ -2144,6 +2380,68 @@ export class DwainsDashboardStrategyEditor extends LitElement {
     this._handleHomeSectionDragEnd();
   }
 
+  private _handleHomeCameraDragStart(event: DragEvent, entityId: string): void {
+    this._draggedHomeCamera = entityId;
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('text/plain', entityId);
+    }
+  }
+
+  private _handleHomeCameraDragEnd = (): void => {
+    this._draggedHomeCamera = undefined;
+    this._dragOverHomeCameraIndex = undefined;
+  };
+
+  private _handleHomeCameraDragOver(event: DragEvent, index: number): void {
+    event.preventDefault();
+    this._dragOverHomeCameraIndex = index;
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+  }
+
+  private _handleHomeCameraDragLeave = (event: DragEvent): void => {
+    const currentTarget = event.currentTarget as HTMLElement | null;
+    const relatedTarget = event.relatedTarget as Node | null;
+    if (!currentTarget?.contains(relatedTarget)) this._dragOverHomeCameraIndex = undefined;
+  };
+
+  private _handleHomeCameraDrop(event: DragEvent, dropIndex: number): void {
+    event.preventDefault();
+    const dragged = this._draggedHomeCamera;
+    if (!dragged) return;
+
+    const order = this._getHomeCameraSettings().map(camera => camera.entityId);
+    const draggedIndex = order.indexOf(dragged);
+    if (draggedIndex === -1 || draggedIndex === dropIndex) {
+      this._handleHomeCameraDragEnd();
+      return;
+    }
+
+    const [camera] = order.splice(draggedIndex, 1);
+    order.splice(dropIndex, 0, camera!);
+    this._setHomeCameraOrder(order);
+    this._handleHomeCameraDragEnd();
+  }
+
+  private _setAreaSortMode(sortMode: AreaSortMode): void {
+    if (!this._config || !this.hass) return;
+
+    const existingOrder = this._config.areas_display?.order || [];
+    const registryOrder = Object.values(this.hass.areas || {}).map((area) => area.area_id);
+    const order = sortMode === 'custom' && existingOrder.length === 0
+      ? registryOrder
+      : existingOrder;
+
+    this._fireConfigChanged({
+      ...this._config,
+      areas_display: {
+        ...this._config.areas_display,
+        sort_mode: sortMode,
+        order,
+      },
+    });
+  }
+
   private _handleAreaDragStart(e: DragEvent, areaId: string): void {
     this._draggedAreaId = areaId;
     if (e.dataTransfer) {
@@ -2175,20 +2473,18 @@ export class DwainsDashboardStrategyEditor extends LitElement {
   private _handleAreaDrop(e: DragEvent, dropIndex: number): void {
     e.preventDefault();
 
-    if (!this._draggedAreaId || !this._config) return;
+    if (
+      !this._draggedAreaId ||
+      !this._config ||
+      resolveAreaSortMode(this._config.areas_display) !== 'custom'
+    ) return;
 
     const areas = Object.values(this.hass!.areas || {});
-    const areaOrder = this._config.areas_display?.order || [];
-
-    // Sort areas according to current order
-    const sortedAreas = [...areas].sort((a, b) => {
-      const aIndex = areaOrder.indexOf(a.area_id);
-      const bIndex = areaOrder.indexOf(b.area_id);
-      if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex;
-      if (aIndex !== -1) return -1;
-      if (bIndex !== -1) return 1;
-      return a.name.localeCompare(b.name);
-    });
+    const sortedAreas = sortAreas(
+      areas,
+      { ...this._config.areas_display, hidden: [] },
+      ddLocale(this.hass)
+    );
 
     // Find the dragged item's current index
     const draggedIndex = sortedAreas.findIndex(area => area.area_id === this._draggedAreaId);
@@ -2220,6 +2516,36 @@ export class DwainsDashboardStrategyEditor extends LitElement {
     this._fireConfigChanged(newConfig);
     this._draggedAreaId = undefined;
     this._dragOverIndex = undefined;
+  }
+
+  private _moveArea(areaId: string, direction: -1 | 1): void {
+    if (
+      !this._config ||
+      !this.hass ||
+      resolveAreaSortMode(this._config.areas_display) !== 'custom'
+    ) return;
+
+    const areas = sortAreas(
+      Object.values(this.hass.areas || {}),
+      { ...this._config.areas_display, hidden: [] },
+      ddLocale(this.hass)
+    );
+    const currentIndex = areas.findIndex((area) => area.area_id === areaId);
+    const targetIndex = currentIndex + direction;
+    if (currentIndex < 0 || targetIndex < 0 || targetIndex >= areas.length) return;
+
+    const reordered = [...areas];
+    const [area] = reordered.splice(currentIndex, 1);
+    if (!area) return;
+    reordered.splice(targetIndex, 0, area);
+
+    this._fireConfigChanged({
+      ...this._config,
+      areas_display: {
+        ...this._config.areas_display,
+        order: reordered.map((entry) => entry.area_id),
+      },
+    });
   }
 
   private _handleEntityDragStart(e: DragEvent, entityId: string, group: string): void {
@@ -2425,7 +2751,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
     if (!weatherEntityId) {
       return html`
         <div class="no-weather">
-          <p>${this._t('set.weather.none')}</p>
+          <p>${this._t('settings.no_weather_fallback')}</p>
         </div>
       `;
     }
@@ -2442,7 +2768,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
         <span class="entity-name">${friendlyName}</span>
         <button
           class="remove-button"
-          title=${this._t('set.remove')}
+          title=${this._t('common.remove')}
           @click=${() => this._removeWeatherEntity()}
         >
           <svg viewBox="0 0 24 24" width="20" height="20">
@@ -2459,7 +2785,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
     if (!alarmEntityId) {
       return html`
         <div class="no-alarm">
-          <p>${this._t('set.alarm.none')}</p>
+          <p>${this._t('settings.no_alarm')}</p>
         </div>
       `;
     }
@@ -2476,7 +2802,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
         <span class="entity-name">${friendlyName}</span>
         <button
           class="remove-button"
-          title=${this._t('set.remove')}
+          title=${this._t('common.remove')}
           @click=${() => this._removeAlarmEntity()}
         >
           <svg viewBox="0 0 24 24" width="20" height="20">
@@ -2493,7 +2819,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
     if (favorites.length === 0) {
       return html`
         <div class="no-favorites">
-                          <p>${this._t('set.favorites.none')}</p>
+          <p>${this._t('favorites.empty')}</p>
         </div>
       `;
     }
@@ -2516,7 +2842,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
                 <span class="entity-name">${friendlyName}</span>
                 <button
                   class="remove-button"
-                  title=${this._t('set.remove')}
+                  title=${this._t('common.remove')}
                   @click=${() => this._removeFavoriteEntity(entityId)}
                 >
                   <svg viewBox="0 0 24 24" width="20" height="20">
@@ -2550,7 +2876,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
       <div class="entity-picker-modal">
         <div class="entity-picker-content">
           <div class="entity-picker-header">
-            <h4>${this._t('set.weather.picker_title')}</h4>
+            <h4>${this._t('settings.select_weather_title')}</h4>
             <button
               class="close-button"
               title=${this._t('common.close')}
@@ -2564,7 +2890,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
 
           <div class="entity-search">
             <ha-textfield
-              .label=${this._t('set.weather.search')}
+              .label=${this._t('settings.search_weather')}
               .value=${this._weatherSearchFilter}
               @input=${(e: Event) => this._weatherSearchFilter = (e.target as HTMLInputElement).value}
             ></ha-textfield>
@@ -2615,7 +2941,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
       <div class="entity-picker-modal">
         <div class="entity-picker-content">
           <div class="entity-picker-header">
-            <h4>${this._t('set.alarm.picker_title')}</h4>
+            <h4>${this._t('settings.select_alarm_title')}</h4>
             <button
               class="close-button"
               title=${this._t('common.close')}
@@ -2629,7 +2955,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
 
           <div class="entity-search">
             <ha-textfield
-              .label=${this._t('set.alarm.search')}
+              .label=${this._t('settings.search_alarm')}
               .value=${this._alarmSearchFilter}
               @input=${(e: Event) => this._alarmSearchFilter = (e.target as HTMLInputElement).value}
             ></ha-textfield>
@@ -2678,7 +3004,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
       <div class="entity-picker-modal">
         <div class="entity-picker-content">
           <div class="entity-picker-header">
-            <h4>${this._t('set.entity.picker_title')}</h4>
+            <h4>${this._t('settings.select_entity_title')}</h4>
             <button
               class="close-button"
               title=${this._t('common.close')}
@@ -2692,7 +3018,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
 
           <div class="entity-search">
             <ha-textfield
-              .label=${this._t('set.entity.search')}
+              .label=${this._t('settings.search')}
               .value=${this._entitySearchFilter}
               @input=${(e: Event) => this._entitySearchFilter = (e.target as HTMLInputElement).value}
             ></ha-textfield>
@@ -2942,7 +3268,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
 
   private _renderPersonsConfiguration() {
     if (!this.hass?.states) {
-      return html`<p>${this._t('set.people.none_short')}</p>`;
+      return html`<p>${this._t('settings.no_persons')}</p>`;
     }
 
     // Get all person entities
@@ -2961,9 +3287,9 @@ export class DwainsDashboardStrategyEditor extends LitElement {
     if (personEntities.length === 0) {
       return html`
         <div class="no-persons">
-          <p>${this._t('set.people.none')}</p>
+          <p>${this._t('settings.no_person_entities')}</p>
           <p style="font-size: 12px; color: var(--secondary-text-color);">
-            ${this._t('set.people.add_hint')}
+            Add person entities to see them here.
           </p>
         </div>
       `;
@@ -2987,10 +3313,10 @@ export class DwainsDashboardStrategyEditor extends LitElement {
                 ></ha-state-icon>
                 <span class="person-name">${person.friendly_name}</span>
                 <span class="person-state ${person.state?.state === 'home' ? 'home' : 'away'}">
-                  ${person.state?.state === 'home' ? this._t('set.person.home') : this._t('set.person.away')}
+                  ${person.state?.state === 'home' ? this._t('person.home') : this._t('person.away')}
                 </span>
                 <ha-icon-button
-                  .label=${isHidden ? this._t('set.show') : this._t('set.hide')}
+                  .label=${isHidden ? "Show" : "Hide"}
                   .path=${isHidden ? mdiEye : mdiEyeOff}
                   @click=${() => this._togglePersonVisibility(person.entity_id)}
                 ></ha-icon-button>
@@ -3511,6 +3837,24 @@ export class DwainsDashboardStrategyEditor extends LitElement {
         gap: 10px;
       }
 
+      .home-camera-settings-section {
+        padding: 0 16px 16px;
+      }
+
+      .home-camera-settings-list {
+        display: grid;
+        gap: 8px;
+      }
+
+      .home-camera-settings-empty {
+        padding: 18px;
+        border: 1px dashed var(--divider-color);
+        border-radius: 10px;
+        color: var(--secondary-text-color);
+        background: var(--secondary-background-color);
+        text-align: center;
+      }
+
       .home-info-card-header {
         display: flex;
         justify-content: space-between;
@@ -3670,6 +4014,10 @@ export class DwainsDashboardStrategyEditor extends LitElement {
           align-items: start;
           flex-direction: column;
           gap: 8px;
+        }
+
+        .home-camera-settings-section {
+          padding-inline: 10px;
         }
       }
 
@@ -3878,6 +4226,93 @@ export class DwainsDashboardStrategyEditor extends LitElement {
         color: var(--secondary-text-color);
       }
 
+      .area-order-settings {
+        margin: 0 16px 16px;
+        padding: 16px;
+        border: 1px solid var(--divider-color);
+        border-radius: 8px;
+        background: var(--card-background-color);
+      }
+
+      .area-order-heading {
+        display: grid;
+        gap: 4px;
+        margin-bottom: 12px;
+      }
+
+      .area-order-heading strong {
+        font-size: 15px;
+      }
+
+      .area-order-heading span,
+      .area-order-mode small,
+      .area-order-hint {
+        color: var(--secondary-text-color);
+        font-size: 12px;
+        line-height: 1.4;
+      }
+
+      .area-order-modes {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+      }
+
+      .area-order-mode {
+        min-width: 0;
+        min-height: 72px;
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        padding: 12px;
+        border: 1px solid var(--divider-color);
+        border-radius: 8px;
+        background: var(--secondary-background-color);
+        color: var(--primary-text-color);
+        font: inherit;
+        text-align: left;
+        cursor: pointer;
+      }
+
+      .area-order-mode:hover {
+        border-color: var(--primary-color);
+      }
+
+      .area-order-mode.selected {
+        border-color: var(--primary-color);
+        background: color-mix(in srgb, var(--primary-color) 9%, var(--card-background-color));
+        box-shadow: inset 3px 0 0 var(--primary-color);
+      }
+
+      .area-order-mode ha-icon {
+        flex: 0 0 auto;
+        color: var(--primary-color);
+      }
+
+      .area-order-mode span {
+        min-width: 0;
+        display: grid;
+        gap: 3px;
+      }
+
+      .area-order-mode strong {
+        font-size: 13px;
+      }
+
+      .area-order-hint {
+        margin: 12px 0 0;
+      }
+
+      @media (max-width: 700px) {
+        .area-order-modes {
+          grid-template-columns: 1fr;
+        }
+
+        .area-order-mode {
+          min-height: 0;
+        }
+      }
+
       .sortable-container {
         position: relative;
         display: flex;
@@ -3893,11 +4328,19 @@ export class DwainsDashboardStrategyEditor extends LitElement {
         box-shadow: var(--card-box-shadow, none);
         transition: all 0.2s ease;
         user-select: none;
+        cursor: default;
+      }
+
+      .sortable-container.is-custom-order .sortable-item {
         cursor: grab;
       }
 
-      .sortable-item:active {
+      .sortable-container.is-custom-order .sortable-item:active {
         cursor: grabbing;
+      }
+
+      .handle.disabled {
+        opacity: 0.25;
       }
 
       .sortable-item.hidden {

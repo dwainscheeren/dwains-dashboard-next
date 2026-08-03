@@ -20,9 +20,6 @@ export class DwainsDashboardCard extends LitElement {
   @state() private _dashboardConfig?: DwainsDashboardConfig;
   @state() private _isLoading = true;
 
-  private _t = (key: string, vars?: Record<string, string | number>) =>
-    ddLocalize(this.hass, key, vars);
-
   /**
    * Called when card configuration is set
    * Required by Custom Card API
@@ -261,7 +258,7 @@ export class DwainsDashboardCard extends LitElement {
     if (this._isLoading || !this._dashboardConfig) {
       return html`
         <div style="display: flex; justify-content: center; align-items: center; height: 200px; font-size: 18px;">
-          ${this._t('dlg.card.loading')}
+          ${ddLocalize(this.hass, 'common.loading')}
         </div>
       `;
     }
@@ -269,7 +266,7 @@ export class DwainsDashboardCard extends LitElement {
     if (!this.cards || this.cards.length === 0) {
       return html`
         <div style="display: flex; justify-content: center; align-items: center; height: 200px; font-size: 18px;">
-          ${this._t('dlg.card.empty')}
+          ${ddLocalize(this.hass, 'common.no_content')}
         </div>
       `;
     }

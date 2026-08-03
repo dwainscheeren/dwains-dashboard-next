@@ -1,5 +1,5 @@
 import type { HomeAssistant } from '../types/home-assistant';
-import type { EntitiesDisplay } from '../types/strategy';
+import type { AreasDisplay, AreaSortMode, EntitiesDisplay } from '../types/strategy';
 
 // Group types as Home Assistant uses them
 export const AREA_STRATEGY_GROUPS = [
@@ -94,7 +94,7 @@ export function getAreaGroupedEntities(
     } else if (domain === 'binary_sensor' && state?.attributes?.device_class &&
                ['motion', 'occupancy', 'presence'].includes(state.attributes.device_class)) {
       grouped.motion.push(entityId);
-    } else if (domain === 'script' || domain === 'scene' || domain === 'automation') {
+    } else if (domain === 'script' || domain === 'scene' || domain === 'automation' || domain === 'todo') {
       grouped.actions.push(entityId);
     } else if (domain === 'switch' || domain === 'button' || domain === 'input_boolean' ||
                domain === 'vacuum' || domain === 'lawn_mower' || domain === 'valve' ||
@@ -180,7 +180,7 @@ export function getAreaGroupedEntitiesFromConfig(
       grouped.media_players.push(entityId);
     } else if (domain === 'alarm_control_panel' || domain === 'lock' || domain === 'camera') {
       grouped.security.push(entityId);
-    } else if (domain === 'script' || domain === 'scene' || domain === 'automation') {
+    } else if (domain === 'script' || domain === 'scene' || domain === 'automation' || domain === 'todo') {
       grouped.actions.push(entityId);
     } else if (domain === 'switch' || domain === 'button' || domain === 'input_boolean' ||
                domain === 'vacuum' || domain === 'lawn_mower' || domain === 'valve' ||
@@ -249,10 +249,20 @@ export function stripAreaFromEntityName(entityName: string, areaName: string): s
   return entityName;
 }
 
-// Helper to sort areas according to configuration
+/**
+ * Older configurations only stored an order after the user moved an area.
+ * Preserve that behavior while allowing new configurations to select a mode.
+ */
+export function resolveAreaSortMode(areasDisplay?: AreasDisplay): AreaSortMode {
+  if (areasDisplay?.sort_mode) return areasDisplay.sort_mode;
+  return areasDisplay?.order?.length ? 'custom' : 'alphabetical';
+}
+
+// Keep every area surface on the same ordering rules.
 export function sortAreas(
   areas: any[],
-  areasDisplay?: { hidden?: string[]; order?: string[] }
+  areasDisplay?: AreasDisplay,
+  locale?: string
 ): any[] {
   // First make a copy of the array to avoid read-only issues
   let filteredAreas = [...areas];
@@ -263,8 +273,14 @@ export function sortAreas(
     filteredAreas = filteredAreas.filter(area => !hiddenSet.has(area.area_id));
   }
 
-  // Sort by order
-  if (areasDisplay?.order && areasDisplay.order.length > 0) {
+  const sortMode = resolveAreaSortMode(areasDisplay);
+
+  // The registry list is already returned in Home Assistant's configured order.
+  if (sortMode === 'home_assistant') {
+    return filteredAreas;
+  }
+
+  if (sortMode === 'custom' && areasDisplay?.order?.length) {
     const orderedAreas = areasDisplay.order
       .map(areaId => filteredAreas.find(area => area.area_id === areaId))
       .filter(area => area !== undefined) as any[];
@@ -273,10 +289,12 @@ export function sortAreas(
     const orderedIds = new Set(areasDisplay.order);
     const remainingAreas = filteredAreas.filter(area => !orderedIds.has(area.area_id));
 
-    const result = [...orderedAreas, ...remainingAreas];
-    return result;
+    return [...orderedAreas, ...remainingAreas];
   }
 
-  // Default alphabetical
-  return filteredAreas.sort((a, b) => a.name.localeCompare(b.name));
+  const collator = new Intl.Collator(locale, {
+    numeric: true,
+    sensitivity: 'base',
+  });
+  return filteredAreas.sort((a, b) => collator.compare(a.name, b.name));
 }

@@ -1,20 +1,36 @@
-import { TRANSLATIONS, type Lang } from './translations';
+import {
+  SUPPORTED_LANGUAGES,
+  TRANSLATIONS,
+  type SupportedLanguage,
+  type TranslationKey,
+} from '../i18n';
 
 /**
- * Bepaal de actieve taal op basis van de HA-taal. Engels is de standaard;
- * Nederlands wordt gekozen wanneer de HA-taal met "nl" begint.
+ * Resolve the Home Assistant locale to a supported dashboard language.
+ * Regional variants progressively fall back, for example de-DE -> de.
  */
-export function ddLang(hass: any): Lang {
-  const raw = (hass?.language || hass?.locale?.language || 'en').toString().toLowerCase();
-  return raw.startsWith('nl')
-    ? 'nl'
-    : raw.startsWith('zh-hant')
-      ? 'zh-Hant'
-      : raw.startsWith('zh-hans')
-        ? 'zh-Hans'
-        : raw.startsWith('zh')
-          ? 'zh-Hant'
-          : 'en';
+export function ddLang(hass: any): SupportedLanguage {
+  const raw = String(hass?.locale?.language || hass?.language || 'en')
+    .trim()
+    .toLowerCase()
+    .replace(/_/g, '-');
+
+  if (/^zh-(hant|tw|hk|mo)(-|$)/.test(raw) || raw === 'zh') return 'zh-hant';
+  if (/^zh-(hans|cn|sg)(-|$)/.test(raw)) return 'zh-hans';
+
+  const parts = raw.split('-');
+  while (parts.length) {
+    const candidate = parts.join('-') as SupportedLanguage;
+    if (SUPPORTED_LANGUAGES.includes(candidate)) return candidate;
+    parts.pop();
+  }
+
+  return 'en';
+}
+
+export function ddLocale(hass: any): string {
+  const raw = String(hass?.locale?.language || hass?.language || '').trim();
+  return raw || ddLang(hass);
 }
 
 /**
@@ -23,16 +39,35 @@ export function ddLang(hass: any): Lang {
  */
 export function ddLocalize(
   hass: any,
-  key: string,
+  key: TranslationKey | string,
   vars?: Record<string, string | number>
 ): string {
   const lang = ddLang(hass);
   const dict = TRANSLATIONS[lang] || TRANSLATIONS.en;
-  let str = dict[key] ?? TRANSLATIONS.en[key] ?? key;
+  const localized = dict as Record<string, string>;
+  const english = TRANSLATIONS.en as Record<string, string>;
+  let str = localized[key] ?? english[key] ?? key;
   if (vars) {
     for (const k of Object.keys(vars)) {
       str = str.split(`{${k}}`).join(String(vars[k]));
     }
   }
   return str;
+}
+
+export function ddLocalizePlural(
+  hass: any,
+  key: string,
+  count: number,
+  vars?: Record<string, string | number>
+): string {
+  const category = new Intl.PluralRules(ddLocale(hass)).select(count);
+  return ddLocalize(hass, `${key}.${category === 'one' ? 'one' : 'other'}`, {
+    count,
+    ...vars,
+  });
+}
+
+export function hasDdTranslation(key: string): key is TranslationKey {
+  return Object.prototype.hasOwnProperty.call(TRANSLATIONS.en, key);
 }

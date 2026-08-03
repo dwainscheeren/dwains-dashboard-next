@@ -20,6 +20,7 @@ The home page can show these sections:
 - Areas
 - Cameras
 - House information
+- To-do lists
 - Favorites
 - Summaries
 
@@ -27,7 +28,9 @@ The order and visibility can be changed in Dashboard settings.
 
 ## Cameras
 
-Camera cards are shown when an area contains available camera entities. Unavailable cameras are hidden.
+Every available camera in a visible area gets its own preview card. Unavailable cameras are hidden until they reconnect.
+
+Open **Dashboard settings > Home page** to choose which camera previews appear on Home and change their order.
 
 ## House Information
 
@@ -39,6 +42,10 @@ House information can show:
 - Device group cards such as lights, switches and covers
 
 Each house information card can be enabled or disabled in Dashboard settings.
+
+## To-do Lists
+
+Available Home Assistant `todo.*` entities appear as editable lists. Items can be added, completed and removed directly from the home page. General lists such as Shopping List do not need to be assigned to an area.
 
 ## Favorites
 

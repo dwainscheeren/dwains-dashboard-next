@@ -1,38 +1,51 @@
 import type { HomeInformationCardKey, HomeSectionKey } from '../types/strategy';
+import type { TranslationKey } from '../i18n';
 
 export const DEFAULT_HOME_SECTIONS_ORDER: HomeSectionKey[] = [
   'cameras',
   'areas',
   'devices',
+  'todos',
   'favorites',
   'summaries',
 ];
 
-export const HOME_SECTION_META: Record<HomeSectionKey, { label: string; icon: string; description: string }> = {
+interface LocalizedMeta {
+  labelKey: TranslationKey;
+  icon: string;
+  descriptionKey: TranslationKey;
+}
+
+export const HOME_SECTION_META: Record<HomeSectionKey, LocalizedMeta> = {
   summaries: {
-    label: 'home_section.summaries.label',
+    labelKey: 'home_section.summaries.label',
     icon: 'mdi:clipboard-list-outline',
-    description: 'home_section.summaries.desc',
+    descriptionKey: 'home_section.summaries.description',
   },
   cameras: {
-    label: 'home_section.cameras.label',
+    labelKey: 'home_section.cameras.label',
     icon: 'mdi:cctv',
-    description: 'home_section.cameras.desc',
+    descriptionKey: 'home_section.cameras.description',
   },
   areas: {
-    label: 'home_section.areas.label',
+    labelKey: 'home_section.areas.label',
     icon: 'mdi:floor-plan',
-    description: 'home_section.areas.desc',
+    descriptionKey: 'home_section.areas.description',
   },
   devices: {
-    label: 'home_section.devices.label',
+    labelKey: 'home_section.devices.label',
     icon: 'mdi:view-dashboard-outline',
-    description: 'home_section.devices.desc',
+    descriptionKey: 'home_section.devices.description',
+  },
+  todos: {
+    labelKey: 'home_section.todos.label',
+    icon: 'mdi:format-list-checks',
+    descriptionKey: 'home_section.todos.description',
   },
   favorites: {
-    label: 'home_section.favorites.label',
+    labelKey: 'home_section.favorites.label',
     icon: 'mdi:star',
-    description: 'home_section.favorites.desc',
+    descriptionKey: 'home_section.favorites.description',
   },
 };
 
@@ -43,26 +56,26 @@ export const DEFAULT_HOME_INFORMATION_CARDS: HomeInformationCardKey[] = [
   'device_groups',
 ];
 
-export const HOME_INFORMATION_CARD_META: Record<HomeInformationCardKey, { label: string; icon: string; description: string }> = {
+export const HOME_INFORMATION_CARD_META: Record<HomeInformationCardKey, LocalizedMeta> = {
   people: {
-    label: 'home_info.people.label',
+    labelKey: 'home_card.people.label',
     icon: 'mdi:account-group',
-    description: 'home_info.people.desc',
+    descriptionKey: 'home_card.people.description',
   },
   climate: {
-    label: 'home_info.climate.label',
+    labelKey: 'home_card.climate.label',
     icon: 'mdi:home-thermometer-outline',
-    description: 'home_info.climate.desc',
+    descriptionKey: 'home_card.climate.description',
   },
   power: {
-    label: 'home_info.power.label',
+    labelKey: 'home_card.power.label',
     icon: 'mdi:flash',
-    description: 'home_info.power.desc',
+    descriptionKey: 'home_card.power.description',
   },
   device_groups: {
-    label: 'home_info.device_groups.label',
+    labelKey: 'home_card.device_groups.label',
     icon: 'mdi:view-grid-outline',
-    description: 'home_info.device_groups.desc',
+    descriptionKey: 'home_card.device_groups.description',
   },
 };
 
