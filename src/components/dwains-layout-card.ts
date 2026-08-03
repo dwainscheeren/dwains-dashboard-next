@@ -3,6 +3,7 @@ import { customElement, property, state } from 'lit/decorators.js';
 import { classMap } from 'lit/directives/class-map.js';
 import { repeat } from 'lit/directives/repeat.js';
 import { ifDefined } from 'lit/directives/if-defined.js';
+import { styleMap } from 'lit/directives/style-map.js';
 
 import type { HomeAssistant } from '../types/home-assistant';
 import type { DwainsDashboardConfig, AreaConfig, EntityConfig, AreaData, AreaCustomCard, HomeInformationCardKey, HomeSectionKey } from '../types/strategy';
@@ -3882,8 +3883,16 @@ export class DwainsLayoutCard extends LitElement {
 
     .dd-custom-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-      gap: 12px;
+      grid-template-columns: repeat(12, minmax(0, 1fr));
+      gap: 8px;
+      container-type: inline-size;
+    }
+
+    .dd-custom-grid > .dd-custom-card-wrap,
+    .dd-custom-grid > .dd-add-card {
+      --dd-card-default-column: span 4;
+      grid-column: var(--dd-card-grid-column, var(--dd-card-default-column));
+      min-height: var(--dd-card-grid-min-height, 0);
     }
 
     .dd-custom-card-wrap {
@@ -3983,12 +3992,22 @@ export class DwainsLayoutCard extends LitElement {
       min-width: 0;
     }
 
+    .entities-grid > .dd-custom-card-wrap.dd-grid-full,
+    .mobile-entities-section.layout-grid .mobile-entity-rail > .dd-custom-card-wrap.dd-grid-full {
+      grid-column: 1 / -1;
+      width: 100%;
+    }
+
     .mobile-entity-rail .dd-custom-card-wrap,
     .mobile-entity-rail .dd-domain-add-card {
       box-sizing: border-box;
       flex: 0 0 164px;
       min-width: 0;
       scroll-snap-align: start;
+    }
+
+    .mobile-entity-rail > .dd-custom-card-wrap.dd-grid-full {
+      flex-basis: calc(100% - 20px);
     }
 
     .mobile-entity-rail .dd-domain-add-card {
@@ -4004,6 +4023,20 @@ export class DwainsLayoutCard extends LitElement {
 
     .mobile-entities-section.layout-grid .mobile-entity-rail .dd-domain-add-card {
       min-height: 138px;
+    }
+
+    @container (max-width: 899px) {
+      .dd-custom-grid > .dd-custom-card-wrap,
+      .dd-custom-grid > .dd-add-card {
+        --dd-card-default-column: span 6;
+      }
+    }
+
+    @container (max-width: 559px) {
+      .dd-custom-grid > .dd-custom-card-wrap,
+      .dd-custom-grid > .dd-add-card {
+        --dd-card-default-column: span 12;
+      }
     }
 
     .entity-card-wrapper.loading {
@@ -12212,6 +12245,7 @@ export class DwainsLayoutCard extends LitElement {
 
     const classes = {
       'dd-custom-card-wrap': true,
+      'dd-grid-full': entry.card?.grid_options?.columns === 'full',
       editing: this._editMode,
       dragging,
       'drag-over': dragOver,
@@ -12221,6 +12255,7 @@ export class DwainsLayoutCard extends LitElement {
     return html`
       <div
         class=${classMap(classes)}
+        style=${styleMap(this._customCardGridStyle(entry.card))}
         .draggable=${this._editMode}
         @dragstart=${(event: DragEvent) => this._handleCustomCardDragStart(event, areaId, entry.id)}
         @dragover=${(event: DragEvent) => this._handleCustomSlotDragOver(event, areaId, entry.placement, index)}
@@ -12241,6 +12276,26 @@ export class DwainsLayoutCard extends LitElement {
         <dwains-dashboard-next-card-host .hass=${this.hass} .config=${entry.card}></dwains-dashboard-next-card-host>
       </div>
     `;
+  }
+
+  private _customCardGridStyle(card: any): Record<string, string> {
+    const options = card?.grid_options;
+    if (!options || typeof options !== 'object') return {};
+
+    const styles: Record<string, string> = {};
+    if (options.columns === 'full') {
+      styles['--dd-card-grid-column'] = '1 / -1';
+    } else if (typeof options.columns === 'number' && Number.isFinite(options.columns)) {
+      const columns = Math.max(1, Math.min(12, Math.round(options.columns)));
+      styles['--dd-card-grid-column'] = `span ${columns}`;
+    }
+
+    if (typeof options.rows === 'number' && Number.isFinite(options.rows)) {
+      const rows = Math.max(1, Math.min(12, Math.round(options.rows)));
+      styles['--dd-card-grid-min-height'] = `${rows * 56 + (rows - 1) * 8}px`;
+    }
+
+    return styles;
   }
 
   private _getDomainSlotCustomCards(
@@ -12410,11 +12465,18 @@ export class DwainsLayoutCard extends LitElement {
     // je 'm één keer in een normaal dashboard hebt gebruikt.
     if (customElements.get('hui-dialog-create-card')) {
       const areaName = this.config?.areas?.find(a => a.area_id === areaId)?.name || 'Dwains';
+      const lovelaceConfig = {
+        views: [{
+          title: areaName,
+          type: 'sections',
+          sections: [{ type: 'grid', cards: [] }],
+        }],
+      };
       this._fireNativeDialog('hui-dialog-create-card', {
-        lovelaceConfig: { views: [{ title: areaName, cards: [] }] },
-        path: [0],
+        lovelaceConfig,
+        path: [0, 0],
         saveConfig: (newConfig: any) => {
-          const newCards = newConfig?.views?.[0]?.cards || [];
+          const newCards = newConfig?.views?.[0]?.sections?.[0]?.cards || [];
           const added = newCards[newCards.length - 1];
           if (added) {
             this._insertAreaCustomCard(areaId, added, placement, placementIndex);
@@ -12433,14 +12495,20 @@ export class DwainsLayoutCard extends LitElement {
 
     // Probeer HA's eigen visuele kaart-editor (formulier + code-toggle).
     if (customElements.get('hui-dialog-edit-card')) {
+      const sectionConfig = { type: 'grid', cards: [existing] };
+      const lovelaceConfig = {
+        views: [{
+          title: 'Dwains',
+          type: 'sections',
+          sections: [sectionConfig],
+        }],
+      };
       this._fireNativeDialog('hui-dialog-edit-card', {
-        lovelaceConfig: { views: [{ title: 'Dwains', cards: [existing] }] },
-        path: [0, 0],
-        saveConfig: (newConfig: any) => {
-          const newCard = newConfig?.views?.[0]?.cards?.[0];
-          if (newCard) {
-            this._replaceAreaCustomCard(areaId, cardId, newCard);
-          }
+        lovelaceConfig,
+        cardConfig: existing,
+        sectionConfig,
+        saveCardConfig: (newCard: any) => {
+          if (newCard?.type) this._replaceAreaCustomCard(areaId, cardId, newCard);
         },
       });
     } else {

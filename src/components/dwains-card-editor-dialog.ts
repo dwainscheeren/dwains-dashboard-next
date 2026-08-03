@@ -143,11 +143,24 @@ export class DwainsCardEditorDialog extends LitElement {
           editor.hass = this.hass;
           editor.addEventListener("config-changed", (ev: any) => {
             ev.stopPropagation();
-            if (ev.detail?.config) {
-              this._card = ev.detail.config;
-              this._valid = true;
-              this._updatePreview();
+            const incoming = ev.detail?.config;
+            if (!incoming || typeof incoming !== "object") return;
+
+            const source = ev.composedPath?.()[0] ?? ev.target;
+            if (source !== editor && !incoming.type) return;
+
+            // Some custom-card editors contain nested HA fields that also emit
+            // config-changed with only their own partial value. Keep the card
+            // identity in that case instead of replacing the complete config.
+            const nextCard = { ...this._card, ...incoming } as LovelaceCardConfig;
+            if (!nextCard.type) {
+              this._valid = false;
+              return;
             }
+
+            this._card = nextCard;
+            this._valid = true;
+            this._updatePreview();
           });
           // De EDITOR accepteert (anders dan de kaart) wél een incomplete config.
           try {
@@ -220,7 +233,7 @@ export class DwainsCardEditorDialog extends LitElement {
   };
 
   private _save = (): void => {
-    if (!this._card || !this._valid || !this._params) return;
+    if (!this._card?.type || !this._valid || !this._params) return;
     this._params.onSave(this._card);
     this.closeDialog();
   };
