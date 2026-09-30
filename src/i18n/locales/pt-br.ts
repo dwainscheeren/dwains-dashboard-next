@@ -84,6 +84,7 @@ export const ptBR = {
   'person.home': 'Em casa',
   'person.away': 'Fora',
   'person.nobody_home': 'Ninguém em casa',
+  'person.no_location': 'Sem localização',
 
   'layout.custom_cards': 'Cartões personalizados',
   'layout.entities': 'Entidades',
@@ -134,6 +135,8 @@ export const ptBR = {
   'home.people': 'Pessoas',
   'home.no_people': 'Nenhuma pessoa',
   'home.no_visible_people': 'Nenhuma pessoa visível configurada',
+  'home.more_people.one': 'Mais {count} pessoa',
+  'home.more_people.other': 'Mais {count} pessoas',
   'home.attention.one': '{count} item precisa de atenção',
   'home.attention.other': '{count} itens precisam de atenção',
   'home.everything_calm': 'Tudo parece tranquilo',

@@ -2278,6 +2278,7 @@ export class DwainsLayoutCard extends LitElement {
     const weatherEntity = this._weatherDisplayEnabled() ? this._getWeatherEntity() : undefined;
     const weatherTemperature = this._formatWeatherTemperature(weatherEntity);
     const userPicture = this._getWelcomeUserPicture(userName);
+    const userInitials = this._userInitials(this.hass?.user?.name || '');
     const alarmContent = this._renderHomeAlarm();
 
     return html`
@@ -2294,7 +2295,9 @@ export class DwainsLayoutCard extends LitElement {
               >
                 ${userPicture
                   ? html`<img src=${userPicture} alt=${userName} />`
-                  : html`<ha-icon icon="mdi:account"></ha-icon>`}
+                  : userInitials
+                    ? html`<span class="welcome-avatar-initials" aria-hidden="true">${userInitials}</span>`
+                    : html`<ha-icon icon="mdi:account"></ha-icon>`}
               </button>
               <div class="welcome-copy">
                 <div class="welcome-text">
@@ -2724,10 +2727,20 @@ export class DwainsLayoutCard extends LitElement {
 
   private _renderHousePersonsStatusCard() {
     const personEntities = this._getVisiblePersonEntities();
-    const homeCount = personEntities.filter(person => person.state === 'home').length;
     const subtitle = personEntities.length
-      ? `${homeCount}/${personEntities.length} ${this._t('person.home')}`
+      ? this._personPresenceSummary(personEntities) || this._t('person.no_location')
       : this._t('home.no_people');
+    // People without location data go last, so the visible slots show useful states.
+    const orderedPersons = [
+      ...personEntities.filter(person => !this._isPersonLocationUnknown(person)),
+      ...personEntities.filter(person => this._isPersonLocationUnknown(person)),
+    ];
+    // Four slots: with more people, show three and a "+N" chip in the last slot.
+    const maxVisible = 4;
+    const visiblePersons = orderedPersons.length > maxVisible
+      ? orderedPersons.slice(0, maxVisible - 1)
+      : orderedPersons;
+    const hiddenCount = orderedPersons.length - visiblePersons.length;
 
     return html`
       <div
@@ -2751,10 +2764,22 @@ export class DwainsLayoutCard extends LitElement {
         ${personEntities.length ? html`
           <div class="house-persons-grid">
             ${repeat(
-              personEntities.slice(0, 4),
+              visiblePersons,
               person => person.entity_id,
               person => this._renderHousePersonMini(person)
             )}
+            ${hiddenCount > 0 ? html`
+              <button
+                class="house-persons-more"
+                type="button"
+                title=${this._tp('home.more_people', hiddenCount)}
+                aria-label=${this._tp('home.more_people', hiddenCount)}
+                @click=${(event: Event) => {
+                  event.stopPropagation();
+                  this._openDeviceDomain('person');
+                }}
+              >+${hiddenCount}</button>
+            ` : nothing}
           </div>
         ` : html`
           <div class="house-persons-empty">${this._t('home.no_visible_people')}</div>
@@ -2767,11 +2792,13 @@ export class DwainsLayoutCard extends LitElement {
     const name = person.attributes?.friendly_name || person.entity_id.split('.')[1];
     const picture = person.attributes?.entity_picture;
     const stateLabel = this._formatPersonState(person);
-    const presenceClass = person.state === 'home'
-      ? 'is-home'
-      : person.state === 'not_home'
-        ? 'is-away'
-        : 'is-zone';
+    const presenceClass = this._isPersonLocationUnknown(person)
+      ? 'is-unknown'
+      : person.state === 'home'
+        ? 'is-home'
+        : person.state === 'not_home'
+          ? 'is-away'
+          : 'is-zone';
 
     return html`
       <button
@@ -2816,11 +2843,29 @@ export class DwainsLayoutCard extends LitElement {
       !registry?.[entity.entity_id]?.hidden_by
   ));
 
+  /** A person without a (working) device tracker reports unknown or unavailable. */
+  private _isPersonLocationUnknown(person: any): boolean {
+    const state = String(person?.state ?? '').toLowerCase();
+    return !state || state === 'unknown' || state === 'unavailable';
+  }
+
+  /**
+   * "x/y home" where y only counts people with a known location. People
+   * without location data are neither home nor away, so counting them would
+   * make the house look emptier than it is. Returns '' when nobody has a
+   * known location.
+   */
+  private _personPresenceSummary(personEntities: any[]): string {
+    const known = personEntities.filter(person => !this._isPersonLocationUnknown(person));
+    if (!known.length) return '';
+    const homeCount = known.filter(person => person.state === 'home').length;
+    return `${homeCount}/${known.length} ${this._t('person.home')}`;
+  }
+
   private _formatPersonState(person: any): string {
+    if (this._isPersonLocationUnknown(person)) return this._t('person.no_location');
     if (person.state === 'home') return this._t('person.home');
     if (person.state === 'not_home') return this._t('person.away');
-    if (!person.state || person.state === 'unknown') return this._t('common.unknown');
-    if (person.state === 'unavailable') return this._t('common.unavailable');
 
     return String(person.state)
       .replace(/_/g, ' ')
@@ -2831,10 +2876,9 @@ export class DwainsLayoutCard extends LitElement {
     const parts: string[] = [];
     const personEntities = this._getVisiblePersonEntities();
 
-    if (personEntities.length) {
-      const homeCount = personEntities.filter(person => person.state === 'home').length;
-      const homeLabel = this._t('person.home');
-      parts.push(`${homeCount}/${personEntities.length} ${homeLabel}`);
+    const presence = this._personPresenceSummary(personEntities);
+    if (presence) {
+      parts.push(presence);
     }
 
     if (this._showNotificationsUi() && this._persistentNotifications.length) {
@@ -6579,18 +6623,41 @@ export class DwainsLayoutCard extends LitElement {
 
   private _getWelcomeUserPicture(userName: string): string | undefined {
     if (!this.hass?.states) return undefined;
-    return this._welcomeUserPicture(this.hass.states, userName);
+    return this._welcomeUserPicture(this.hass.states, this.hass.user?.id || '', userName);
   }
 
-  private _welcomeUserPicture = memoizeOne((states: HomeAssistant['states'], userName: string): string | undefined => {
-    const normalizedUserName = userName.trim().toLowerCase();
+  /**
+   * Only ever show the signed in user's own picture: a shared wall tablet must
+   * not greet one person with the face of another. First the person linked to
+   * this user, then a person with exactly the user's name, else no picture.
+   */
+  private _welcomeUserPicture = memoizeOne((
+    states: HomeAssistant['states'],
+    userId: string,
+    userName: string
+  ): string | undefined => {
     const personEntities = getDomainStates(states, 'person').filter(entity => entity.entity_id.startsWith('person.'));
-    const matchingPerson = personEntities.find((entity: any) =>
+    const linkedPerson = userId
+      ? personEntities.find((entity: any) => entity.attributes?.user_id === userId)
+      : undefined;
+    if (linkedPerson) return linkedPerson.attributes?.entity_picture || undefined;
+
+    const normalizedUserName = userName.trim().toLowerCase();
+    if (!normalizedUserName) return undefined;
+    const namedPerson = personEntities.find((entity: any) =>
       String(entity.attributes?.friendly_name || '').trim().toLowerCase() === normalizedUserName
     );
-    const fallbackPerson = personEntities.find((entity: any) => entity.attributes?.entity_picture);
-    return (matchingPerson || fallbackPerson)?.attributes?.entity_picture;
+    return namedPerson?.attributes?.entity_picture || undefined;
   });
+
+  private _userInitials(userName: string): string {
+    const words = userName.trim().split(/\s+/).filter(Boolean);
+    if (!words.length) return '';
+    const firstLetter = (word: string | undefined) => Array.from(word || '')[0] || '';
+    const first = firstLetter(words[0]);
+    const last = words.length > 1 ? firstLetter(words[words.length - 1]) : '';
+    return `${first}${last}`.toLocaleUpperCase(ddLocale(this.hass));
+  }
 
   private _openDashboardSettings = () => {
     if (!this._canManageDashboard()) return;

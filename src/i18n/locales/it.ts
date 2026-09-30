@@ -84,6 +84,7 @@ export const it = {
   'person.home': 'Casa',
   'person.away': 'Fuori casa',
   'person.nobody_home': 'Nessuno in casa',
+  'person.no_location': 'Nessuna posizione',
 
   'layout.custom_cards': 'Schede personalizzate',
   'layout.entities': 'Entità',
@@ -134,6 +135,8 @@ export const it = {
   'home.people': 'Persone',
   'home.no_people': 'Nessuna persona',
   'home.no_visible_people': 'Nessuna persona visibile configurata',
+  'home.more_people.one': '{count} altra persona',
+  'home.more_people.other': '{count} altre persone',
   'home.attention.one': '{count} elemento richiede attenzione',
   'home.attention.other': '{count} elementi richiedono attenzione',
   'home.everything_calm': 'Tutto tranquillo',

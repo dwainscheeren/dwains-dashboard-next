@@ -82,6 +82,7 @@ export const en = {
   'person.home': 'Home',
   'person.away': 'Away',
   'person.nobody_home': 'Nobody home',
+  'person.no_location': 'No location',
 
   'layout.custom_cards': 'Custom cards',
   'layout.entities': 'Entities',
@@ -132,6 +133,8 @@ export const en = {
   'home.people': 'People',
   'home.no_people': 'No people',
   'home.no_visible_people': 'No visible persons configured',
+  'home.more_people.one': '{count} more person',
+  'home.more_people.other': '{count} more people',
   'home.attention.one': '{count} item needs attention',
   'home.attention.other': '{count} items need attention',
   'home.everything_calm': 'Everything looks calm',

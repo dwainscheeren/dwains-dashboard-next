@@ -84,6 +84,7 @@ export const ru = {
   'person.home': 'Дома',
   'person.away': 'Нет дома',
   'person.nobody_home': 'Никого нет дома',
+  'person.no_location': 'Нет местоположения',
 
   'layout.custom_cards': 'Пользовательские карточки',
   'layout.entities': 'Сущности',
@@ -134,6 +135,8 @@ export const ru = {
   'home.people': 'Люди',
   'home.no_people': 'Нет людей',
   'home.no_visible_people': 'Нет настроенных видимых пользователей',
+  'home.more_people.one': 'Ещё {count} человек',
+  'home.more_people.other': 'Ещё {count} человек',
   'home.attention.one': '{count} элемент требует внимания',
   'home.attention.other': '{count} элементов требуют внимания',
   'home.everything_calm': 'Всё спокойно',

@@ -1089,6 +1089,14 @@ export const layoutCardStyles = css`
       object-fit: cover;
     }
 
+    .welcome-avatar-initials {
+      color: var(--primary-text-color);
+      font-size: 18px;
+      font-weight: 800;
+      line-height: 1;
+      letter-spacing: 0;
+    }
+
     .welcome-copy {
       min-width: 0;
     }
@@ -1349,6 +1357,10 @@ export const layoutCardStyles = css`
 
       .welcome-avatar ha-icon {
         --mdc-icon-size: 21px;
+      }
+
+      .welcome-avatar-initials {
+        font-size: 14px;
       }
 
       .welcome-text {
@@ -5373,6 +5385,78 @@ export const layoutCardStyles = css`
       line-height: 1.1;
     }
 
+    /* No tracker: neutral, clearly not "home", "away" or "in a zone". */
+    .house-person-mini.is-unknown .house-person-avatar {
+      opacity: 0.6;
+      filter: grayscale(1);
+    }
+
+    .house-person-mini.is-unknown .house-person-mini-state {
+      color: var(--disabled-text-color, var(--secondary-text-color));
+      font-style: italic;
+    }
+
+    .house-persons-more {
+      appearance: none;
+      min-width: 0;
+      min-height: 42px;
+      padding: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 0;
+      border-radius: 12px;
+      background: color-mix(in srgb, var(--status-color) 10%, var(--card-background-color));
+      color: var(--primary-text-color);
+      font: inherit;
+      font-size: 13px;
+      font-weight: 850;
+      cursor: pointer;
+      transition: transform 0.18s ease;
+    }
+
+    .house-persons-more:active {
+      transform: scale(0.97);
+    }
+
+    .house-persons-more:focus-visible,
+    .house-person-mini:focus-visible {
+      outline: 2px solid var(--primary-color);
+      outline-offset: 2px;
+    }
+
+    /* Dark theme colors for the house cards, at every screen width. */
+    :host([data-theme-dark]) {
+      .home-status-card.house-persons-card {
+        --status-color: #8ea8ff;
+      }
+
+      .home-status-card.house-power-card {
+        --status-color: #f2b447;
+      }
+
+      .home-status-card.house-climate-card {
+        --status-color: #64c8e8;
+      }
+
+      .house-person-mini {
+        background: color-mix(in srgb, var(--card-background-color) 78%, #ffffff 5%);
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+      }
+
+      .house-person-mini.is-home {
+        background: color-mix(in srgb, #2f9b62 20%, var(--card-background-color));
+      }
+
+      .house-person-mini.is-away {
+        background: color-mix(in srgb, #df5b63 16%, var(--card-background-color));
+      }
+
+      .house-persons-more {
+        background: color-mix(in srgb, var(--status-color) 16%, var(--card-background-color));
+      }
+    }
+
     .header-status-scroll {
       gap: 10px;
       padding: 2px 2px 4px;
@@ -6034,23 +6118,6 @@ export const layoutCardStyles = css`
           background: color-mix(in srgb, var(--area-badge-color, var(--primary-color)) 20%, transparent);
         }
 
-        .home-status-card.house-persons-card {
-          --status-color: #8ea8ff;
-        }
-
-        .home-status-card.house-power-card {
-          --status-color: #f2b447;
-        }
-
-        .home-status-card.house-climate-card {
-          --status-color: #64c8e8;
-        }
-
-        .house-person-mini {
-          background: color-mix(in srgb, var(--card-background-color) 78%, #ffffff 5%);
-          box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
-        }
-
         .house-climate-metric {
           background: color-mix(in srgb, var(--metric-color) 18%, var(--card-background-color));
           box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--metric-color) 18%, transparent);
@@ -6062,14 +6129,6 @@ export const layoutCardStyles = css`
 
         .house-power-bar {
           background: color-mix(in srgb, var(--status-color) 13%, var(--card-background-color));
-        }
-
-        .house-person-mini.is-home {
-          background: color-mix(in srgb, #2f9b62 20%, var(--card-background-color));
-        }
-
-        .house-person-mini.is-away {
-          background: color-mix(in srgb, #df5b63 16%, var(--card-background-color));
         }
 
         .home-summary-card {
