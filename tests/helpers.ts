@@ -1,5 +1,5 @@
 import { vi } from 'vitest';
-import type { HomeAssistant } from '../src/types/home-assistant';
+import type { HassEntity, HomeAssistant } from '../src/types/home-assistant';
 
 export const AREA_REGISTRY = [
   {
@@ -64,5 +64,29 @@ export function mockHass(options: MockHassOptions = {}): HomeAssistant {
     language: options.language ?? 'en',
     locale: { language: options.language ?? 'en' },
     callWS,
+  } as unknown as HomeAssistant;
+}
+
+export function entityState(entityId: string, state: string, attributes: Record<string, any> = {}): HassEntity {
+  return {
+    entity_id: entityId,
+    state,
+    attributes,
+    last_changed: '2026-09-30T12:00:00Z',
+    last_updated: '2026-09-30T12:00:00Z',
+    context: { id: 'ctx', parent_id: null, user_id: null },
+  };
+}
+
+/** A hass object with the given states and optional registry lookups. */
+export function hassWithStates(states: HassEntity[], extra: Record<string, any> = {}): HomeAssistant {
+  return {
+    states: Object.fromEntries(states.map((state) => [state.entity_id, state])),
+    areas: {},
+    devices: {},
+    entities: {},
+    language: 'en',
+    locale: { language: 'en' },
+    ...extra,
   } as unknown as HomeAssistant;
 }
