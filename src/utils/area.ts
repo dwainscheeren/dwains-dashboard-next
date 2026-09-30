@@ -29,11 +29,12 @@ const isEntityHidden = (entityId: string, domain: string, areaId: string, config
 };
 
 export const getAreaData = (area: AreaConfig, hass: HomeAssistant, areaEntities: EntityConfig[], config?: any): AreaData => {
-  // Create cache key that includes entity states hash for better invalidation
+  // Create cache key that includes every entity state, so a change of any
+  // entity in the area (not only the first few) invalidates the cached data.
   const entityStatesHash = areaEntities
     .map(entity => `${entity.entity_id}:${hass.states[entity.entity_id]?.state}`)
     .join('|');
-  const cacheKey = `${area.area_id}-${areaEntities.length}-${entityStatesHash.substring(0, 50)}`;
+  const cacheKey = `${area.area_id}-${areaEntities.length}-${entityStatesHash}`;
 
   const cached = areaDataCache.get(cacheKey);
   if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
