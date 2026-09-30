@@ -6,6 +6,7 @@ import type {
 } from '../types/strategy';
 import type { HomeAssistant } from '../types/home-assistant';
 import { getHiddenDeviceIdSet } from './entity-lookups';
+import { getEntityRegistry } from './entity-registry';
 
 export interface RecentDeviceSummary {
   device: DeviceConfig;
@@ -35,7 +36,7 @@ export function entityDeviceId(
   const entityId = typeof entity === 'string' ? entity : entity.entity_id;
   return (
     (typeof entity === 'string' ? '' : entity.device_id || '') ||
-    hass?.entities?.[entityId]?.device_id ||
+    getEntityRegistry(hass)[entityId]?.device_id ||
     ''
   );
 }
@@ -121,7 +122,7 @@ export function buildRecentDeviceSummaries(
     const deviceId = entityDeviceId(hass, entity);
     if (!deviceId) continue;
 
-    const registry = hass?.entities?.[entity.entity_id];
+    const registry = getEntityRegistry(hass)[entity.entity_id];
     if (registry?.hidden_by || registry?.entity_category === 'diagnostic' || registry?.entity_category === 'config') {
       continue;
     }
@@ -175,7 +176,7 @@ function deviceEntityCreatedAtMap(
     const deviceId = entityDeviceId(hass, entity);
     if (!deviceId) continue;
 
-    const entityCreatedAtMs = timestampMs(entity.created_at || hass?.entities?.[entity.entity_id]?.created_at);
+    const entityCreatedAtMs = timestampMs(entity.created_at || getEntityRegistry(hass)[entity.entity_id]?.created_at);
     if (!entityCreatedAtMs) continue;
 
     const current = entityCreatedAtByDevice.get(deviceId);
@@ -211,7 +212,7 @@ function deviceAreaId(
   if (fromDevice) return fromDevice;
 
   for (const entity of entities) {
-    const areaId = entity.area_id || hass?.entities?.[entity.entity_id]?.area_id;
+    const areaId = entity.area_id || getEntityRegistry(hass)[entity.entity_id]?.area_id;
     if (areaId) return areaId;
   }
 

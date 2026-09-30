@@ -40,6 +40,7 @@ import { syncHassDarkThemeAttribute } from '../utils/theme';
 import { formatValueWithUnit } from '../utils/unit-format';
 import { TRANSLATIONS_LOADED_EVENT } from '../i18n';
 import './utils/dd-card-host';
+import { getEntityRegistry } from '../utils/entity-registry';
 
 const NEW_DEVICES_KEY = '__new_devices__';
 const MAINTENANCE_KEY = '__maintenance__';
@@ -277,7 +278,7 @@ export class DwainsDevicesCard extends LitElement {
     if (config?.entities) {
       config.entities.forEach((entity) => {
         if (isConfigEntityInArea(config, entity, areaId)) {
-          if (!isRegistryEntryVisible(this._hass.entities?.[entity.entity_id])) {
+          if (!isRegistryEntryVisible(getEntityRegistry(this._hass)[entity.entity_id])) {
             return;
           }
           entities.push(entity);
@@ -292,7 +293,7 @@ export class DwainsDevicesCard extends LitElement {
         !processedEntities.has(state.entity_id) &&
         state.attributes?.area_id === areaId
       ) {
-        if (!isRegistryEntryVisible(this._hass.entities?.[state.entity_id])) {
+        if (!isRegistryEntryVisible(getEntityRegistry(this._hass)[state.entity_id])) {
           return;
         }
         entities.push({
@@ -312,7 +313,7 @@ export class DwainsDevicesCard extends LitElement {
 
     // Same registry rules as the room pages (hidden, disabled, config and diagnostic).
     filteredEntities = filteredEntities.filter((entity) =>
-      isRegistryEntryVisible(this._hass.entities?.[entity.entity_id])
+      isRegistryEntryVisible(getEntityRegistry(this._hass)[entity.entity_id])
     );
 
     // Verborgen entiteiten via areas_options[areaId].groups_options[*].hidden.
@@ -401,7 +402,7 @@ export class DwainsDevicesCard extends LitElement {
       const entityId = state?.entity_id;
       if (!entityId) return;
 
-      const registry = this._hass.entities?.[entityId];
+      const registry = getEntityRegistry(this._hass)[entityId];
       // Diagnostic battery sensors do count here, hidden and disabled entities do not.
       if (registry?.hidden_by || registry?.hidden === true || registry?.disabled_by) return;
 
@@ -607,7 +608,7 @@ export class DwainsDevicesCard extends LitElement {
       .filter((entity: any) => {
         if (!entity.entity_id?.startsWith(`${PERSON_DOMAIN}.`)) return false;
         if (hiddenPersons.has(entity.entity_id)) return false;
-        return isRegistryEntryVisible(this._hass.entities?.[entity.entity_id]);
+        return isRegistryEntryVisible(getEntityRegistry(this._hass)[entity.entity_id]);
       })
       .sort((a: any, b: any) => {
         const aName = a.attributes?.friendly_name || a.entity_id;

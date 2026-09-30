@@ -1,5 +1,6 @@
 import type { HomeAssistant } from '../types/home-assistant';
 import type { AreaConfig, AreaOptions, DeviceConfig, DwainsDashboardConfig, EntityConfig } from '../types/strategy';
+import { getEntityRegistry } from './entity-registry';
 
 // Lookup tables derived from the dashboard config. Home Assistant sets `hass`
 // on every state change, while the config only changes when the registries or
@@ -119,5 +120,5 @@ export function resolveStatusEntityAreaId(
   entityId: string,
   entityConfig: EntityConfig | undefined = getEntityConfigMap(config).get(entityId)
 ): string | null | undefined {
-  return (entityConfig && configEntityAreaId(config, entityConfig)) || hass?.entities?.[entityId]?.area_id;
+  return (entityConfig && configEntityAreaId(config, entityConfig)) || getEntityRegistry(hass)[entityId]?.area_id;
 }

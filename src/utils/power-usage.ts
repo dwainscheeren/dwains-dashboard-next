@@ -5,6 +5,7 @@ import { isEntityVisibleInArea } from './entity-visibility';
 import { getEnergyPowerConfig, type EnergyPowerConfig, type PowerTerm } from './energy-prefs';
 import { getAreaIcon } from './icons';
 import { getDomainStates } from './state-index';
+import { getEntityRegistry } from './entity-registry';
 
 export interface PowerEntitySummary {
   entityId: string;
@@ -227,7 +228,7 @@ function getMeterExclusions(
   [...energy.grid, ...energy.solar, ...energy.battery].forEach((term) => entityIds.add(term.entityId));
   const deviceIds = new Set<string>();
   entityIds.forEach((entityId) => {
-    const deviceId = hass?.entities?.[entityId]?.device_id || configEntities.get(entityId)?.device_id;
+    const deviceId = getEntityRegistry(hass)[entityId]?.device_id || configEntities.get(entityId)?.device_id;
     if (deviceId) deviceIds.add(deviceId);
   });
   return { entityIds, deviceIds, keep: new Set(energy.deviceRateEntityIds) };
@@ -239,7 +240,7 @@ function isMeterEntity(
   entityConfig: EntityConfig | undefined,
   exclusions: MeterExclusions
 ): boolean {
-  const registry = hass.entities?.[entityId];
+  const registry = getEntityRegistry(hass)[entityId];
   // Sensors made by the energy integration are always derived grid or battery values.
   if (registry?.platform === 'energy') return true;
   if (exclusions.keep.has(entityId)) return false;
@@ -329,7 +330,7 @@ function resolvePowerEntityAreaId(
 ): string | null {
   if (entityConfig?.area_id) return entityConfig.area_id;
 
-  const registry = hass.entities?.[entityId];
+  const registry = getEntityRegistry(hass)[entityId];
   if (registry?.area_id) return registry.area_id;
 
   const deviceId = entityConfig?.device_id || registry?.device_id;

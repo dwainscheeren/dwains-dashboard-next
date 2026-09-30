@@ -5,6 +5,7 @@ import { isHiddenAsUnavailable } from './entity-availability';
 import { configEntityAreaId, getAreaHiddenEntityIdSet, getHiddenDeviceIdSet } from './entity-lookups';
 import { getStateIndex } from './state-index';
 import { isRegistryEntryVisible as isRegistryVisible } from './entity-visibility';
+import { getEntityRegistry } from './entity-registry';
 
 const EMPTY: EntityConfig[] = [];
 
@@ -100,7 +101,7 @@ export class AreaEntityResolver {
   filteredAreaEntities(areaId: string, hass: HomeAssistant, config: DwainsDashboardConfig | undefined): EntityConfig[] {
     const source = this.areaEntities(areaId, hass, config);
     const cached = this._filtered.get(areaId);
-    if (cached && cached.source === source && cached.config === config && cached.registry === hass.entities) {
+    if (cached && cached.source === source && cached.config === config && cached.registry === getEntityRegistry(hass)) {
       if (cached.states === hass.states) return cached.entities;
       // The result only depends on the states of the source entities.
       if (source.every((entity, index) => hass.states[entity.entity_id] === cached.sourceStates[index])) {
@@ -117,7 +118,7 @@ export class AreaEntityResolver {
     for (const entity of source) {
       const entityId = entity.entity_id;
       const state = hass.states[entityId];
-      if (!state || !isRegistryVisible(hass.entities?.[entityId])) continue;
+      if (!state || !isRegistryVisible(getEntityRegistry(hass)[entityId])) continue;
       if (hiddenInArea.has(entityId)) continue;
       if (hideUnavailable && isHiddenAsUnavailable(state)) continue;
       if (hiddenDevices.size) {
@@ -133,7 +134,7 @@ export class AreaEntityResolver {
       source,
       sourceStates: source.map((entity) => hass.states[entity.entity_id]),
       config,
-      registry: hass.entities,
+      registry: getEntityRegistry(hass),
       entities,
     });
     return entities;
@@ -142,7 +143,7 @@ export class AreaEntityResolver {
   private _getIndex(hass: HomeAssistant, config: DwainsDashboardConfig | undefined): AreaIndex {
     const entities = config?.entities;
     const devices = config?.devices;
-    const registry = hass.entities;
+    const registry = getEntityRegistry(hass);
     const current = this._index;
     if (current && current.entities === entities && current.devices === devices && current.registry === registry) {
       return current;
@@ -193,7 +194,7 @@ export class AreaEntityResolver {
       const areaId = state.attributes.area_id as string;
       const entityId = state.entity_id;
       if (index.memberIds.get(areaId)?.has(entityId)) continue;
-      if (!isRegistryVisible(hass.entities?.[entityId])) continue;
+      if (!isRegistryVisible(getEntityRegistry(hass)[entityId])) continue;
 
       const key = `${areaId}\u0000${entityId}`;
       let entity = index.attributeEntities.get(key);

@@ -14,6 +14,7 @@ import {
   resolveBlueprintCard,
   type ParsedBlueprint,
 } from './blueprints';
+import { getEntityRegistry } from './entity-registry';
 
 interface ResolveReplacementParams {
   hass: HomeAssistant;
@@ -234,7 +235,7 @@ function areaNameFor(
   const areaId =
     registryEntity?.area_id ||
     registryDevice?.area_id ||
-    (hass.entities as any)?.[entityId]?.area_id ||
+    getEntityRegistry(hass)[entityId]?.area_id ||
     '';
   return config?.areas?.find((area) => area.area_id === areaId)?.name || areaId || '';
 }

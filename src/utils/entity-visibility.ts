@@ -2,9 +2,10 @@ import type { HomeAssistant } from '../types/home-assistant';
 import type { DwainsDashboardConfig, EntityConfig } from '../types/strategy';
 import { isEntityFromHiddenDevice } from './device-admission';
 import { getAreaConfigMap, getAreaHiddenEntityIdSet, getHiddenAreaIdSet } from './entity-lookups';
+import { getEntityRegistry } from './entity-registry';
 
 /**
- * The registry fields that decide whether an entity is shown. `hass.entities`
+ * The registry fields that decide whether an entity is shown. `getEntityRegistry(hass)`
  * holds either full registry entries (`hidden_by`, `disabled_by`, set by the
  * dashboard strategy) or the display entries of the Home Assistant frontend
  * (`hidden: true`), so both spellings are checked.
@@ -44,7 +45,7 @@ export function isEntityVisibleInArea(
   areaId: string | null | undefined,
   entityConfig?: EntityConfig
 ): boolean {
-  if (!isRegistryEntryVisible(hass?.entities?.[entityId])) return false;
+  if (!isRegistryEntryVisible(getEntityRegistry(hass)[entityId])) return false;
   if (isEntityFromHiddenDevice(hass, config || undefined, entityConfig || entityId)) return false;
   if (!areaId) return false;
   if (!getAreaConfigMap(config).has(areaId)) return false;

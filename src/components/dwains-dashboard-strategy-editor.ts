@@ -57,6 +57,7 @@ import {
 import { showCardEditorDialog } from "./utils/show-card-editor-dialog";
 import { fireEvent } from "./utils/fire-event";
 import { showConfirmDialog } from "./utils/confirm-dialog";
+import { getEntityRegistry, setFullEntityRegistry } from "../utils/entity-registry";
 
 // We'll create our own entity picker since ha-entity-picker is external
 type SettingsPageKey =
@@ -399,20 +400,8 @@ export class DwainsDashboardStrategyEditor extends LitElement {
   ): void {
     if (!this.hass) return;
 
-    this.hass.areas = areas.reduce((acc: any, area: any) => {
-      acc[area.area_id] = area;
-      return acc;
-    }, {});
-
-    this.hass.entities = entities.reduce((acc: any, entity: any) => {
-      acc[entity.entity_id] = entity;
-      return acc;
-    }, {});
-
-    this.hass.devices = devices.reduce((acc: any, device: any) => {
-      acc[device.id] = device;
-      return acc;
-    }, {});
+    // Keep the full entity registry privately; hass is shared with Home Assistant.
+    setFullEntityRegistry(entities);
 
     this._config = {
       ...(this._config || { type: "custom:dwains-dashboard-next" }),
@@ -1561,7 +1550,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
     if (this.hass?.states) {
       Object.values(this.hass.states).forEach(state => {
         if (!seenEntities.has(state.entity_id)) {
-          const entityRegistry = this.hass?.entities?.[state.entity_id];
+          const entityRegistry = getEntityRegistry(this.hass)[state.entity_id];
           if (entityRegistry?.area_id === this._area) {
             areaEntities.push({ entity_id: state.entity_id });
           }
@@ -2704,7 +2693,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
       });
     });
 
-    Object.values(this.hass.entities || {}).forEach((entity: any) => {
+    Object.values(getEntityRegistry(this.hass)).forEach((entity: any) => {
       entityRecords.set(entity.entity_id, {
         entityId: entity.entity_id,
         deviceId: entity.device_id,
@@ -2805,7 +2794,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
   }
 
   private _isDeviceManagedEntity(entityId: string): boolean {
-    const registry = this.hass?.entities?.[entityId];
+    const registry = getEntityRegistry(this.hass)[entityId];
     if (registry?.hidden_by || registry?.entity_category === "diagnostic" || registry?.entity_category === "config") {
       return false;
     }
@@ -2827,7 +2816,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
 
     for (const entityId of entityIds) {
       const configEntity = this._config?.entities?.find((entity) => entity.entity_id === entityId);
-      const fromEntity = resolveArea(configEntity?.area_id || this.hass?.entities?.[entityId]?.area_id);
+      const fromEntity = resolveArea(configEntity?.area_id || getEntityRegistry(this.hass)[entityId]?.area_id);
       if (fromEntity) return fromEntity;
     }
 
@@ -2887,7 +2876,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
 
     const addEntity = (entityId: string, areaId?: string | null, deviceId?: string | null) => {
       if (!entityId || processed.has(entityId)) return;
-      const registry = this.hass?.entities?.[entityId];
+      const registry = getEntityRegistry(this.hass)[entityId];
       if (registry?.hidden_by || registry?.entity_category === 'diagnostic' || registry?.entity_category === 'config') return;
 
       const resolvedAreaId = areaId || (deviceId ? deviceAreas.get(deviceId) : undefined) || registry?.area_id;
@@ -2910,14 +2899,14 @@ export class DwainsDashboardStrategyEditor extends LitElement {
     (this._config.entities || []).forEach((entity) => addEntity(entity.entity_id, entity.area_id, entity.device_id));
 
     Object.values(this.hass.states || {}).forEach((state: any) => {
-      addEntity(state.entity_id, state.attributes?.area_id, this.hass?.entities?.[state.entity_id]?.device_id);
+      addEntity(state.entity_id, state.attributes?.area_id, getEntityRegistry(this.hass)[state.entity_id]?.device_id);
     });
 
     const hiddenPersons = new Set(this._config.settings?.hidden_persons || []);
     Object.values(this.hass.states || {}).forEach((state: any) => {
       const entityId = state.entity_id;
       if (!entityId?.startsWith('person.') || processed.has(entityId) || hiddenPersons.has(entityId)) return;
-      if (this.hass?.entities?.[entityId]?.hidden_by) return;
+      if (getEntityRegistry(this.hass)[entityId]?.hidden_by) return;
       processed.add(entityId);
       counts.set('person', (counts.get('person') || 0) + 1);
     });
@@ -3124,7 +3113,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
       if (!state) return;
 
       // Skip hidden and diagnostic entities
-      const entityRegistry = hass.entities?.[entityId];
+      const entityRegistry = getEntityRegistry(hass)[entityId];
       if (entityRegistry?.hidden_by || entityRegistry?.entity_category === 'diagnostic' || entityRegistry?.entity_category === 'config') {
         return;
       }
@@ -3976,7 +3965,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
     const allEntities = Object.keys(this.hass?.states || {});
     const alarmEntities = allEntities.filter(entityId =>
       entityId.startsWith('alarm_control_panel.') &&
-      !this.hass?.entities?.[entityId]?.hidden_by
+      !getEntityRegistry(this.hass)[entityId]?.hidden_by
     );
 
     const filteredAlarmEntities = alarmEntities.filter(entityId => {

@@ -1,6 +1,7 @@
 import type { HomeAssistant } from '../types/home-assistant';
 import type { AreasDisplay, AreaSortMode, EntitiesDisplay } from '../types/strategy';
 import { getCollator } from './intl-cache';
+import { getEntityRegistry } from './entity-registry';
 
 // Group types as Home Assistant uses them
 export const AREA_STRATEGY_GROUPS = [
@@ -53,7 +54,7 @@ export function getAreaGroupedEntities(
   const allEntities = Object.keys(hass.states);
   const areaEntities = allEntities.filter((entityId) => {
     const entity = hass.states[entityId];
-    return entity && hass.entities?.[entityId]?.area_id === areaId;
+    return entity && getEntityRegistry(hass)[entityId]?.area_id === areaId;
   });
 
       // Group entities by domain
@@ -73,7 +74,7 @@ export function getAreaGroupedEntities(
     const state = hass.states[entityId];
 
     // Skip hidden and diagnostic entities
-    const entity = hass.entities?.[entityId];
+    const entity = getEntityRegistry(hass)[entityId];
     if (entity?.hidden_by || entity?.entity_category === 'diagnostic' || entity?.entity_category === 'config') {
       return;
     }
@@ -156,8 +157,8 @@ export function getAreaGroupedEntitiesFromConfig(
     // Skip if state doesn't exist
     if (!state) return;
 
-    // Skip hidden and diagnostic entities (check via hass.entities if available)
-    const entityRegistry = hass.entities?.[entityId];
+    // Skip hidden and diagnostic entities (check via getEntityRegistry(hass) if available)
+    const entityRegistry = getEntityRegistry(hass)[entityId];
     if (entityRegistry?.hidden_by || entityRegistry?.entity_category === 'diagnostic' || entityRegistry?.entity_category === 'config') {
       return;
     }

@@ -13,6 +13,7 @@ import { fireEvent } from './utils/fire-event';
 import { showConfirmDialog } from './utils/confirm-dialog';
 import { formatEntityStateWithUnit, formatValueWithUnit } from '../utils/unit-format';
 import './utils/dd-card-host';
+import { getEntityRegistry } from '../utils/entity-registry';
 
 export interface DomainEntitiesDialogParams {
   domain: string;
@@ -681,7 +682,7 @@ export class DwainsDomainEntitiesDialog extends LitElement {
     allHassEntities.forEach(entityState => {
       const entityId = entityState.entity_id;
       if (entityIdFilter && !entityIdFilter.has(entityId)) return;
-      if (!isRegistryEntryVisible(this.hass.entities?.[entityId])) return;
+      if (!isRegistryEntryVisible(getEntityRegistry(this.hass)[entityId])) return;
       const entityDomain = entityId.split('.')[0];
 
       // Check domain
@@ -694,7 +695,7 @@ export class DwainsDomainEntitiesDialog extends LitElement {
       const entityReg = config.entities?.find(e => e.entity_id === entityId);
       const deviceReg = entityReg && entityReg.device_id ?
         config.devices?.find(d => d.device_id === entityReg.device_id) : null;
-      const entityAreaId = entityReg?.area_id || deviceReg?.area_id || this.hass?.entities?.[entityId]?.area_id;
+      const entityAreaId = entityReg?.area_id || deviceReg?.area_id || getEntityRegistry(this.hass)[entityId]?.area_id;
 
       // Skip entities without area
       if (!entityAreaId) return;
@@ -1089,11 +1090,11 @@ export class DwainsDomainEntitiesDialog extends LitElement {
     }
 
     const deviceClass = state.attributes?.device_class;
-    const icon = this.hass.entities?.[entity.entity_id]?.icon ||
+    const icon = getEntityRegistry(this.hass)[entity.entity_id]?.icon ||
       state.attributes?.icon ||
       getDeviceClassIcon(domain, deviceClass) ||
       getDomainIcon(domain);
-    const name = state.attributes?.friendly_name || this.hass.entities?.[entity.entity_id]?.name || entity.entity_id;
+    const name = state.attributes?.friendly_name || getEntityRegistry(this.hass)[entity.entity_id]?.name || entity.entity_id;
     const active = this._isEntityActiveForUi(state, domain);
     const unavailable = this._isUnavailable(state);
     const classes = [
@@ -1354,7 +1355,7 @@ export class DwainsDomainEntitiesDialog extends LitElement {
 
   private _entityDisplayName(state: any): string {
     const entityId = String(state?.entity_id || '');
-    return state?.attributes?.friendly_name || this.hass?.entities?.[entityId]?.name || entityId;
+    return state?.attributes?.friendly_name || getEntityRegistry(this.hass)[entityId]?.name || entityId;
   }
 
   // Show a short message in Home Assistant's own snackbar.
@@ -1543,7 +1544,7 @@ export class DwainsDomainEntitiesDialog extends LitElement {
     const deviceReg = entityReg?.device_id
       ? config?.devices?.find(device => device.device_id === entityReg.device_id)
       : undefined;
-    const areaId = entity.area_id || entityReg?.area_id || deviceReg?.area_id || this.hass?.entities?.[entity.entity_id]?.area_id;
+    const areaId = entity.area_id || entityReg?.area_id || deviceReg?.area_id || getEntityRegistry(this.hass)[entity.entity_id]?.area_id;
 
     return config?.areas?.find(area => area.area_id === areaId)?.name;
   }

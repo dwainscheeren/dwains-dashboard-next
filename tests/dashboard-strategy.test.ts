@@ -4,6 +4,7 @@ import { DwainsViewStrategy } from '../src/strategies/view-strategy';
 import type { DwainsDashboardConfig, LovelaceCardConfig, LovelaceViewConfig } from '../src/types/strategy';
 import { mockHass } from './helpers';
 import { resetEnergyPowerConfigCache } from '../src/utils/energy-prefs';
+import { getEntityRegistry } from '../src/utils/entity-registry';
 
 // Keys that are not stored by the user: registry data is loaded live on every
 // render and the rest are legacy fields the strategy does not own.
@@ -216,13 +217,16 @@ describe('DwainsDashboardStrategy', () => {
     ]);
   });
 
-  it('stores registry lookups on hass', async () => {
+  it('leaves the shared hass object alone and keeps the full entity registry itself', async () => {
     const hass = mockHass();
+    const before = { areas: hass.areas, devices: hass.devices, entities: hass.entities, floors: hass.floors };
     await new DwainsDashboardStrategy().generate(storedConfig(), hass);
-    expect(Object.keys(hass.areas)).toEqual(['living_room', 'kitchen', 'garden']);
-    expect(hass.devices['dev-lamp']?.name_by_user).toBe('Reading lamp');
-    expect(hass.entities['switch.plug']?.area_id).toBe('kitchen');
-    expect(Object.keys(hass.floors || {})).toEqual(['ground', 'first']);
+    // hass is shared with the rest of Home Assistant and must not be replaced.
+    expect(hass.areas).toBe(before.areas);
+    expect(hass.devices).toBe(before.devices);
+    expect(hass.entities).toBe(before.entities);
+    expect(hass.floors).toBe(before.floors);
+    expect(getEntityRegistry(hass)['switch.plug']?.area_id).toBe('kitchen');
   });
 
   it('still renders when the floor registry is unavailable', async () => {

@@ -1,6 +1,7 @@
 import type { HomeAssistant, HassEntity } from '../types/home-assistant';
 import type { AreaConfig, AreaData, AlertInfo, DomainCounts, EntityConfig } from '../types/strategy';
 import { formatEntityStateWithUnit, formatValueWithUnit } from './unit-format';
+import { getEntityRegistry } from './entity-registry';
 
 // Area data is cached per area and reused as long as every input is the same
 // object as before: the area, its entity list, the state object of each of
@@ -48,7 +49,7 @@ const cachedAreaData = (
     cached.areaEntities !== areaEntities ||
     cached.areaRegistry !== areaRegistry ||
     cached.formatEntityState !== hass.formatEntityState ||
-    cached.registry !== hass.entities ||
+    cached.registry !== getEntityRegistry(hass) ||
     cached.areasOptions !== config?.areas_options ||
     cached.temperatureState !== (areaRegistry?.temperature_entity_id ? hass.states[areaRegistry.temperature_entity_id] : undefined) ||
     cached.humidityState !== (areaRegistry?.humidity_entity_id ? hass.states[areaRegistry.humidity_entity_id] : undefined)
@@ -271,7 +272,7 @@ export const getAreaData = (area: AreaConfig, hass: HomeAssistant, areaEntities:
     temperatureState: temperatureEntityId ? hass.states[temperatureEntityId] : undefined,
     humidityState: humidityEntityId ? hass.states[humidityEntityId] : undefined,
     formatEntityState: hass.formatEntityState,
-    registry: hass.entities,
+    registry: getEntityRegistry(hass),
     areasOptions: config?.areas_options,
     checkedStates: hass.states,
     data: areaData,

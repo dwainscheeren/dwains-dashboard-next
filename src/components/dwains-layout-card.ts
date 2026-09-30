@@ -52,6 +52,7 @@ import {
   masterActionConfirmationEnabled,
   normalizeMasterActionConfirmationDomain,
 } from '../utils/master-action-confirmations';
+import { getEntityRegistry } from '../utils/entity-registry';
 
 // Use DomainCount from header-status-domains utility
 type DomainCount = StatusDomainCount;
@@ -357,7 +358,7 @@ export class DwainsLayoutCard extends LitElement {
 
   private _isFavoriteEntityVisible(entityId: string): boolean {
     const state = this.hass?.states?.[entityId];
-    const registry = this.hass?.entities?.[entityId] as any;
+    const registry = getEntityRegistry(this.hass)[entityId] as any;
     return Boolean(
       state &&
       !isHiddenAsUnavailable(state) &&
@@ -2165,7 +2166,7 @@ export class DwainsLayoutCard extends LitElement {
                     type: 'todo-list',
                     entity: entityId,
                     title: this.hass.states[entityId]?.attributes?.friendly_name ||
-                      this.hass.entities?.[entityId]?.name ||
+                      getEntityRegistry(this.hass)[entityId]?.name ||
                       entityId,
                   }}
                 ></dwains-dashboard-next-card-host>
@@ -2222,7 +2223,7 @@ export class DwainsLayoutCard extends LitElement {
 
   private _getHomeTodoEntities(): string[] {
     if (!this.hass) return [];
-    return this._homeTodoEntities(this.hass.states, this.hass.entities, this.hass.language);
+    return this._homeTodoEntities(this.hass.states, getEntityRegistry(this.hass) as unknown as HomeAssistant['entities'], this.hass.language);
   }
 
   private _homeTodoEntities = memoizeOne((
@@ -2845,7 +2846,7 @@ export class DwainsLayoutCard extends LitElement {
 
   private _getVisiblePersonEntities(): any[] {
     if (!this.hass || !this.config) return [];
-    return this._visiblePersonEntities(this.hass.states, this.hass.entities, getHiddenPersonIdSet(this.config));
+    return this._visiblePersonEntities(this.hass.states, getEntityRegistry(this.hass) as unknown as HomeAssistant['entities'], getHiddenPersonIdSet(this.config));
   }
 
   private _visiblePersonEntities = memoizeOne((
@@ -3252,7 +3253,7 @@ export class DwainsLayoutCard extends LitElement {
 
   private _renderFavoriteCard(entityId: string) {
     const rawState = this.hass.states[entityId];
-    const registry = this.hass.entities?.[entityId];
+    const registry = getEntityRegistry(this.hass)[entityId];
     if (!rawState || registry?.hidden_by) return nothing;
 
     const state = this._getEffectiveEntityState(rawState);
@@ -3428,7 +3429,7 @@ export class DwainsLayoutCard extends LitElement {
 
   private _entityDisplayName(state: any): string {
     const entityId = String(state?.entity_id || '');
-    return state?.attributes?.friendly_name || this.hass?.entities?.[entityId]?.name || entityId;
+    return state?.attributes?.friendly_name || getEntityRegistry(this.hass)[entityId]?.name || entityId;
   }
 
   private _favoriteSupportsQuickToggle(domain: string): boolean {
@@ -5211,8 +5212,8 @@ export class DwainsLayoutCard extends LitElement {
       return this._renderAreaReplacementCard(entity.entity_id, replacementConfig);
     }
 
-    const icon = this.hass.entities?.[entity.entity_id]?.icon || state.attributes?.icon || getDeviceClassIcon(domain, deviceClass) || getDomainIcon(domain);
-    const fullName = state.attributes?.friendly_name || this.hass.entities?.[entity.entity_id]?.name || entity.entity_id;
+    const icon = getEntityRegistry(this.hass)[entity.entity_id]?.icon || state.attributes?.icon || getDeviceClassIcon(domain, deviceClass) || getDomainIcon(domain);
+    const fullName = state.attributes?.friendly_name || getEntityRegistry(this.hass)[entity.entity_id]?.name || entity.entity_id;
     // The page already shows the room, so drop a leading area name from the tile
     // and use the second line for the device when that adds something.
     const name = stripAreaFromEntityName(fullName, area.name);
@@ -5257,7 +5258,7 @@ export class DwainsLayoutCard extends LitElement {
   }
 
   private _entityDeviceName(entityId: string): string | undefined {
-    const deviceId = this.hass.entities?.[entityId]?.device_id;
+    const deviceId = getEntityRegistry(this.hass)[entityId]?.device_id;
     const device = deviceId ? this.hass.devices?.[deviceId] : undefined;
     return device ? device.name_by_user || device.name || undefined : undefined;
   }
@@ -5809,7 +5810,7 @@ export class DwainsLayoutCard extends LitElement {
   private _getWeatherEntity() {
     if (this.config?.settings?.weather_entity_id) {
       const chosen = this.hass.states[this.config.settings.weather_entity_id];
-      if (chosen && !this.hass.entities?.[chosen.entity_id]?.hidden_by) {
+      if (chosen && !getEntityRegistry(this.hass)[chosen.entity_id]?.hidden_by) {
         return chosen;
       }
     }
@@ -5817,7 +5818,7 @@ export class DwainsLayoutCard extends LitElement {
     // Fallback to first visible weather entity
     return getDomainStates(this.hass.states, 'weather').find(state =>
       state.entity_id.startsWith('weather.') &&
-      !this.hass.entities?.[state.entity_id]?.hidden_by
+      !getEntityRegistry(this.hass)[state.entity_id]?.hidden_by
     );
   }
 
@@ -5828,7 +5829,7 @@ export class DwainsLayoutCard extends LitElement {
     }
 
     const chosen = this.hass.states[configuredAlarmId];
-    if (chosen && !this.hass.entities?.[chosen.entity_id]?.hidden_by) {
+    if (chosen && !getEntityRegistry(this.hass)[chosen.entity_id]?.hidden_by) {
       return chosen;
     }
 
@@ -5901,7 +5902,7 @@ export class DwainsLayoutCard extends LitElement {
 
   private _getEditableAreaEntities(areaId: string): EntityConfig[] {
     let entities = this._getAreaEntities(areaId).filter(entity => {
-      const registry = this.hass.entities?.[entity.entity_id];
+      const registry = getEntityRegistry(this.hass)[entity.entity_id];
       return Boolean(this.hass.states[entity.entity_id]) &&
         !(registry?.hidden_by ||
           (registry as any)?.disabled_by ||
@@ -5924,7 +5925,7 @@ export class DwainsLayoutCard extends LitElement {
     let entities = this._getAreaEntities(areaId);
 
     entities = entities.filter(entity => {
-      const registry = this.hass.entities?.[entity.entity_id];
+      const registry = getEntityRegistry(this.hass)[entity.entity_id];
       return !(registry?.hidden_by || registry?.entity_category === 'diagnostic' || registry?.entity_category === 'config');
     });
 

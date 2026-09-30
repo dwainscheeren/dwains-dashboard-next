@@ -11,6 +11,7 @@ import type {
 } from '../types/strategy';
 import { ddLang, ddLocalize } from '../utils/localize';
 import { loadTranslations } from '../i18n';
+import { setFullEntityRegistry } from '../utils/entity-registry';
 import { restrictNonAdminDashboardSettings } from '../utils/security';
 import { getEnergyPowerConfig } from '../utils/energy-prefs';
 
@@ -30,30 +31,10 @@ export class DwainsDashboardStrategy implements LovelaceStrategy {
       hass.callWS<{ floor_id: string; name: string; icon: string | null; level: number }[]>({ type: 'config/floor_registry/list' }).catch(() => [])
     ]);
 
-    // Store floors in hass object for easy access
-    if (floors.length > 0) {
-      hass.floors = floors.reduce((acc: any, floor: any) => {
-        acc[floor.floor_id] = floor;
-        return acc;
-      }, {});
-    }
-
-    // Store areas in hass object for easy access
-    hass.areas = areas.reduce((acc: any, area: any) => {
-      acc[area.area_id] = area;
-      return acc;
-    }, {});
-
-    // Store entities registry in hass for easy access
-    hass.entities = entities.reduce((acc: any, entity: any) => {
-      acc[entity.entity_id] = entity;
-      return acc;
-    }, {});
-
-    hass.devices = devices.reduce((acc: any, device: any) => {
-      acc[device.id] = device;
-      return acc;
-    }, {});
+    // Keep the full entity registry for Dwains Dashboard itself. hass.areas,
+    // hass.devices and hass.floors from Home Assistant are already complete,
+    // and hass is shared with the rest of Home Assistant, so it is not changed.
+    setFullEntityRegistry(entities);
 
     // Convert to our config format
     const areaConfigs: AreaConfig[] = areas.map(area => ({

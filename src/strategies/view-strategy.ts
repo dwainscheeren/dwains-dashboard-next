@@ -12,14 +12,6 @@ export class DwainsViewStrategy implements LovelaceViewStrategy {
   async generate(config: LovelaceViewStrategyConfig & DwainsDashboardConfig, hass: HomeAssistant): Promise<LovelaceViewConfig> {
     await loadTranslations(ddLang(hass));
 
-    // Set floors in hass if available
-    if (config.floors) {
-      (hass as any).floors = config.floors.reduce((acc, floor) => {
-        acc[floor.floor_id] = floor;
-        return acc;
-      }, {} as Record<string, any>);
-    }
-
     return {
       panel: true,
       cards: [

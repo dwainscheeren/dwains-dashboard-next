@@ -10,6 +10,7 @@ import { isEntityVisibleInArea } from './entity-visibility';
 import { getDeviceClassIcon, getDomainIcon } from './icons';
 import { buildHousePowerUsage } from './power-usage';
 import { getStateIndex } from './state-index';
+import { getEntityRegistry } from './entity-registry';
 
 export interface DomainCount {
   domain: string;
@@ -87,11 +88,10 @@ function statusCandidates(states: HomeAssistant['states']): HassEntity[] {
 // Everything in the status filter apart from the state itself depends only on
 // the entity registry and the dashboard config, so the answer is kept per
 // entity until either of them is replaced.
-const NO_REGISTRY = {};
 const visibilityCache = new WeakMap<object, WeakMap<object, Map<string, boolean>>>();
 
 function statusVisibilityCache(hass: HomeAssistant, config: object): Map<string, boolean> {
-  const registryKey = (hass.entities as object | undefined) || NO_REGISTRY;
+  const registryKey = getEntityRegistry(hass);
   let byConfig = visibilityCache.get(registryKey);
   if (!byConfig) {
     byConfig = new WeakMap();
