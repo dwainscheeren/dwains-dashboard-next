@@ -1,4 +1,5 @@
 import {
+  loadTranslations,
   SUPPORTED_LANGUAGES,
   TRANSLATIONS,
   type SupportedLanguage,
@@ -43,8 +44,10 @@ export function ddLocalize(
   vars?: Record<string, string | number>
 ): string {
   const lang = ddLang(hass);
-  const dict = TRANSLATIONS[lang] || TRANSLATIONS.en;
-  const localized = dict as Record<string, string>;
+  const dict = TRANSLATIONS[lang];
+  // Not loaded yet: fall back to English and load it for the next render.
+  if (!dict) void loadTranslations(lang);
+  const localized = (dict || TRANSLATIONS.en) as Record<string, string>;
   const english = TRANSLATIONS.en as Record<string, string>;
   let str = localized[key] ?? english[key] ?? key;
   if (vars) {

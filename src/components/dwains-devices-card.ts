@@ -27,6 +27,7 @@ import { fireEvent } from './utils/fire-event';
 import { buildHousePowerUsage, type PowerAreaSummary, type PowerEntitySummary } from '../utils/power-usage';
 import { isHassDarkTheme } from '../utils/theme';
 import { formatValueWithUnit } from '../utils/unit-format';
+import { TRANSLATIONS_LOADED_EVENT } from '../i18n';
 import './utils/dd-card-host';
 
 const NEW_DEVICES_KEY = '__new_devices__';
@@ -150,6 +151,7 @@ export class DwainsDevicesCard extends LitElement {
     super.connectedCallback();
     this._syncThemeAttribute();
     this._checkMobile();
+    window.addEventListener(TRANSLATIONS_LOADED_EVENT, this._handleTranslationsLoaded);
     window.addEventListener('resize', this._resizeHandler);
     window.addEventListener('dwains-dashboard-next-toggle-devices-nav', this._handleDevicesNavToggle);
     window.addEventListener('dwains-dashboard-next-select-device-domain', this._handleSelectDeviceDomain as EventListener);
@@ -159,8 +161,13 @@ export class DwainsDevicesCard extends LitElement {
     this._syncBottomNavDeviceContext();
   }
 
+  private _handleTranslationsLoaded = (): void => {
+    this.requestUpdate();
+  };
+
   disconnectedCallback() {
     super.disconnectedCallback();
+    window.removeEventListener(TRANSLATIONS_LOADED_EVENT, this._handleTranslationsLoaded);
     window.removeEventListener('resize', this._resizeHandler);
     window.removeEventListener('dwains-dashboard-next-toggle-devices-nav', this._handleDevicesNavToggle);
     window.removeEventListener('dwains-dashboard-next-select-device-domain', this._handleSelectDeviceDomain as EventListener);

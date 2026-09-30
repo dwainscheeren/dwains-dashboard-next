@@ -23,9 +23,12 @@ import { formatEntityStateWithUnit, formatValueWithUnit } from '../utils/unit-fo
 import { showDomainEntitiesDialog } from './utils/show-domain-entities-dialog';
 import { showCardEditorDialog } from './utils/show-card-editor-dialog';
 import { layoutCardStyles } from './styles/layout-card-styles';
+import { TRANSLATIONS_LOADED_EVENT } from '../i18n';
+
+// The settings editor is large and only needed on the settings page.
+const loadStrategyEditor = () => import('./dwains-dashboard-strategy-editor');
 import { ensureBottomNav } from './dwains-bottom-nav';
 import { makeDialogManager } from './utils/make-dialog-manager';
-import './dwains-dashboard-strategy-editor';
 import './utils/dd-card-host';
 import './utils/dd-tile-host';
 import { fireEvent } from './utils/fire-event';
@@ -446,6 +449,7 @@ export class DwainsLayoutCard extends LitElement {
 
   connectedCallback() {
     super.connectedCallback();
+    window.addEventListener(TRANSLATIONS_LOADED_EVENT, this._handleTranslationsLoaded);
     this._syncThemeAttribute();
     this._loadMobileEntityLayoutPreference();
     this._loadAreaSidebarWidthPreference();
@@ -492,8 +496,13 @@ export class DwainsLayoutCard extends LitElement {
     }
   }
 
+  private _handleTranslationsLoaded = (): void => {
+    this.requestUpdate();
+  };
+
   disconnectedCallback() {
     super.disconnectedCallback();
+    window.removeEventListener(TRANSLATIONS_LOADED_EVENT, this._handleTranslationsLoaded);
     window.removeEventListener('dwains-dashboard-next-toggle-area-nav', this._handleAreaNavToggle);
     window.removeEventListener('dwains-dashboard-next-open-settings', this._handleOpenSettingsEvent);
     window.removeEventListener('dwains-dashboard-next-open-home', this._handleOpenHomeEvent);

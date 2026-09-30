@@ -9,11 +9,13 @@ import type {
   FloorConfig,
   DwainsDashboardConfig
 } from '../types/strategy';
-import { ddLocalize } from '../utils/localize';
+import { ddLang, ddLocalize } from '../utils/localize';
+import { loadTranslations } from '../i18n';
 import { restrictNonAdminDashboardSettings } from '../utils/security';
 
 export class DwainsDashboardStrategy implements LovelaceStrategy {
   async generate(config: LovelaceStrategyConfig, hass: HomeAssistant): Promise<LovelaceConfig> {
+    await loadTranslations(ddLang(hass));
     console.log('Dwains Dashboard Next Strategy');
     console.log('Config received:', config);
 

@@ -13,6 +13,7 @@ import {
 } from '@mdi/js';
 import type { DwainsDashboardSettings } from '../types/strategy';
 import { ddLocalize } from '../utils/localize';
+import { TRANSLATIONS_LOADED_EVENT } from '../i18n';
 import { navigateHomeAssistant } from '../utils/navigation';
 import { isHassDarkTheme } from '../utils/theme';
 import {
@@ -114,6 +115,7 @@ export class DwainsBottomNav extends LitElement {
     this._sync();
     window.addEventListener('location-changed', this._sync);
     window.addEventListener('popstate', this._sync);
+    window.addEventListener(TRANSLATIONS_LOADED_EVENT, this._handleTranslationsLoaded);
     window.addEventListener('dwains-dashboard-next-area-context-changed', this._handleAreaContext as EventListener);
     window.addEventListener('dwains-dashboard-next-device-context-changed', this._handleDeviceContext as EventListener);
   }
@@ -122,6 +124,7 @@ export class DwainsBottomNav extends LitElement {
     super.disconnectedCallback();
     window.removeEventListener('location-changed', this._sync);
     window.removeEventListener('popstate', this._sync);
+    window.removeEventListener(TRANSLATIONS_LOADED_EVENT, this._handleTranslationsLoaded);
     window.removeEventListener('dwains-dashboard-next-area-context-changed', this._handleAreaContext as EventListener);
     window.removeEventListener('dwains-dashboard-next-device-context-changed', this._handleDeviceContext as EventListener);
   }
@@ -137,6 +140,12 @@ export class DwainsBottomNav extends LitElement {
       this._restrictedMenuOpen = false;
     }
     if (!this._isHaMenuRestricted()) this._restrictedMenuOpen = false;
+  };
+
+  private _handleTranslationsLoaded = (): void => {
+    // Labels were rendered in English while the language loaded.
+    if (this._hass) this._loadItems();
+    this.requestUpdate();
   };
 
   private _syncThemeAttribute(): void {
