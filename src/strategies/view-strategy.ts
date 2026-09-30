@@ -11,7 +11,6 @@ import type {
 export class DwainsViewStrategy implements LovelaceViewStrategy {
   async generate(config: LovelaceViewStrategyConfig & DwainsDashboardConfig, hass: HomeAssistant): Promise<LovelaceViewConfig> {
     await loadTranslations(ddLang(hass));
-    console.log('Dwains View Strategy generate called', config);
 
     // Set floors in hass if available
     if (config.floors) {

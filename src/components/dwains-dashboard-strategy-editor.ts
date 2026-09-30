@@ -291,7 +291,6 @@ export class DwainsDashboardStrategyEditor extends LitElement {
         title: this._dashboardTitle || 'Dashboard',
         icon: this._dashboardIcon || undefined,
       });
-      console.log('✅ Dashboard-naam/icoon opgeslagen');
     } catch (e) {
       console.error('❌ Dashboard bijwerken mislukt:', e);
       alert(this._t('strategy.save_name_failed', { error: String(e) }));

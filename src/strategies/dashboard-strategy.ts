@@ -16,8 +16,6 @@ import { restrictNonAdminDashboardSettings } from '../utils/security';
 export class DwainsDashboardStrategy implements LovelaceStrategy {
   async generate(config: LovelaceStrategyConfig, hass: HomeAssistant): Promise<LovelaceConfig> {
     await loadTranslations(ddLang(hass));
-    console.log('Dwains Dashboard Next Strategy');
-    console.log('Config received:', config);
 
     // Fetch data from Home Assistant
     const [areas, devices, entities, floors] = await Promise.all([
@@ -26,34 +24,6 @@ export class DwainsDashboardStrategy implements LovelaceStrategy {
       hass.callWS<{ entity_id: string; area_id: string | null; device_id: string | null; hidden_by: string | null; entity_category: string | null; created_at?: string | null }[]>({ type: 'config/entity_registry/list' }),
       hass.callWS<{ floor_id: string; name: string; icon: string | null; level: number }[]>({ type: 'config/floor_registry/list' }).catch(() => [])
     ]);
-
-    console.log(`Found ${areas.length} areas, ${devices.length} devices, ${entities.length} entities, ${floors.length} floors`);
-
-    // Debug: Check devices area assignments
-    console.log('Devices met area_id:', devices.filter(d => d.area_id).map(d => ({
-      name: d.name,
-      id: d.id,
-      area_id: d.area_id
-    })));
-
-    console.log('Devices zonder area_id count:', devices.filter(d => !d.area_id).length);
-
-    // Debug: Check entity-to-area resolution
-    const entitiesWithResolvedAreas = entities.map(entity => {
-      const directAreaId = entity.area_id;
-      const deviceAreaId = entity.device_id ? devices.find(d => d.id === entity.device_id)?.area_id : null;
-      const resolvedAreaId = directAreaId || deviceAreaId;
-      return {
-        entity_id: entity.entity_id,
-        direct_area_id: directAreaId,
-        device_id: entity.device_id,
-        device_area_id: deviceAreaId,
-        resolved_area_id: resolvedAreaId
-      };
-    });
-
-    console.log('Entities met resolved area_id:', entitiesWithResolvedAreas.filter(e => e.resolved_area_id).slice(0, 10));
-    console.log('Entities zonder resolved area_id count:', entitiesWithResolvedAreas.filter(e => !e.resolved_area_id).length);
 
     // Store floors in hass object for easy access
     if (floors.length > 0) {

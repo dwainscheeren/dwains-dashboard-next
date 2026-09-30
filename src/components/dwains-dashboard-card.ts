@@ -63,8 +63,6 @@ export class DwainsDashboardCard extends LitElement {
         this.hass.callWS<{ floor_id: string; name: string; icon: string | null; level: number }[]>({ type: 'config/floor_registry/list' }).catch(() => [])
       ]);
 
-      console.log(`Custom Card: Found ${areas.length} areas, ${devices.length} devices, ${entities.length} entities, ${floors.length} floors`);
-
       // Convert to our format
       const areaConfigs: AreaConfig[] = areas.map(area => ({
         area_id: area.area_id,
@@ -191,7 +189,6 @@ export class DwainsDashboardCard extends LitElement {
       layoutCard._selectedView = 'home';
       layoutCard._selectedArea = null;
       layoutCard.requestUpdate();
-      console.log('Custom Card: Navigated to home view');
     }
   }
 

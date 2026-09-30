@@ -3866,7 +3866,6 @@ export class DwainsLayoutCard extends LitElement {
           },
         };
         await this.hass.callWS({ type: 'lovelace/config/save', ...base, config: newConfig });
-        console.log('✅ Area options saved for', areaId);
       } else {
         console.warn('⚠️ No dashboard strategy found; area options were not saved', lovelaceConfig);
       }

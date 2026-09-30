@@ -3,7 +3,6 @@ import { DwainsViewStrategy } from './strategies/view-strategy';
 
 import { DD_NEXT_VERSION } from './version';
 
-console.log('Dwains Dashboard Next - Loading...');
 console.log(`%cDwains Dashboard Next ${DD_NEXT_VERSION}`, 'background:#3a7;color:#fff;padding:2px 8px;border-radius:6px;font-weight:bold');
 
 const DASHBOARD_STRATEGY_TYPE = 'dwains-dashboard-next';
@@ -17,7 +16,6 @@ let uiElementsReady: Promise<void> = Promise.resolve().then(() => loadUiElements
 const safeDefine = (name: string, constructor: CustomElementConstructor) => {
   if (!customElements.get(name)) {
     customElements.define(name, constructor);
-    console.log(`✓ Registered: ${name}`);
   }
 };
 
@@ -76,8 +74,6 @@ async function loadUiElements(): Promise<void> {
     // Legacy card alias for early Next configs when old DD is not installed.
     safeDefine('dwains-dashboard-card', class extends DwainsDashboardCard {});
 
-    console.log('✓ Registered custom card: dwains-dashboard-next-card');
-    console.log('Dwains Dashboard Next - Loaded successfully!');
   } catch (err) {
     console.error('Dwains Dashboard Next - Failed to load UI elements', err);
   }
@@ -203,7 +199,6 @@ if (!Array.isArray(window.customStrategies)) {
     description: 'Automatic dashboard based on your areas, devices and entities.',
     documentationURL: 'https://github.com/dwainscheeren/dwains-dashboard-next',
   });
-  console.log('Registered Dwains Dashboard Next in the Add dashboard dialog');
 }
 
 // Register custom card in card picker
