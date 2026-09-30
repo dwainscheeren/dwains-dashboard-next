@@ -10,6 +10,7 @@ import type {
 } from '../types/strategy';
 import { ddLocale, ddLocalize, ddLocalizePlural } from '../utils/localize';
 import { sortAreas } from '../utils/area-entities';
+import { isHiddenAsUnavailable } from '../utils/entity-availability';
 import { getDomainIcon, getDeviceClassIcon, getDomainColor } from '../utils/icons';
 import { getDomainName, getDeviceClassName } from '../utils/domain-names';
 import { resolveEntityCardConfig } from '../utils/blueprint-replacements';
@@ -328,7 +329,7 @@ export class DwainsDevicesCard extends LitElement {
     if (this.config?.settings?.hide_unavailable_entities_on_devices !== false) {
       filteredEntities = filteredEntities.filter((entity) => {
         const state = this._hass.states[entity.entity_id];
-        return state && state.state !== 'unavailable' && state.state !== 'unknown';
+        return state && !isHiddenAsUnavailable(state);
       });
     }
 

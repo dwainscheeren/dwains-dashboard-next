@@ -1,6 +1,7 @@
 import type { HassEntity, HomeAssistant } from '../types/home-assistant';
 import type { DeviceConfig, DwainsDashboardConfig, EntityConfig } from '../types/strategy';
 import { entityDeviceId } from './device-admission';
+import { isHiddenAsUnavailable } from './entity-availability';
 import { getAreaHiddenEntityIdSet, getHiddenDeviceIdSet } from './entity-lookups';
 import { getStateIndex } from './state-index';
 
@@ -126,7 +127,7 @@ export class AreaEntityResolver {
       const state = hass.states[entityId];
       if (!state || !isRegistryVisible(hass.entities?.[entityId])) continue;
       if (hiddenInArea.has(entityId)) continue;
-      if (hideUnavailable && (state.state === 'unavailable' || state.state === 'unknown')) continue;
+      if (hideUnavailable && isHiddenAsUnavailable(state)) continue;
       if (hiddenDevices.size) {
         const deviceId = entityDeviceId(hass, entity);
         if (deviceId && hiddenDevices.has(deviceId)) continue;

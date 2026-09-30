@@ -36,6 +36,7 @@ import {
 } from "../utils/area-entities";
 import { countReplacementRules } from "../utils/blueprint-replacements";
 import { persistableConfig } from "../utils/dashboard-config";
+import { isHiddenAsUnavailable } from "../utils/entity-availability";
 import { getDeviceClassName, getDomainName } from "../utils/domain-names";
 import { getDeviceClassIcon, getDomainColor, getDomainIcon } from "../utils/icons";
 import { ddLocale, ddLocalize, ddLocalizePlural } from "../utils/localize";
@@ -2916,7 +2917,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
 
       const state = this.hass?.states?.[entityId];
       if (this._config?.settings?.hide_unavailable_entities_on_devices !== false &&
-          (!state || state.state === 'unavailable' || state.state === 'unknown')) {
+          (!state || isHiddenAsUnavailable(state))) {
         return;
       }
 

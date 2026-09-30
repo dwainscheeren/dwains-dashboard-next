@@ -10,6 +10,7 @@ import type { HassEntity, HomeAssistant } from '../types/home-assistant';
 import type { DwainsDashboardConfig, AreaConfig, EntityConfig, AreaData, AreaCustomCard, EntitiesDisplay, HomeCustomCard, HomeInformationCardKey, HomeSectionKey, MasterActionConfirmationDomain } from '../types/strategy';
 import { getAreaData, clearAreaDataCache } from '../utils/area';
 import { AreaEntityResolver } from '../utils/area-entity-resolver';
+import { isHiddenAsUnavailable, splitHiddenUnavailableEntities } from '../utils/entity-availability';
 import { getAreaConfigMap, getHiddenPersonIdSet, resolveStatusEntityAreaId } from '../utils/entity-lookups';
 import { getDomainStates } from '../utils/state-index';
 import {
@@ -352,8 +353,7 @@ export class DwainsLayoutCard extends LitElement {
     const registry = this.hass?.entities?.[entityId] as any;
     return Boolean(
       state &&
-      state.state !== 'unavailable' &&
-      state.state !== 'unknown' &&
+      !isHiddenAsUnavailable(state) &&
       !registry?.hidden_by &&
       !registry?.hidden
     );
@@ -5233,8 +5233,6 @@ export class DwainsLayoutCard extends LitElement {
     const name = state.attributes?.friendly_name || this.hass.entities?.[entity.entity_id]?.name || entity.entity_id;
     const active = this._isEntityActiveForUi(state, domain);
     const actionKind = this._mobileEntityActionKind(domain);
-    const unavailable = ['unavailable', 'unknown'].includes(String(state.state).toLowerCase());
-    const unknownIsNormal = domain === 'scene' || domain === 'event';
     const hasInlineSelect = this._mobileEntityHasInlineSelect(domain, state);
     const classes = [
       'mobile-entity-card',
@@ -5242,7 +5240,7 @@ export class DwainsLayoutCard extends LitElement {
       `action-${actionKind}`,
       active ? 'is-active' : 'is-off',
       hasInlineSelect ? 'has-inline-select' : '',
-      unavailable && !unknownIsNormal ? 'is-unavailable' : '',
+      isHiddenAsUnavailable(state) ? 'is-unavailable' : '',
     ].join(' ');
 
     return html`
@@ -5924,7 +5922,7 @@ export class DwainsLayoutCard extends LitElement {
     if (this.config?.settings?.hide_unavailable_entities !== false) {
       entities = entities.filter(entity => {
         const state = this.hass.states[entity.entity_id];
-        return state && state.state !== 'unavailable' && state.state !== 'unknown';
+        return state && !isHiddenAsUnavailable(state);
       });
     }
 
@@ -5933,8 +5931,6 @@ export class DwainsLayoutCard extends LitElement {
 
   private _getUnavailableAreaEntities(areaId: string): { unavailable: string[], unknown: string[] } {
     let entities = this._getAreaEntities(areaId);
-    const unavailable: string[] = [];
-    const unknown: string[] = [];
 
     entities = entities.filter(entity => {
       const registry = this.hass.entities?.[entity.entity_id];
@@ -5952,18 +5948,7 @@ export class DwainsLayoutCard extends LitElement {
 
     entities = filterHiddenDeviceEntities(this.hass, this.config, entities);
 
-    entities.forEach(entity => {
-      const state = this.hass.states[entity.entity_id];
-      if (!state) return;
-
-      if (state.state === 'unavailable') {
-        unavailable.push(entity.entity_id);
-      } else if (state.state === 'unknown') {
-        unknown.push(entity.entity_id);
-      }
-    });
-
-    return { unavailable, unknown };
+    return splitHiddenUnavailableEntities(entities.map(entity => entity.entity_id), this.hass.states);
   }
 
   private _renderUnavailableEntitiesIcon(areaId: string) {

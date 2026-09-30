@@ -1,4 +1,5 @@
 import type { HassEntity, HomeAssistant } from '../types/home-assistant';
+import { isHiddenAsUnavailable } from './entity-availability';
 
 // Home Assistant replaces `hass` on every state change of any entity. These
 // helpers decide whether such a change can affect what a view shows, so the
@@ -74,10 +75,6 @@ function entityDomain(entityId: string): string {
   return dot === -1 ? entityId : entityId.slice(0, dot);
 }
 
-function isUnavailableState(state: HassEntity): boolean {
-  return state.state === 'unavailable' || state.state === 'unknown';
-}
-
 /** An update entity changed its state, or appeared or disappeared (Home summaries). */
 export function isUpdateEntityStateChange(
   entityId: string,
@@ -149,7 +146,7 @@ export function isHomeRelevantStateChange(
   // Added or removed entities change area membership and counts.
   if (!oldState || !newState) return true;
   // Unavailable entities are left out of the area lists and device counts.
-  if (isUnavailableState(oldState) !== isUnavailableState(newState)) return true;
+  if (isHiddenAsUnavailable(oldState) !== isHiddenAsUnavailable(newState)) return true;
   // States can place entities in an area through their attributes.
   if (oldState.attributes?.area_id !== newState.attributes?.area_id) return true;
 
