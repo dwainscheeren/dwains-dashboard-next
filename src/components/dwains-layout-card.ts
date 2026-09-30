@@ -5726,10 +5726,10 @@ export class DwainsLayoutCard extends LitElement {
 
   private _sceneLastActivatedText(state: any): string {
     const value = String(state?.state || '').toLowerCase();
-    const candidate = value && !['unknown', 'unavailable'].includes(value)
-      ? state.state
-      : state?.last_changed || state?.last_updated;
-    const timestamp = Date.parse(candidate);
+    if (value === 'unavailable') return this._t('common.unavailable');
+    // A scene's state is the time it was last activated. "unknown" means it was
+    // never activated; last_changed would only be the time Home Assistant loaded it.
+    const timestamp = value && value !== 'unknown' ? Date.parse(state.state) : Number.NaN;
 
     if (!Number.isFinite(timestamp)) {
       return this._t('entity.not_activated');
@@ -5741,17 +5741,15 @@ export class DwainsLayoutCard extends LitElement {
   private _eventLastTriggeredText(state: any): string {
     const value = String(state?.state || '').toLowerCase();
     if (value === 'unavailable') return this._t('common.unavailable');
+    // "unknown" means no event happened yet since the entity was created.
+    if (!value || value === 'unknown') return this._t('entity.no_events');
 
     const timestamp = Date.parse(state?.last_changed || state?.last_updated || '');
     if (!Number.isFinite(timestamp)) {
       return this._t('entity.no_events');
     }
 
-    if (value && value !== 'unknown') {
-      return `${this._formatFavoriteState(state)} · ${this._formatRelativeTime(timestamp)}`;
-    }
-
-    return this._formatRelativeTime(timestamp);
+    return `${this._formatFavoriteState(state)} · ${this._formatRelativeTime(timestamp)}`;
   }
 
   private _formatRelativeTime(timestamp: number): string {
