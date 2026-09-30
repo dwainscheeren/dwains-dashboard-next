@@ -2,7 +2,7 @@ import type { HassEntity, HomeAssistant } from '../types/home-assistant';
 import type { DeviceConfig, DwainsDashboardConfig, EntityConfig } from '../types/strategy';
 import { entityDeviceId } from './device-admission';
 import { isHiddenAsUnavailable } from './entity-availability';
-import { getAreaHiddenEntityIdSet, getHiddenDeviceIdSet } from './entity-lookups';
+import { configEntityAreaId, getAreaHiddenEntityIdSet, getHiddenDeviceIdSet } from './entity-lookups';
 import { getStateIndex } from './state-index';
 
 const EMPTY: EntityConfig[] = [];
@@ -28,7 +28,7 @@ interface AreaIndex {
   entities: EntityConfig[] | undefined;
   devices: DeviceConfig[] | undefined;
   registry: unknown;
-  /** Config entities per area (own area or device area), registry visible, in config order. */
+  /** Config entities per area (own area, else device area), registry visible, in config order. */
   byArea: Map<string, EntityConfig[]>;
   memberIds: Map<string, Set<string>>;
   /** Entries for states that only carry the area in their attributes. */
@@ -156,17 +156,6 @@ export class AreaEntityResolver {
       return current;
     }
 
-    const deviceAreas = new Map<string, Set<string>>();
-    for (const device of devices || []) {
-      if (!device.area_id) continue;
-      let areas = deviceAreas.get(device.device_id);
-      if (!areas) {
-        areas = new Set();
-        deviceAreas.set(device.device_id, areas);
-      }
-      areas.add(device.area_id);
-    }
-
     const byArea = new Map<string, EntityConfig[]>();
     const memberIds = new Map<string, Set<string>>();
     const add = (areaId: string, entity: EntityConfig) => {
@@ -183,15 +172,10 @@ export class AreaEntityResolver {
     };
 
     for (const entity of entities || []) {
-      const ownArea = entity.area_id;
-      const areasFromDevice = entity.device_id ? deviceAreas.get(entity.device_id) : undefined;
-      if (!ownArea && !areasFromDevice) continue;
+      const areaId = configEntityAreaId(config, entity);
+      if (!areaId) continue;
       if (!isRegistryVisible(registry?.[entity.entity_id])) continue;
-
-      if (ownArea) add(ownArea, entity);
-      areasFromDevice?.forEach((areaId) => {
-        if (areaId !== ownArea) add(areaId, entity);
-      });
+      add(areaId, entity);
     }
 
     const index: AreaIndex = {

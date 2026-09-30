@@ -87,6 +87,29 @@ export function getAreaHiddenEntityIdSet(
 }
 
 /**
+ * Area of a config entity, the way Home Assistant assigns it: the entity's own
+ * area when it has one, otherwise the area of its device. An entity with its
+ * own area is never also part of the area of its device.
+ */
+export function configEntityAreaId(
+  config: DwainsDashboardConfig | null | undefined,
+  entity: Pick<EntityConfig, 'area_id' | 'device_id'>
+): string | null | undefined {
+  if (entity.area_id) return entity.area_id;
+  if (!entity.device_id) return undefined;
+  return getDeviceConfigMap(config).get(entity.device_id)?.area_id;
+}
+
+/** Whether a config entity belongs to the area. See `configEntityAreaId`. */
+export function isConfigEntityInArea(
+  config: DwainsDashboardConfig | null | undefined,
+  entity: Pick<EntityConfig, 'area_id' | 'device_id'>,
+  areaId: string
+): boolean {
+  return Boolean(areaId) && configEntityAreaId(config, entity) === areaId;
+}
+
+/**
  * Area of an entity as used by the status cards: the entity's own area, then
  * the area of its device from the config, then the Home Assistant registry.
  */
@@ -96,8 +119,5 @@ export function resolveStatusEntityAreaId(
   entityId: string,
   entityConfig: EntityConfig | undefined = getEntityConfigMap(config).get(entityId)
 ): string | null | undefined {
-  const deviceConfig = entityConfig && entityConfig.device_id
-    ? getDeviceConfigMap(config).get(entityConfig.device_id)
-    : null;
-  return entityConfig?.area_id || deviceConfig?.area_id || hass?.entities?.[entityId]?.area_id;
+  return (entityConfig && configEntityAreaId(config, entityConfig)) || hass?.entities?.[entityId]?.area_id;
 }

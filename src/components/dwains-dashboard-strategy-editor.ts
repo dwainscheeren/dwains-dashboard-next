@@ -37,6 +37,7 @@ import {
 import { countReplacementRules } from "../utils/blueprint-replacements";
 import { persistableConfig } from "../utils/dashboard-config";
 import { isHiddenAsUnavailable } from "../utils/entity-availability";
+import { isConfigEntityInArea } from "../utils/entity-lookups";
 import { getDeviceClassName, getDomainName } from "../utils/domain-names";
 import { getDeviceClassIcon, getDomainColor, getDomainIcon } from "../utils/icons";
 import { ddLocale, ddLocalize, ddLocalizePlural } from "../utils/localize";
@@ -1553,30 +1554,8 @@ export class DwainsDashboardStrategyEditor extends LitElement {
     }
 
     // Get all entities for this area (from entity registry and via states)
-    const areaEntities: { entity_id: string }[] = [];
-    const seenEntities = new Set<string>();
-
-    // Get entities from registry first
-    if (this._config.entities) {
-      // Get all devices in this area
-      const areaDevices = new Set<string>();
-      if (this._config.devices) {
-        this._config.devices.forEach(device => {
-          if (device.area_id === this._area) {
-            areaDevices.add(device.device_id);
-          }
-        });
-      }
-
-      // Get entities via registry (direct or via device)
-      this._config.entities.forEach(entity => {
-        if (entity.area_id === this._area ||
-            (entity.device_id && areaDevices.has(entity.device_id))) {
-          areaEntities.push({ entity_id: entity.entity_id });
-          seenEntities.add(entity.entity_id);
-        }
-      });
-    }
+    const areaEntities = this._configAreaEntities(this._area);
+    const seenEntities = new Set(areaEntities.map(entity => entity.entity_id));
 
     // Also check states for entities that might not be in registry
     if (this.hass?.states) {
@@ -3114,6 +3093,14 @@ export class DwainsDashboardStrategyEditor extends LitElement {
     this._saveUngroupedEntityOrder(nextOrder);
   }
 
+  /** Config entities of the area: their own area, otherwise the area of their device. */
+  private _configAreaEntities(areaId: string): { entity_id: string }[] {
+    const config = this._config;
+    return (config?.entities || [])
+      .filter(entity => isConfigEntityInArea(config, entity, areaId))
+      .map(entity => ({ entity_id: entity.entity_id }));
+  }
+
   private _getAreaGroupedEntitiesWithoutFiltering(
     areaEntities: { entity_id: string }[],
     hass: HomeAssistant
@@ -3658,30 +3645,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
     if (!this._draggedEntityId || !this._config || !this._area || this._draggedEntityGroup !== group) return;
 
     // Get entities for this group
-    const areaEntities: { entity_id: string }[] = [];
-    const seenEntities = new Set<string>();
-
-    // Get entities from registry first
-    if (this._config.entities) {
-      // Get all devices in this area
-      const areaDevices = new Set<string>();
-      if (this._config.devices) {
-        this._config.devices.forEach(device => {
-          if (device.area_id === this._area) {
-            areaDevices.add(device.device_id);
-          }
-        });
-      }
-
-      // Get entities via registry
-      this._config.entities.forEach(entity => {
-        if (entity.area_id === this._area ||
-            (entity.device_id && areaDevices.has(entity.device_id))) {
-          areaEntities.push({ entity_id: entity.entity_id });
-          seenEntities.add(entity.entity_id);
-        }
-      });
-    }
+    const areaEntities = this._configAreaEntities(this._area);
 
     // Get grouped entities
     const groups = this._getAreaGroupedEntitiesWithoutFiltering(areaEntities, this.hass!);

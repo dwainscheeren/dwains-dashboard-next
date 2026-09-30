@@ -11,6 +11,7 @@ import type {
 import { ddLocale, ddLocalize, ddLocalizePlural } from '../utils/localize';
 import { sortAreas } from '../utils/area-entities';
 import { isHiddenAsUnavailable } from '../utils/entity-availability';
+import { isConfigEntityInArea } from '../utils/entity-lookups';
 import { getDomainIcon, getDeviceClassIcon, getDomainColor } from '../utils/icons';
 import { getDomainName, getDeviceClassName } from '../utils/domain-names';
 import { resolveEntityCardConfig } from '../utils/blueprint-replacements';
@@ -232,27 +233,16 @@ export class DwainsDevicesCard extends LitElement {
   // ---- Databouw + filtering -------------------------------------------------
 
   // Replica van layout-card._getAreaEntities (zonder cache): verzamelt de
-  // entiteiten van een area op basis van entity.area_id of het area_id van het
-  // bijbehorende device, en slaat hidden/diagnostic/config over.
+  // entiteiten van een area op basis van entity.area_id, of anders het area_id
+  // van het bijbehorende device, en slaat hidden/diagnostic/config over.
   private _getAreaEntities(areaId: string): EntityConfig[] {
     const entities: EntityConfig[] = [];
     const processedEntities = new Set<string>();
 
-    if (this.config?.entities) {
-      const areaDevices = new Set<string>();
-      if (this.config.devices) {
-        this.config.devices.forEach((device) => {
-          if (device.area_id === areaId) {
-            areaDevices.add(device.device_id);
-          }
-        });
-      }
-
-      this.config.entities.forEach((entity) => {
-        if (
-          entity.area_id === areaId ||
-          (entity.device_id && areaDevices.has(entity.device_id))
-        ) {
+    const config = this.config;
+    if (config?.entities) {
+      config.entities.forEach((entity) => {
+        if (isConfigEntityInArea(config, entity, areaId)) {
           const registry = this._hass.entities?.[entity.entity_id];
           if (
             registry?.hidden_by ||
