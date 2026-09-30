@@ -108,6 +108,12 @@ export const ru = {
   'layout.swipe_cards': 'Прокручивать карточки',
   'layout.show_all_cards': 'Показать все карточки',
   'layout.switch_swipe_cards': 'Переключить на карточки с прокруткой',
+  'layout.area_empty_title': 'Здесь пока ничего нет',
+  'layout.area_empty_text': 'Здесь появятся устройства и объекты, которые вы назначите этому помещению в Home Assistant.',
+  'layout.area_settings': 'Настройки помещения',
+  'layout.area_not_found_title': 'Помещение не найдено',
+  'layout.area_not_found_text': 'Возможно, это помещение было удалено или переименовано в Home Assistant.',
+  'layout.manage_areas': 'Управление помещениями',
 
   'home.notifications': 'Уведомления',
   'home.notifications_description': 'Сохраняемые уведомления Home Assistant',
@@ -156,6 +162,9 @@ export const ru = {
   'home.swipe_areas': 'Прокручивать области',
   'home.show_all_areas': 'Показать все области',
   'home.switch_areas_swipe': 'Переключить области на карточки с прокруткой',
+  'home.no_areas_title': 'Помещений пока нет',
+  'home.no_areas_text': 'Создайте помещения в Home Assistant, чтобы у каждой комнаты была своя страница.',
+  'home.set_up_areas': 'Настроить помещения',
 
   'status.light_on.one': '{count} включённый светильник',
   'status.light_on.other': '{count} включённых светильников',

@@ -3023,7 +3023,11 @@ export class DwainsLayoutCard extends LitElement {
 
   private _renderMobileHomeAreas() {
     const areas = this._getVisibleSortedAreas();
-    if (!areas.length) return nothing;
+    if (!areas.length) {
+      // Only when Home Assistant has no areas at all; areas hidden in the
+      // dashboard settings are a choice, not something to fix.
+      return this.config?.areas?.length ? nothing : this._renderNoAreasHint();
+    }
     const desktopCollapsed = this._isDesktopAreaSidebarCollapsed();
     const layout = desktopCollapsed ? 'grid' : this._mobileHomeAreasLayout;
     const gridMode = layout === 'grid';
@@ -3049,6 +3053,27 @@ export class DwainsLayoutCard extends LitElement {
             area => this._renderMobileHomeAreaCard(area)
           )}
         </div>
+      </section>
+    `;
+  }
+
+  private _renderNoAreasHint() {
+    const isAdmin = Boolean(this.hass?.user?.is_admin);
+    return html`
+      <section class="home-no-areas">
+        <div class="home-no-areas-icon" aria-hidden="true">
+          <ha-icon icon="mdi:floor-plan"></ha-icon>
+        </div>
+        <div class="home-no-areas-copy">
+          <div class="home-no-areas-title">${this._t('home.no_areas_title')}</div>
+          <div class="home-no-areas-text">${this._t('home.no_areas_text')}</div>
+        </div>
+        ${isAdmin ? html`
+          <button class="dd-empty-state-button" type="button" @click=${() => this._openHomeAssistantPage('/config/areas')}>
+            <span>${this._t('home.set_up_areas')}</span>
+            <ha-icon icon="mdi:chevron-right"></ha-icon>
+          </button>
+        ` : nothing}
       </section>
     `;
   }
@@ -3450,7 +3475,7 @@ export class DwainsLayoutCard extends LitElement {
     if (!this._selectedArea) return nothing;
 
     const area = this.config?.areas?.find(a => a.area_id === this._selectedArea);
-    if (!area) return nothing;
+    if (!area) return this._renderAreaNotFound();
 
     const visibleAreaEntities = this._getFilteredAreaEntities(this._selectedArea);
     const areaEntities = this._editMode
@@ -3546,6 +3571,88 @@ export class DwainsLayoutCard extends LitElement {
         ${this._renderCustomCardSlot(area.area_id, 'top', this._t('layout.custom_cards_top'))}
         ${this._renderMobileEntitiesSection(area, areaEntities)}
         ${this._renderCustomCardSlot(area.area_id, 'bottom', this._t('layout.custom_cards_bottom'))}
+        ${!this._editMode && !areaEntities.length && !this._getAreaCustomCards(area.area_id).length
+          ? this._renderAreaEmptyState(area)
+          : nothing}
+      </div>
+    `;
+  }
+
+  private _renderEmptyState(icon: string, title: string, text: string, actions: unknown = nothing) {
+    return html`
+      <div class="dd-empty-state" role="status">
+        <div class="dd-empty-state-icon" aria-hidden="true">
+          <ha-icon icon=${icon}></ha-icon>
+        </div>
+        <div class="dd-empty-state-title">${title}</div>
+        <div class="dd-empty-state-text">${text}</div>
+        ${actions !== nothing ? html`<div class="dd-empty-state-actions">${actions}</div>` : nothing}
+      </div>
+    `;
+  }
+
+  /** Unavailable/unknown entities the "hide unavailable" setting keeps off this area page. */
+  private _hiddenUnavailableEntityCount(areaId: string): number {
+    if (this.config?.settings?.hide_unavailable_entities === false) return 0;
+    const hidden = this._getUnavailableAreaEntities(areaId);
+    return hidden.unavailable.length + hidden.unknown.length;
+  }
+
+  private _renderAreaEmptyState(area: AreaConfig) {
+    const hiddenCount = this._hiddenUnavailableEntityCount(area.area_id);
+    const isAdmin = Boolean(this.hass?.user?.is_admin);
+    const actions = hiddenCount || isAdmin ? html`
+      ${hiddenCount ? html`
+        <button
+          class="dd-empty-state-button"
+          type="button"
+          @click=${() => this._showUnavailableEntitiesModal(area.area_id)}
+        >
+          <ha-icon icon="mdi:eye-outline"></ha-icon>
+          <span>${this._t('settings.hidden_unavailable_count', { count: hiddenCount })}</span>
+        </button>
+      ` : nothing}
+      ${isAdmin ? html`
+        <button
+          class="dd-empty-state-button"
+          type="button"
+          @click=${() => this._openHomeAssistantPage(`/config/areas/area/${encodeURIComponent(area.area_id)}`)}
+        >
+          <ha-icon icon="mdi:cog-outline"></ha-icon>
+          <span>${this._t('layout.area_settings')}</span>
+        </button>
+      ` : nothing}
+    ` : nothing;
+
+    return this._renderEmptyState(
+      'mdi:devices',
+      this._t('layout.area_empty_title'),
+      this._t('layout.area_empty_text'),
+      actions
+    );
+  }
+
+  private _renderAreaNotFound() {
+    const isAdmin = Boolean(this.hass?.user?.is_admin);
+    return html`
+      <div class="area-view area-view-missing">
+        ${this._renderEmptyState(
+          'mdi:map-marker-question-outline',
+          this._t('layout.area_not_found_title'),
+          this._t('layout.area_not_found_text'),
+          html`
+            <button class="dd-empty-state-button primary" type="button" @click=${() => this._selectView('home')}>
+              <ha-icon icon="mdi:home-outline"></ha-icon>
+              <span>${this._t('navigation.back_home')}</span>
+            </button>
+            ${isAdmin ? html`
+              <button class="dd-empty-state-button" type="button" @click=${() => this._openHomeAssistantPage('/config/areas')}>
+                <ha-icon icon="mdi:cog-outline"></ha-icon>
+                <span>${this._t('layout.manage_areas')}</span>
+              </button>
+            ` : nothing}
+          `
+        )}
       </div>
     `;
   }

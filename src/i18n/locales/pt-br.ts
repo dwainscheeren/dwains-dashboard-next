@@ -108,6 +108,12 @@ export const ptBR = {
   'layout.swipe_cards': 'Deslizar cartões',
   'layout.show_all_cards': 'Mostrar todos os cartões',
   'layout.switch_swipe_cards': 'Exibir como cartões deslizantes',
+  'layout.area_empty_title': 'Ainda não há nada para mostrar aqui',
+  'layout.area_empty_text': 'Os dispositivos e entidades que você atribuir a esta área no Home Assistant aparecerão aqui.',
+  'layout.area_settings': 'Configurações da área',
+  'layout.area_not_found_title': 'Área não encontrada',
+  'layout.area_not_found_text': 'Esta área pode ter sido removida ou renomeada no Home Assistant.',
+  'layout.manage_areas': 'Gerenciar áreas',
 
   'home.notifications': 'Notificações',
   'home.notifications_description': 'Notificações persistentes do Home Assistant',
@@ -156,6 +162,9 @@ export const ptBR = {
   'home.swipe_areas': 'Deslizar áreas',
   'home.show_all_areas': 'Mostrar todas as áreas',
   'home.switch_areas_swipe': 'Exibir áreas como cartões deslizantes',
+  'home.no_areas_title': 'Nenhuma área ainda',
+  'home.no_areas_text': 'Crie áreas no Home Assistant para ter uma página para cada cômodo.',
+  'home.set_up_areas': 'Configurar áreas',
 
   'status.light_on.one': '{count} luz acesa',
   'status.light_on.other': '{count} luzes acesas',

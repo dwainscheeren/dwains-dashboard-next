@@ -108,6 +108,12 @@ export const it = {
   'layout.swipe_cards': 'Schede scorrevoli',
   'layout.show_all_cards': 'Mostra tutte le schede',
   'layout.switch_swipe_cards': 'Passa alle schede scorrevoli',
+  'layout.area_empty_title': 'Ancora niente da mostrare qui',
+  'layout.area_empty_text': 'I dispositivi e le entità che assegni a questa area in Home Assistant appariranno qui.',
+  'layout.area_settings': 'Impostazioni area',
+  'layout.area_not_found_title': 'Area non trovata',
+  'layout.area_not_found_text': 'Questa area potrebbe essere stata rimossa o rinominata in Home Assistant.',
+  'layout.manage_areas': 'Gestisci aree',
 
   'home.notifications': 'Notifiche',
   'home.notifications_description': 'Notifiche persistenti di Home Assistant',
@@ -156,6 +162,9 @@ export const it = {
   'home.swipe_areas': 'Scorri le stanze',
   'home.show_all_areas': 'Mostra tutte le stanze',
   'home.switch_areas_swipe': 'Mostra le stanze come schede scorrevoli',
+  'home.no_areas_title': 'Nessuna area ancora',
+  'home.no_areas_text': 'Crea delle aree in Home Assistant per avere una pagina per ogni stanza.',
+  'home.set_up_areas': 'Configura aree',
 
   'status.light_on.one': '{count} luce accesa',
   'status.light_on.other': '{count} luci accese',

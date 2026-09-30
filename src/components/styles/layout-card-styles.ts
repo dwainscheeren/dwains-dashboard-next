@@ -4181,6 +4181,163 @@ export const layoutCardStyles = css`
       }
     }
 
+    /* Empty states: an area without entities, a removed area, no areas at all. */
+    .dd-empty-state {
+      max-width: 420px;
+      margin: 32px auto;
+      padding: 24px 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      text-align: center;
+      color: var(--secondary-text-color);
+    }
+
+    .area-view-missing {
+      padding-top: 48px;
+    }
+
+    .dd-empty-state-icon {
+      width: 56px;
+      height: 56px;
+      margin-bottom: 4px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      color: var(--primary-color);
+      background: color-mix(in srgb, var(--primary-color) 12%, transparent);
+    }
+
+    .dd-empty-state-icon ha-icon {
+      --mdc-icon-size: 28px;
+    }
+
+    .dd-empty-state-title {
+      color: var(--primary-text-color);
+      font-size: 17px;
+      font-weight: 800;
+      line-height: 1.25;
+    }
+
+    .dd-empty-state-text {
+      font-size: 14px;
+      line-height: 1.45;
+    }
+
+    .dd-empty-state-actions {
+      margin-top: 10px;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .dd-empty-state-button {
+      appearance: none;
+      min-height: 36px;
+      padding: 0 14px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border: 0;
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--primary-color) 12%, transparent);
+      color: var(--primary-color);
+      font: inherit;
+      font-size: 13px;
+      font-weight: 750;
+      cursor: pointer;
+      transition:
+        background-color 0.18s ease,
+        transform 0.18s ease;
+    }
+
+    .dd-empty-state-button:hover {
+      background: color-mix(in srgb, var(--primary-color) 18%, transparent);
+    }
+
+    .dd-empty-state-button:active {
+      transform: scale(0.97);
+    }
+
+    .dd-empty-state-button:focus-visible {
+      outline: 2px solid var(--primary-color);
+      outline-offset: 2px;
+    }
+
+    .dd-empty-state-button.primary {
+      background: var(--primary-color);
+      color: var(--text-primary-color, #ffffff);
+    }
+
+    .dd-empty-state-button ha-icon {
+      --mdc-icon-size: 18px;
+    }
+
+    .home-no-areas {
+      margin: 0 0 36px;
+      padding: 16px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      border: 1px solid var(--divider-color);
+      border-radius: 12px;
+      background: var(--card-background-color);
+    }
+
+    .home-no-areas-icon {
+      width: 42px;
+      height: 42px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex: 0 0 auto;
+      border-radius: 13px;
+      color: var(--primary-color);
+      background: color-mix(in srgb, var(--primary-color) 12%, transparent);
+    }
+
+    .home-no-areas-copy {
+      min-width: 0;
+      flex: 1 1 auto;
+    }
+
+    .home-no-areas-title {
+      color: var(--primary-text-color);
+      font-size: 15px;
+      font-weight: 800;
+      line-height: 1.2;
+    }
+
+    .home-no-areas-text {
+      margin-top: 2px;
+      color: var(--secondary-text-color);
+      font-size: 13px;
+      line-height: 1.35;
+    }
+
+    .home-no-areas .dd-empty-state-button {
+      flex: 0 0 auto;
+      padding: 0 10px 0 14px;
+    }
+
+    @media (max-width: 768px) {
+      .home-no-areas {
+        margin: 0 8px 18px;
+        flex-wrap: wrap;
+      }
+
+      .home-no-areas-copy {
+        flex: 1 1 180px;
+      }
+
+      .home-no-areas .dd-empty-state-button {
+        margin-left: 56px;
+      }
+    }
+
     /* Favorites Section */
     .favorites-section {
       margin-bottom: 24px;

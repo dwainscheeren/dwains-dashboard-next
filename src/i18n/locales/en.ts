@@ -106,6 +106,12 @@ export const en = {
   'layout.swipe_cards': 'Swipe cards',
   'layout.show_all_cards': 'Show all cards',
   'layout.switch_swipe_cards': 'Switch to swipe cards',
+  'layout.area_empty_title': 'Nothing to show here yet',
+  'layout.area_empty_text': 'Devices and entities you assign to this area in Home Assistant will show up here.',
+  'layout.area_settings': 'Area settings',
+  'layout.area_not_found_title': 'Area not found',
+  'layout.area_not_found_text': 'This area may have been removed or renamed in Home Assistant.',
+  'layout.manage_areas': 'Manage areas',
 
   'home.notifications': 'Notifications',
   'home.notifications_description': 'Persistent notifications from Home Assistant',
@@ -154,6 +160,9 @@ export const en = {
   'home.swipe_areas': 'Swipe areas',
   'home.show_all_areas': 'Show all areas',
   'home.switch_areas_swipe': 'Switch areas to swipe cards',
+  'home.no_areas_title': 'No areas yet',
+  'home.no_areas_text': 'Create areas in Home Assistant to get a page for every room.',
+  'home.set_up_areas': 'Set up areas',
 
   'status.light_on.one': '{count} light on',
   'status.light_on.other': '{count} lights on',
