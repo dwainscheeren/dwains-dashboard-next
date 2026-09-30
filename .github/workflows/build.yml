@@ -26,5 +26,11 @@ jobs:
       - name: Type check
         run: npm run type-check
 
+      - name: Translation check
+        run: npm run i18n:check
+
+      - name: Test
+        run: npm test
+
       - name: Build
         run: npm run build
