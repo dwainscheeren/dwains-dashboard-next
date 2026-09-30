@@ -169,7 +169,6 @@ export class DwainsLayoutCard extends LitElement {
   @state() private _currentTime = '';
   @state() private _currentDate = '';
   @state() private _mobileNavOpen = false;
-  @state() private _hasRelevantStateChanges = false;
   @state() private _editMode = false;
   @state() private _notificationsOpen = false;
   @state() private _persistentNotifications: PersistentNotification[] = [];
@@ -9799,8 +9798,6 @@ export class DwainsLayoutCard extends LitElement {
 
       if (oldHass && this._shouldUpdateEntities(oldHass, this.hass)) {
         this._invalidateChangedAreaCaches(oldHass, this.hass);
-        // Mark component for re-render to show live updates
-        this._hasRelevantStateChanges = true;
       }
     }
   }
@@ -10445,11 +10442,6 @@ export class DwainsLayoutCard extends LitElement {
 
     if (changedProps.has('_isMobile')) {
       this._restoreAreaSidebarScroll();
-    }
-
-    // Reset the state changes flag after render
-    if (this._hasRelevantStateChanges) {
-      this._hasRelevantStateChanges = false;
     }
 
     // Render favorite tile cards when header becomes expanded
