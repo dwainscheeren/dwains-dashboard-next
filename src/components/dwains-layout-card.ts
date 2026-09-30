@@ -12,6 +12,12 @@ import { getAreaData, clearAreaDataCache } from '../utils/area';
 import { AreaEntityResolver } from '../utils/area-entity-resolver';
 import { getAreaConfigMap, getHiddenPersonIdSet, resolveStatusEntityAreaId } from '../utils/entity-lookups';
 import { getDomainStates } from '../utils/state-index';
+import {
+  hasRelevantStateChange,
+  hassChangedOutsideStates,
+  isHomeRelevantStateChange,
+  isUpdateEntityStateChange,
+} from '../utils/state-relevance';
 import { getAreaIcon, getDeviceClassIcon, getDomainColor, getDomainIcon } from '../utils/icons';
 import { getStatusDomains, type DomainCount as StatusDomainCount } from '../utils/header-status-domains';
 import { getDeviceClassName, getDomainName } from '../utils/domain-names';
@@ -201,6 +207,7 @@ export class DwainsLayoutCard extends LitElement {
   // entity. Derived data is cached on the identity of its inputs, so it is
   // computed at most once per hass object and config.
   private _areaResolver = new AreaEntityResolver();
+  private _hostedCards?: Element[];
   private _timeInterval?: number;
   private _resizeObserver?: ResizeObserver;
   private _persistentNotificationsUnsub?: () => void;
@@ -1045,32 +1052,56 @@ export class DwainsLayoutCard extends LitElement {
       return true;
     }
 
-    // For hass updates, only update if relevant entities changed
+    // For hass updates, only update if something the current view shows changed
     if (changedProps.has('hass')) {
       const oldHass = changedProps.get('hass') as HomeAssistant | undefined;
       if (!oldHass) return true;
 
-      // Language and theme changes do not touch any entity state.
-      const previous = oldHass as any;
-      const current = this.hass as any;
-      if (previous.locale !== current.locale || previous.language !== current.language || previous.themes !== current.themes) {
-        return true;
-      }
+      // Another property changed in the same update: always render that.
+      if (changedProps.size > 1) return true;
 
-      if (this._hasUpdateEntityChanges(oldHass, this.hass)) return true;
+      if (this._isRelevantHassChange(oldHass, this.hass)) return true;
 
-      // Check if any visible entities changed
-      const relevantEntities = this._getRelevantEntities();
-      return relevantEntities.some(entityId =>
-        oldHass.states[entityId] !== this.hass.states[entityId]
-      );
+      this._handleSkippedHassUpdate();
+      return false;
     }
 
     return true;
   }
 
+  /**
+   * Work that willUpdate() and updated() do for every hass update and that does
+   * not need a render: keep the theme and the bottom navigation in sync and give
+   * the hosted Home Assistant cards the new hass.
+   */
+  private _handleSkippedHassUpdate(): void {
+    this._syncThemeAttribute();
+    ensureBottomNav(this.hass, this.config?.settings);
+    this._syncBottomNavAreaContext();
+    this._forwardHassToHostedCards();
+
+    if (Object.keys(this._optimisticEntityStates).length) {
+      // Reactive properties can not be changed while shouldUpdate() runs.
+      queueMicrotask(() => this._reconcileOptimisticEntityStates());
+    }
+  }
+
+  private _forwardHassToHostedCards(): void {
+    const root = this.renderRoot;
+    if (!root) return;
+
+    // Hosts only change when this card renders, so the lookup is kept until the next render.
+    this._hostedCards ??= Array.from(
+      root.querySelectorAll('dwains-dashboard-next-card-host, dwains-dashboard-next-tile-host')
+    );
+    for (const card of this._hostedCards as Array<Element & { hass?: HomeAssistant }>) {
+      if (card.hass !== this.hass) card.hass = this.hass;
+    }
+  }
+
   protected override updated(changedProps: PropertyValues) {
     super.updated(changedProps);
+    this._hostedCards = undefined;
 
     // Handle hass updates for live entity state changes
     if (changedProps.has('hass') && this.hass) {
@@ -1166,21 +1197,89 @@ export class DwainsLayoutCard extends LitElement {
     syncHassDarkThemeAttribute(this, this.hass, force);
   }
 
-  private _getRelevantEntities(): string[] {
-    if (!this.config) return [];
+  /** Whether a hass update can change what the current view shows. */
+  private _isRelevantHassChange(oldHass: HomeAssistant, newHass: HomeAssistant): boolean {
+    if (!this.config) return false;
+
+    // Registries, user, language, themes, formatters and so on.
+    if (hassChangedOutsideStates(oldHass, newHass)) return true;
 
     if (this._selectedView === 'settings') {
-      return [];
+      return hasRelevantStateChange(oldHass.states, newHass.states, isUpdateEntityStateChange);
     }
 
     if (this._selectedView === 'area' && this._selectedArea) {
-      const areaEntities = this._getAreaEntities(this._selectedArea);
-      return areaEntities.map(e => e.entity_id);
+      const areaEntityIds = this._areaRelevantEntityIds(this._selectedArea);
+      return hasRelevantStateChange(oldHass.states, newHass.states, (entityId, oldState, newState) =>
+        !oldState ||
+        !newState ||
+        areaEntityIds.has(entityId) ||
+        isUpdateEntityStateChange(entityId, oldState, newState)
+      );
     }
 
-    // For home view, return entities that affect status counts
-    return this.config.entities?.map(e => e.entity_id) || [];
+    if (this._selectedView === 'home') {
+      const explicitEntityIds = this._homeExplicitEntityIds(
+        this.config,
+        newHass.areas,
+        this._suggestedFavoriteEntities
+      );
+      return hasRelevantStateChange(oldHass.states, newHass.states, (entityId, oldState, newState) =>
+        isHomeRelevantStateChange(entityId, oldState, newState, explicitEntityIds)
+      );
+    }
+
+    return true;
   }
+
+  /** Entities of the selected area plus its temperature and humidity sensors. */
+  private _areaRelevantEntityIds(areaId: string): ReadonlySet<string> {
+    const area = getAreaConfigMap(this.config).get(areaId);
+    const areaRegistry = this.hass?.areas?.[areaId] as any;
+    return this._areaRelevantEntityIdSet(
+      this._getAreaEntities(areaId),
+      areaRegistry?.temperature_entity_id || area?.temperature_entity_id || '',
+      areaRegistry?.humidity_entity_id || area?.humidity_entity_id || ''
+    );
+  }
+
+  private _areaRelevantEntityIdSet = memoizeOne((
+    entities: EntityConfig[],
+    temperatureEntityId: string,
+    humidityEntityId: string
+  ): ReadonlySet<string> => {
+    const ids = new Set(entities.map(entity => entity.entity_id));
+    if (temperatureEntityId) ids.add(temperatureEntityId);
+    if (humidityEntityId) ids.add(humidityEntityId);
+    return ids;
+  });
+
+  /**
+   * Entities the Home view shows directly, whatever their domain: favorites
+   * (manual and suggested), the weather and alarm entities and the temperature
+   * and humidity sensors of every area.
+   */
+  private _homeExplicitEntityIds = memoizeOne((
+    config: DwainsDashboardConfig,
+    areasRegistry: HomeAssistant['areas'] | undefined,
+    suggestedFavorites: string[]
+  ): ReadonlySet<string> => {
+    const ids = new Set<string>([...(config.favorites || []), ...suggestedFavorites]);
+    if (config.settings?.weather_entity_id) ids.add(config.settings.weather_entity_id);
+    if (config.settings?.alarm_entity_id) ids.add(config.settings.alarm_entity_id);
+    const addSensor = (entityId: unknown) => {
+      if (typeof entityId === 'string' && entityId) ids.add(entityId);
+    };
+    (config.areas || []).forEach(area => {
+      addSensor(area.temperature_entity_id);
+      addSensor(area.humidity_entity_id);
+    });
+    Object.values(areasRegistry || {}).forEach((area: any) => {
+      addSensor(area?.temperature_entity_id);
+      addSensor(area?.humidity_entity_id);
+    });
+    return ids;
+  });
 
   private _debouncedUpdate = () => {
     if (this._updateDebounceTimer) {
@@ -6260,21 +6359,6 @@ export class DwainsLayoutCard extends LitElement {
       entity.state === 'on'
     ).length
   );
-
-  private _hasUpdateEntityChanges(oldHass: HomeAssistant, newHass: HomeAssistant): boolean {
-    const updateEntityIds = new Set([
-      ...Object.keys(oldHass.states || {}).filter(entityId => entityId.startsWith('update.')),
-      ...Object.keys(newHass.states || {}).filter(entityId => entityId.startsWith('update.')),
-    ]);
-
-    for (const entityId of updateEntityIds) {
-      const oldState = oldHass.states[entityId];
-      const newState = newHass.states[entityId];
-      if (oldState?.state !== newState?.state) return true;
-    }
-
-    return false;
-  }
 
   private _extractCollection(value: any): any[] {
     if (!value) return [];
