@@ -11093,7 +11093,10 @@ export class DwainsLayoutCard extends LitElement {
   private _statusLabel(key: string, count: number, plural = true): string {
     const localized = plural ? this._tp(key, count) : this._t(key, { count });
     const prefix = String(count);
-    return localized.startsWith(prefix) ? localized.slice(prefix.length).trim() : localized;
+    if (!localized.startsWith(prefix)) return localized;
+    // "{count} lights on" becomes "Lights on"; the count is shown in its own badge.
+    const label = localized.slice(prefix.length).trim();
+    return label.charAt(0).toLocaleUpperCase() + label.slice(1);
   }
 
   private _statusPair(key: string, plural = true): { singular: string; plural: string } {
