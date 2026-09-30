@@ -6713,6 +6713,24 @@ export class DwainsDashboardStrategyEditor extends LitElement {
         padding: 32px;
         color: var(--secondary-text-color);
       }
+
+      /* Reduced motion: no heartbeat, pulse or shimmer loops and
+         near-instant transitions. */
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          animation-duration: 0.01ms !important;
+          animation-iteration-count: 1 !important;
+          transition-duration: 0.01ms !important;
+          transition-delay: 0s !important;
+          scroll-behavior: auto !important;
+        }
+
+        .sponsoring-header ha-icon {
+          animation: none;
+        }
+      }
     `;
   }
 }

@@ -9396,4 +9396,22 @@ export const layoutCardStyles = css`
         min-height: calc(196px + env(safe-area-inset-top, 0px));
       }
     }
+
+    /* Reduced motion: no looping or decorative animation (alarm pulse,
+       loading shimmer) and near-instant transitions. */
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        transition-delay: 0s !important;
+        scroll-behavior: auto !important;
+      }
+
+      .welcome-alarm.alarm-triggered {
+        animation: none;
+      }
+    }
 `;
