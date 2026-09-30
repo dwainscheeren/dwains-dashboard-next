@@ -632,9 +632,9 @@ export const zhHant = {
   'device_class.running': '執行中',
   'device_class.update': '更新',
   'device_class.door_lock': '門鎖',
-  'settings.home_climate_areas_title': "Areas included in indoor climate",
-  'settings.home_climate_areas_description': "Choose which Home Assistant areas are included in the average temperature and humidity shown in House information.",
-  'settings.home_climate_area_included': "Included in house average",
-  'settings.home_climate_area_excluded': "Excluded from house average",
+  'settings.home_climate_areas_title': "室內氣候包含的區域",
+  'settings.home_climate_areas_description': "選擇哪些 Home Assistant 區域計入住家資訊中顯示的平均溫度和濕度。",
+  'settings.home_climate_area_included': "計入住家平均值",
+  'settings.home_climate_area_excluded': "不計入住家平均值",
 
 } as const satisfies TranslationDictionary;

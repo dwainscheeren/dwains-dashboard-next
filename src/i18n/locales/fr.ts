@@ -634,9 +634,9 @@ export const fr = {
   'device_class.running': 'Actif',
   'device_class.update': 'Mises à jour',
   'device_class.door_lock': 'Serrures',
-  'settings.home_climate_areas_title': "Areas included in indoor climate",
-  'settings.home_climate_areas_description': "Choose which Home Assistant areas are included in the average temperature and humidity shown in House information.",
-  'settings.home_climate_area_included': "Included in house average",
-  'settings.home_climate_area_excluded': "Excluded from house average",
+  'settings.home_climate_areas_title': "Pièces incluses dans le climat intérieur",
+  'settings.home_climate_areas_description': "Choisissez quelles pièces de Home Assistant sont incluses dans la température et l'humidité moyennes des informations de la maison.",
+  'settings.home_climate_area_included': "Incluse dans la moyenne de la maison",
+  'settings.home_climate_area_excluded': "Exclue de la moyenne de la maison",
 
 } as const satisfies TranslationDictionary;

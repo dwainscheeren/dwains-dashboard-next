@@ -657,4 +657,8 @@ export const it = {
   'device_class.running': 'In funzione',
   'device_class.update': 'Aggiornamenti',
   'device_class.door_lock': 'Serrature',
+  'settings.home_climate_areas_title': "Stanze incluse nel clima interno",
+  'settings.home_climate_areas_description': "Scegli quali stanze di Home Assistant vengono incluse nella temperatura e nell'umidità medie delle informazioni sulla casa.",
+  'settings.home_climate_area_included': "Inclusa nella media della casa",
+  'settings.home_climate_area_excluded': "Esclusa dalla media della casa",
 } as const satisfies TranslationDictionary;
