@@ -332,6 +332,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
     }
   }
 
+
   private async _fetchData() {
     if (!this.hass) return;
 
@@ -1514,11 +1515,11 @@ export class DwainsDashboardStrategyEditor extends LitElement {
           <ha-svg-icon .path=${mdiThermometerWater} class="area-help-icon"></ha-svg-icon>
           <div class="area-help-text">
             <p>
-              To show temperature and humidity sensors in the overview, link a sensor to this room in Home Assistant via
-              <button class="link" @click=${this._editAreaRegistry}>${this._t('settings.edit_room')}</button>.
+              ${this._t('settings.area_sensor_help_before')}
+              <button class="link" @click=${this._editAreaRegistry}>${this._t('settings.edit_room')}</button>${this._t('settings.area_sensor_help_after')}
             </p>
             <p>
-              The wattage badge automatically sums all power sensors (unit 'W') in this room that are visible (not hidden in the UI).
+              ${this._t('settings.area_power_help')}
             </p>
           </div>
         </div>
@@ -2350,7 +2351,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
             @click=${() => this._setDevicesHidden(allDeviceIds, false)}
           >
             <ha-icon icon="mdi:eye-outline"></ha-icon>
-            Show all devices
+            ${this._t('settings.show_all_devices')}
           </button>
           <button
             type="button"
@@ -2358,7 +2359,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
             @click=${() => this._setDevicesHidden(allDeviceIds, true)}
           >
             <ha-icon icon="mdi:eye-off-outline"></ha-icon>
-            Hide all devices
+            ${this._t('settings.hide_all_devices')}
           </button>
         </div>
 
@@ -2376,7 +2377,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
                       <ha-icon icon=${group.icon}></ha-icon>
                     </span>
                     <span>${group.label}</span>
-                    <small>${groupDeviceIds.length - hiddenInGroup}/${groupDeviceIds.length} visible</small>
+                    <small>${this._t('settings.visible_count', { visible: groupDeviceIds.length - hiddenInGroup, total: groupDeviceIds.length })}</small>
                   </div>
 
                   <div class="device-admission-panel">
@@ -2386,14 +2387,14 @@ export class DwainsDashboardStrategyEditor extends LitElement {
                         ?disabled=${hiddenInGroup === 0}
                         @click=${() => this._setDevicesHidden(groupDeviceIds, false)}
                       >
-                        Show type
+                        ${this._t('settings.show_type')}
                       </button>
                       <button
                         type="button"
                         ?disabled=${hiddenInGroup === groupDeviceIds.length}
                         @click=${() => this._setDevicesHidden(groupDeviceIds, true)}
                       >
-                        Hide type
+                        ${this._t('settings.hide_type')}
                       </button>
                     </div>
 
@@ -2408,7 +2409,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
                             <div class="device-admission-area-header">
                               <div>
                                 <strong>${areaGroup.areaName}</strong>
-                                <span>${areaDeviceIds.length - hiddenInArea}/${areaDeviceIds.length} visible</span>
+                                <span>${this._t('settings.visible_count', { visible: areaDeviceIds.length - hiddenInArea, total: areaDeviceIds.length })}</span>
                               </div>
                               <div class="device-admission-area-actions">
                                 <button
@@ -2416,14 +2417,14 @@ export class DwainsDashboardStrategyEditor extends LitElement {
                                   ?disabled=${hiddenInArea === 0}
                                   @click=${() => this._setDevicesHidden(areaDeviceIds, false)}
                                 >
-                                  Show area
+                                  ${this._t('settings.show_area')}
                                 </button>
                                 <button
                                   type="button"
                                   ?disabled=${hiddenInArea === areaDeviceIds.length}
                                   @click=${() => this._setDevicesHidden(areaDeviceIds, true)}
                                 >
-                                  Hide area
+                                  ${this._t('settings.hide_area')}
                                 </button>
                               </div>
                             </div>
@@ -4188,7 +4189,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
         <div class="no-persons">
           <p>${this._t('settings.no_person_entities')}</p>
           <p style="font-size: 12px; color: var(--secondary-text-color);">
-            Add person entities to see them here.
+            ${this._t('settings.add_person_entities_hint')}
           </p>
         </div>
       `;

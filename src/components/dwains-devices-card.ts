@@ -26,6 +26,7 @@ import { ensureBottomNav } from './dwains-bottom-nav';
 import { fireEvent } from './utils/fire-event';
 import { buildHousePowerUsage, type PowerAreaSummary, type PowerEntitySummary } from '../utils/power-usage';
 import { isHassDarkTheme } from '../utils/theme';
+import { formatValueWithUnit } from '../utils/unit-format';
 import './utils/dd-card-host';
 
 const NEW_DEVICES_KEY = '__new_devices__';
@@ -522,7 +523,7 @@ export class DwainsDevicesCard extends LitElement {
     }
 
     const unit = state.attributes?.unit_of_measurement || '%';
-    return `${state.state}${unit}`;
+    return formatValueWithUnit(state.state, unit);
   }
 
   private _addPersonData(

@@ -9,6 +9,7 @@ import { getDomainName } from '../utils/domain-names';
 import { getDeviceClassIcon, getDomainColor, getDomainIcon } from '../utils/icons';
 import { ddLocalize, ddLocalizePlural } from '../utils/localize';
 import { fireEvent } from './utils/fire-event';
+import { formatEntityStateWithUnit, formatValueWithUnit } from '../utils/unit-format';
 import './utils/dd-card-host';
 
 export interface DomainEntitiesDialogParams {
@@ -1369,7 +1370,7 @@ export class DwainsDomainEntitiesDialog extends LitElement {
   private _entityStatusText(state: any, domain: string): string {
     if (!state) return '';
     const effectiveState = this._getEffectiveEntityState(state);
-    const formatted = this.hass.formatEntityState(effectiveState);
+    const formatted = formatEntityStateWithUnit(this.hass, effectiveState);
 
     if (domain === 'light' && effectiveState.state === 'on' && typeof effectiveState.attributes?.brightness === 'number') {
       return this._t('entity.brightness', {
@@ -1378,7 +1379,7 @@ export class DwainsDomainEntitiesDialog extends LitElement {
     }
 
     if (domain === 'cover' && typeof effectiveState.attributes?.current_position === 'number') {
-      return `${formatted} · ${effectiveState.attributes.current_position}%`;
+      return `${formatted} · ${formatValueWithUnit(effectiveState.attributes.current_position, '%')}`;
     }
 
     if (domain === 'climate') {
@@ -1386,9 +1387,9 @@ export class DwainsDomainEntitiesDialog extends LitElement {
       const target = effectiveState.attributes?.temperature;
       const unit = this.hass?.config?.unit_system?.temperature || '°C';
       if (current !== undefined && target !== undefined) {
-        return `${current}${unit} · ${this._t('entity.climate_set', { value: `${target}${unit}` })}`;
+        return `${formatValueWithUnit(current, unit)} · ${this._t('entity.climate_set', { value: formatValueWithUnit(target, unit) })}`;
       }
-      if (current !== undefined) return `${current}${unit}`;
+      if (current !== undefined) return formatValueWithUnit(current, unit);
     }
 
     if (domain === 'media_player' && effectiveState.attributes?.media_title) {
