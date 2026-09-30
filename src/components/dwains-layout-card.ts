@@ -16,7 +16,7 @@ import { findReplacementAssignment, resolveEntityCardConfig } from '../utils/blu
 import { restrictNonAdminDashboardSettings } from '../utils/security';
 import { sortAreas } from '../utils/area-entities';
 import { navigateHomeAssistant } from '../utils/navigation';
-import { isHassDarkTheme } from '../utils/theme';
+import { syncHassDarkThemeAttribute } from '../utils/theme';
 import { normalizeHiddenHomeInformationCards, normalizeHiddenHomeSections, normalizeHomeSectionsOrder } from '../utils/home-sections';
 import { buildHousePowerUsage } from '../utils/power-usage';
 import { formatEntityStateWithUnit, formatValueWithUnit } from '../utils/unit-format';
@@ -442,7 +442,7 @@ export class DwainsLayoutCard extends LitElement {
   connectedCallback() {
     super.connectedCallback();
     window.addEventListener(TRANSLATIONS_LOADED_EVENT, this._handleTranslationsLoaded);
-    this._syncThemeAttribute();
+    this._syncThemeAttribute(true);
     this._loadMobileEntityLayoutPreference();
     this._loadAreaSidebarWidthPreference();
     this._loadAreaSidebarCollapsedPreference();
@@ -1171,8 +1171,8 @@ export class DwainsLayoutCard extends LitElement {
     }
   }
 
-  private _syncThemeAttribute(): void {
-    this.toggleAttribute('data-theme-dark', isHassDarkTheme(this.hass, this));
+  private _syncThemeAttribute(force = false): void {
+    syncHassDarkThemeAttribute(this, this.hass, force);
   }
 
   private _getRelevantEntities(): string[] {

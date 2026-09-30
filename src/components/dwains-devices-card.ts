@@ -25,7 +25,7 @@ import {
 import { ensureBottomNav } from './dwains-bottom-nav';
 import { fireEvent } from './utils/fire-event';
 import { buildHousePowerUsage, type PowerAreaSummary, type PowerEntitySummary } from '../utils/power-usage';
-import { isHassDarkTheme } from '../utils/theme';
+import { syncHassDarkThemeAttribute } from '../utils/theme';
 import { formatValueWithUnit } from '../utils/unit-format';
 import { TRANSLATIONS_LOADED_EVENT } from '../i18n';
 import './utils/dd-card-host';
@@ -149,7 +149,7 @@ export class DwainsDevicesCard extends LitElement {
 
   connectedCallback() {
     super.connectedCallback();
-    this._syncThemeAttribute();
+    this._syncThemeAttribute(true);
     this._checkMobile();
     window.addEventListener(TRANSLATIONS_LOADED_EVENT, this._handleTranslationsLoaded);
     window.addEventListener('resize', this._resizeHandler);
@@ -684,8 +684,8 @@ export class DwainsDevicesCard extends LitElement {
     }
   }
 
-  private _syncThemeAttribute(): void {
-    this.toggleAttribute('data-theme-dark', isHassDarkTheme(this._hass, this));
+  private _syncThemeAttribute(force = false): void {
+    syncHassDarkThemeAttribute(this, this._hass, force);
   }
 
   // Aanwezige device-types, alfabetisch gesorteerd op getDomainTitle.

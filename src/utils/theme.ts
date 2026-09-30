@@ -74,3 +74,51 @@ export function isHassDarkTheme(hass?: any, element?: Element | null): boolean {
     ? false
     : window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false;
 }
+
+interface DarkThemeState {
+  themes: unknown;
+  selectedTheme: unknown;
+  selectedThemeLegacy: unknown;
+  dark: boolean;
+  recheck?: number;
+}
+
+const darkThemeStates = new WeakMap<Element, DarkThemeState>();
+
+/**
+ * Toggle `data-theme-dark` on an element. isHassDarkTheme() reads computed
+ * styles, which can force a style recalculation, so it only runs again when
+ * the theme inputs on hass change (or when `force` is set). Home Assistant can
+ * apply the theme variables slightly after it updates hass, so every
+ * recalculation is checked once more on the next animation frame.
+ */
+export function syncHassDarkThemeAttribute(element: Element, hass?: any, force = false): void {
+  const previous = darkThemeStates.get(element);
+  if (
+    !force &&
+    previous &&
+    previous.themes === hass?.themes &&
+    previous.selectedTheme === hass?.selectedTheme &&
+    previous.selectedThemeLegacy === hass?.selected_theme
+  ) {
+    return;
+  }
+
+  const state: DarkThemeState = {
+    themes: hass?.themes,
+    selectedTheme: hass?.selectedTheme,
+    selectedThemeLegacy: hass?.selected_theme,
+    dark: isHassDarkTheme(hass, element),
+  };
+  if (previous?.recheck !== undefined) cancelAnimationFrame(previous.recheck);
+  darkThemeStates.set(element, state);
+  element.toggleAttribute('data-theme-dark', state.dark);
+
+  if (typeof requestAnimationFrame !== 'function') return;
+  state.recheck = requestAnimationFrame(() => {
+    state.recheck = undefined;
+    if (darkThemeStates.get(element) !== state) return;
+    state.dark = isHassDarkTheme(hass, element);
+    element.toggleAttribute('data-theme-dark', state.dark);
+  });
+}

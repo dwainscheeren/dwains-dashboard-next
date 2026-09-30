@@ -15,7 +15,7 @@ import type { DwainsDashboardSettings } from '../types/strategy';
 import { ddLocalize } from '../utils/localize';
 import { TRANSLATIONS_LOADED_EVENT } from '../i18n';
 import { navigateHomeAssistant } from '../utils/navigation';
-import { isHassDarkTheme } from '../utils/theme';
+import { syncHassDarkThemeAttribute } from '../utils/theme';
 import {
   restrictNonAdminDashboardSettings,
   restrictNonAdminHaSidebar,
@@ -111,7 +111,7 @@ export class DwainsBottomNav extends LitElement {
 
   connectedCallback(): void {
     super.connectedCallback();
-    this._syncThemeAttribute();
+    this._syncThemeAttribute(true);
     this._sync();
     window.addEventListener('location-changed', this._sync);
     window.addEventListener('popstate', this._sync);
@@ -130,7 +130,7 @@ export class DwainsBottomNav extends LitElement {
   }
 
   private _sync = () => {
-    this._syncThemeAttribute();
+    this._syncThemeAttribute(true);
     this._active = this._normalizeActivePath(this._currentPath());
     // Zichtbaar zolang we op ons eigen dashboard zitten.
     this._visible = !this.dashSegment || this._segment() === this.dashSegment;
@@ -148,8 +148,8 @@ export class DwainsBottomNav extends LitElement {
     this.requestUpdate();
   };
 
-  private _syncThemeAttribute(): void {
-    this.toggleAttribute('data-theme-dark', isHassDarkTheme(this._hass, this));
+  private _syncThemeAttribute(force = false): void {
+    syncHassDarkThemeAttribute(this, this._hass, force);
   }
 
   private _segment(): string {
