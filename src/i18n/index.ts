@@ -37,7 +37,9 @@ export function loadTranslations(lang: SupportedLanguage): Promise<void> {
   const promise = LOADERS[lang as LoadableLanguage]()
     .then((dictionary) => {
       TRANSLATIONS[lang] = dictionary;
-      window.dispatchEvent(new CustomEvent(TRANSLATIONS_LOADED_EVENT, { detail: { lang } }));
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent(TRANSLATIONS_LOADED_EVENT, { detail: { lang } }));
+      }
     })
     .catch((error) => {
       // Keep using English; a later call can try again.

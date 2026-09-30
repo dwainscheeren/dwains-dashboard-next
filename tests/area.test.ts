@@ -119,10 +119,13 @@ describe('getAreaData', () => {
   });
 
   it('serves repeated calls from the cache until it is cleared', () => {
-    const first = getAreaData(area, makeHass(), entities, config);
-    expect(getAreaData(area, makeHass(), entities, config)).toBe(first);
+    // The cache is keyed on object identity, like Home Assistant's own state objects.
+    const hass = makeHass();
+    const first = getAreaData(area, hass, entities, config);
+    expect(getAreaData(area, hass, entities, config)).toBe(first);
+    expect(getAreaData(area, { ...hass, states: { ...hass.states } }, entities, config)).toBe(first);
     clearAreaDataCacheForArea('living_room');
-    expect(getAreaData(area, makeHass(), entities, config)).not.toBe(first);
+    expect(getAreaData(area, hass, entities, config)).not.toBe(first);
   });
 });
 

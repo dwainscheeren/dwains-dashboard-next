@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SUPPORTED_LANGUAGES } from '../src/i18n';
+import { loadTranslations, SUPPORTED_LANGUAGES } from '../src/i18n';
 import { ddLang, ddLocale, ddLocalize, ddLocalizePlural, hasDdTranslation } from '../src/utils/localize';
 
 const hass = (language?: string, legacyLanguage?: string) => ({
@@ -56,7 +56,14 @@ describe('ddLocale', () => {
 });
 
 describe('ddLocalize', () => {
-  it('translates into the active language', () => {
+  it('falls back to English until a language is loaded', async () => {
+    expect(ddLocalize(hass('fr'), 'devices.title')).toBe('Devices');
+    await loadTranslations('fr');
+    expect(ddLocalize(hass('fr'), 'devices.title')).toBe('Appareils');
+  });
+
+  it('translates into the active language', async () => {
+    await Promise.all([loadTranslations('nl'), loadTranslations('de')]);
     expect(ddLocalize(hass('en'), 'devices.title')).toBe('Devices');
     expect(ddLocalize(hass('nl-NL'), 'devices.title')).toBe('Apparaten');
     expect(ddLocalize(hass('de'), 'devices.title')).toBe('Geräte');
