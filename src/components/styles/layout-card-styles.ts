@@ -4714,6 +4714,11 @@ export const layoutCardStyles = css`
       overflow-wrap: anywhere;
     }
 
+    .notification-markdown {
+      display: block;
+      white-space: normal;
+    }
+
     .notification-date {
       margin-top: 7px;
       color: color-mix(in srgb, var(--secondary-text-color) 74%, transparent);

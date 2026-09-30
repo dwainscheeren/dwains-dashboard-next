@@ -163,6 +163,8 @@ export class DwainsLayoutCard extends LitElement {
   @property({ attribute: false }) public hass!: HomeAssistant;
   @property({ attribute: false }) public config!: DwainsDashboardConfig;
 
+  private _waitingForHaMarkdown = false;
+
   private _t = (key: string, vars?: Record<string, string | number>) =>
     ddLocalize(this.hass, key, vars);
 
@@ -1491,7 +1493,7 @@ export class DwainsLayoutCard extends LitElement {
         </div>
         <div class="notification-copy">
           <div class="notification-title">${notification.title || this._t('home.notification')}</div>
-          <div class="notification-message">${notification.message}</div>
+          <div class="notification-message">${this._renderNotificationMessage(notification.message)}</div>
           ${notification.created_at ? html`
             <div class="notification-date">${this._formatNotificationDate(notification.created_at)}</div>
           ` : nothing}
@@ -1506,6 +1508,22 @@ export class DwainsLayoutCard extends LitElement {
         </button>
       </article>
     `;
+  }
+
+  /**
+   * Notification messages are markdown (links like [text](url) are common).
+   * Home Assistant's own <ha-markdown> renders and sanitizes them; it is not
+   * always loaded yet, so fall back to plain text and re-render once it is.
+   */
+  private _renderNotificationMessage(message: string) {
+    if (customElements.get('ha-markdown')) {
+      return html`<ha-markdown class="notification-markdown" breaks .content=${message}></ha-markdown>`;
+    }
+    if (!this._waitingForHaMarkdown) {
+      this._waitingForHaMarkdown = true;
+      void customElements.whenDefined('ha-markdown').then(() => this.requestUpdate());
+    }
+    return message;
   }
 
   private _renderSidebar() {
