@@ -1634,7 +1634,9 @@ export class DwainsDevicesCard extends LitElement {
     } catch (e) {
       console.error('❌ Device visibility save failed:', e);
       if (!silent) {
-        alert(this._t('devices.save_visibility_failed', { error: String(e) }));
+        fireEvent(this, 'hass-notification', {
+          message: this._t('devices.save_visibility_failed', { error: String(e) }),
+        });
       }
     }
   }

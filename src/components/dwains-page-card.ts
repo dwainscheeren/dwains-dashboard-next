@@ -5,6 +5,7 @@ import { ddLocalize } from '../utils/localize';
 import { restrictNonAdminDashboardSettings } from '../utils/security';
 import { showBlueprintDialog } from './utils/show-blueprint-dialog';
 import { ensureBottomNav } from './dwains-bottom-nav';
+import { fireEvent } from './utils/fire-event';
 import './utils/dd-card-host';
 
 /**
@@ -85,7 +86,9 @@ export class DwainsPageCard extends LitElement {
       return true;
     } catch (e) {
       console.error('❌ Opslaan pagina mislukt:', e);
-      alert(this._t('layout.save_page_failed', { error: String(e) }));
+      fireEvent(this, 'hass-notification', {
+        message: this._t('layout.save_page_failed', { error: String(e) }),
+      });
       return false;
     }
   }

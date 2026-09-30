@@ -1273,6 +1273,7 @@ export class DwainsDomainEntitiesDialog extends LitElement {
     } catch (err) {
       this._clearOptimisticEntityStates(entityIds);
       console.warn(`Failed to run ${action} for ${domain}:`, err);
+      this._showToast(this._t('entity.group_failed'));
     }
   }
 
@@ -1298,6 +1299,7 @@ export class DwainsDomainEntitiesDialog extends LitElement {
     } catch (err) {
       this._clearOptimisticEntityStates([entityId]);
       console.warn(`Failed to toggle entity ${entityId}:`, err);
+      this._showToast(this._t('entity.update_failed'));
       return;
     }
 
@@ -1318,6 +1320,7 @@ export class DwainsDomainEntitiesDialog extends LitElement {
     } catch (err) {
       this._clearOptimisticEntityStates([entityId]);
       console.warn(`Failed to ${action} cover ${entityId}:`, err);
+      this._showToast(this._t('entity.cover_failed'));
     }
   }
 
@@ -1333,7 +1336,13 @@ export class DwainsDomainEntitiesDialog extends LitElement {
     } catch (err) {
       this._clearOptimisticEntityStates([entityId]);
       console.warn(`Failed to toggle lock ${entityId}:`, err);
+      this._showToast(this._t('entity.lock_failed'));
     }
+  }
+
+  // Show a short message in Home Assistant's own snackbar.
+  private _showToast(message: string): void {
+    fireEvent(this, 'hass-notification', { message });
   }
 
   private _handleMoreInfo(event: Event, entityId?: string): void {

@@ -53,6 +53,7 @@ import {
   masterActionConfirmationEnabled,
 } from "../utils/master-action-confirmations";
 import { showCardEditorDialog } from "./utils/show-card-editor-dialog";
+import { fireEvent } from "./utils/fire-event";
 
 // We'll create our own entity picker since ha-entity-picker is external
 type SettingsPageKey =
@@ -283,7 +284,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
       });
     } catch (e) {
       console.error('❌ Dashboard bijwerken mislukt:', e);
-      alert(this._t('strategy.save_name_failed', { error: String(e) }));
+      this._showToast(this._t('strategy.save_name_failed', { error: String(e) }));
     }
   }
 
@@ -4464,9 +4465,13 @@ export class DwainsDashboardStrategyEditor extends LitElement {
 
   private _editAreaRegistry(ev: Event): void {
     ev.stopPropagation();
-    // This would open the area registry dialog in Home Assistant
-    // For now, we'll just show an alert
-          alert(this._t('strategy.edit_area_alert'));
+    // Point the user to the Home Assistant area settings.
+    this._showToast(this._t('strategy.edit_area_alert'));
+  }
+
+  // Show a short message in Home Assistant's own snackbar.
+  private _showToast(message: string): void {
+    fireEvent(this, 'hass-notification', { message });
   }
 
   private _openReplacementManager(): void {

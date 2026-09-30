@@ -4283,26 +4283,6 @@ export const layoutCardStyles = css`
     }
 
 
-    /* Toast Notification */
-    .toast {
-      position: fixed;
-      bottom: 20px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: var(--primary-color);
-      color: var(--text-primary-color);
-      padding: 12px 24px;
-      border-radius: 24px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-      z-index: 1000;
-      opacity: 0;
-      transition: opacity 0.3s ease;
-    }
-
-    .toast.show {
-      opacity: 1;
-    }
-
     /* Confirmation Dialog */
     .confirmation-dialog {
       position: fixed;

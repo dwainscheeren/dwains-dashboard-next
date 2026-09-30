@@ -1244,7 +1244,6 @@ export class DwainsLayoutCard extends LitElement {
           </div>
         </div>
       </div>
-      ${this._renderToast()}
       ${this._renderConfirmationDialog()}
       ${this._renderNotificationsPanel()}
     `;
@@ -3871,7 +3870,7 @@ export class DwainsLayoutCard extends LitElement {
       }
     } catch (e) {
       console.error('❌ Saving area options failed:', e);
-      alert(this._t('layout.save_card_failed', { error: String(e) }));
+      this._showToast(this._t('layout.save_card_failed', { error: String(e) }));
     }
   }
 
@@ -5630,11 +5629,6 @@ export class DwainsLayoutCard extends LitElement {
     return Number.isFinite(parsed) ? parsed : null;
   }
 
-  private _renderToast() {
-    // TODO: Implement toast state management
-    return nothing;
-  }
-
   private _renderConfirmationDialog() {
     const dialog = this._confirmationDialog;
     if (!dialog) return nothing;
@@ -7024,9 +7018,10 @@ export class DwainsLayoutCard extends LitElement {
     });
   }
 
+  // Show a short message in Home Assistant's own snackbar.
   private _showToast(message: string) {
-    // TODO: Implement proper toast notification
-    console.log('Toast:', message);
+    if (!message) return;
+    fireEvent(this, 'hass-notification', { message });
   }
 
 
