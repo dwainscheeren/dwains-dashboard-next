@@ -4,17 +4,9 @@ import { entityDeviceId } from './device-admission';
 import { isHiddenAsUnavailable } from './entity-availability';
 import { configEntityAreaId, getAreaHiddenEntityIdSet, getHiddenDeviceIdSet } from './entity-lookups';
 import { getStateIndex } from './state-index';
+import { isRegistryEntryVisible as isRegistryVisible } from './entity-visibility';
 
 const EMPTY: EntityConfig[] = [];
-
-function isRegistryVisible(registry: any): boolean {
-  return !(
-    registry?.hidden_by ||
-    registry?.disabled_by ||
-    registry?.entity_category === 'diagnostic' ||
-    registry?.entity_category === 'config'
-  );
-}
 
 function sameItems<T>(left: readonly T[], right: readonly T[]): boolean {
   if (left.length !== right.length) return false;

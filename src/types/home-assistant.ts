@@ -69,6 +69,9 @@ export interface EntityRegistryEntry {
   device_id: string | null;
   area_id: string | null;
   hidden_by?: string | null;
+  /** Set on the display entries of the Home Assistant frontend instead of `hidden_by`. */
+  hidden?: boolean;
+  disabled_by?: string | null;
   entity_category?: string | null;
   created_at?: string | null;
   modified_at?: string | null;

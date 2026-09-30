@@ -1,15 +1,12 @@
 import type { HassEntity, HomeAssistant } from '../types/home-assistant';
 import { getDeviceClassName, getDomainName, prettifyDomain } from './domain-names';
 import { ddLocalize } from './localize';
-import { isEntityFromHiddenDevice } from './device-admission';
 import {
-  getAreaConfigMap,
-  getAreaHiddenEntityIdSet,
   getEntityConfigMap,
-  getHiddenAreaIdSet,
   getHiddenPersonIdSet,
   resolveStatusEntityAreaId,
 } from './entity-lookups';
+import { isEntityVisibleInArea } from './entity-visibility';
 import { getDeviceClassIcon, getDomainIcon } from './icons';
 import { buildHousePowerUsage } from './power-usage';
 import { getStateIndex } from './state-index';
@@ -109,34 +106,12 @@ function statusVisibilityCache(hass: HomeAssistant, config: object): Map<string,
 }
 
 function isStatusEntityVisible(hass: HomeAssistant, config: any, entityId: string): boolean {
-  // Respect HA entity registry visibility
-  const registry = hass.entities?.[entityId];
-  if (registry?.hidden_by) return false;
-
+  // Same rules as the room pages: hidden, disabled, config and diagnostic
+  // entities, hidden devices, hidden areas and entities hidden in an area are
+  // left out, and so are entities without a (known) area.
   const entityReg = getEntityConfigMap(config).get(entityId);
-  if (isEntityFromHiddenDevice(hass, config, entityReg || entityId)) {
-    return false;
-  }
-
-  // Find the area of this entity (EXACT same logic as dialog)
   const entityAreaId = resolveStatusEntityAreaId(hass, config, entityId, entityReg);
-
-  // Skip entities without area
-  if (!entityAreaId) {
-    return false;
-  }
-
-  if (!getAreaConfigMap(config).has(entityAreaId)) {
-    return false;
-  }
-
-  // Skip entities from hidden areas
-  if (getHiddenAreaIdSet(config).has(entityAreaId)) {
-    return false;
-  }
-
-  // Check if entity is hidden in area configuration (same logic as area view)
-  if (getAreaHiddenEntityIdSet(config, entityAreaId).has(entityId)) {
+  if (!isEntityVisibleInArea(hass, config, entityId, entityAreaId, entityReg)) {
     return false;
   }
 
@@ -148,6 +123,36 @@ function isStatusEntityVisible(hass: HomeAssistant, config: any, entityId: strin
   return true;
 }
 
+/**
+ * Members of a group entity (light, cover, switch, fan, lock or media player
+ * group, or any other entity that lists its members in an `entity_id`
+ * attribute), limited to the group's own domain.
+ */
+export function getGroupMemberIds(state: HassEntity | undefined): string[] {
+  const members = state?.attributes?.entity_id;
+  if (!Array.isArray(members)) return [];
+  const domain = entityDomain(state!.entity_id);
+  return members.filter((member): member is string =>
+    typeof member === 'string' && member !== state!.entity_id && entityDomain(member) === domain
+  );
+}
+
+/**
+ * Group entities are skipped when at least one of their members is counted
+ * on its own, so "Covers open" counts the physical covers and not the group
+ * on top of them. A group whose members are all hidden or outside the
+ * dashboard still counts as one entity. Member visibility is decided by the
+ * registry and the dashboard config only, not by the member's current
+ * state, so the counts do not jump when a member becomes unavailable.
+ */
+export function shouldSkipGroupEntity(
+  state: HassEntity,
+  isMemberCounted: (memberId: string) => boolean
+): boolean {
+  const members = getGroupMemberIds(state);
+  return members.length > 0 && members.some(isMemberCounted);
+}
+
 export function getStatusDomains(hass: HomeAssistant, config: any): DomainCount[] {
   if (!hass?.states) return [];
 
@@ -155,18 +160,23 @@ export function getStatusDomains(hass: HomeAssistant, config: any): DomainCount[
   const configLoaded = Boolean(config?.entities && config?.devices);
   const visibility = configLoaded ? statusVisibilityCache(hass, config) : undefined;
 
-  // Use EXACTLY the same filtering logic as the working dialog
-  const allEntities = !visibility ? [] : statusCandidates(hass.states).filter((entityState) => {
-    // Check state availability
-    if ((entityState as any).state === 'unavailable') return false;
-
-    const entityId = (entityState as any).entity_id;
+  const isVisible = (entityId: string): boolean => {
+    if (!visibility) return false;
     let visible = visibility.get(entityId);
     if (visible === undefined) {
       visible = isStatusEntityVisible(hass, config, entityId);
       visibility.set(entityId, visible);
     }
     return visible;
+  };
+  const isMemberCounted = (memberId: string): boolean =>
+    Boolean(hass.states[memberId]) && isVisible(memberId);
+
+  const allEntities = !visibility ? [] : statusCandidates(hass.states).filter((entityState) => {
+    // Check state availability
+    if ((entityState as any).state === 'unavailable') return false;
+    if (!isVisible(entityState.entity_id)) return false;
+    return !shouldSkipGroupEntity(entityState, isMemberCounted);
   });
 
   // Count entities per domain (incl. de 'aan'-entiteit-ids)

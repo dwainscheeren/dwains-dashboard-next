@@ -6,6 +6,7 @@ import { repeat } from 'lit/directives/repeat.js';
 import type { HomeAssistant } from '../types/home-assistant';
 import type { DwainsDashboardConfig, EntityConfig } from '../types/strategy';
 import { getDomainName } from '../utils/domain-names';
+import { isEntityVisibleInArea, isRegistryEntryVisible } from '../utils/entity-visibility';
 import { getDeviceClassIcon, getDomainColor, getDomainIcon } from '../utils/icons';
 import { ddLocalize, ddLocalizePlural } from '../utils/localize';
 import { fireEvent } from './utils/fire-event';
@@ -680,8 +681,7 @@ export class DwainsDomainEntitiesDialog extends LitElement {
     allHassEntities.forEach(entityState => {
       const entityId = entityState.entity_id;
       if (entityIdFilter && !entityIdFilter.has(entityId)) return;
-      const registry = this.hass.entities?.[entityId];
-      if (registry?.hidden_by) return;
+      if (!isRegistryEntryVisible(this.hass.entities?.[entityId])) return;
       const entityDomain = entityId.split('.')[0];
 
       // Check domain
@@ -702,13 +702,9 @@ export class DwainsDomainEntitiesDialog extends LitElement {
       // Check area filter if specified
       if (areaId && entityAreaId !== areaId) return;
 
-      // Check if area exists in our areas map
-      if (!entityAreaId || !areasMap.has(entityAreaId)) return;
-
-      // Check if entity is hidden
-      const groupKey = entityDomain;
-      const hiddenEntities = config.areas_options?.[entityAreaId]?.groups_options?.[groupKey]?.hidden || [];
-      if (hiddenEntities.includes(entityId)) return;
+      // Same visibility rules as the room pages (hidden devices, hidden
+      // areas and entities hidden in one of the area's groups).
+      if (!isEntityVisibleInArea(this.hass, config, entityId, entityAreaId, entityReg)) return;
 
       // Apply unit_of_measurement filter if specified
       if (filterByUnitOfMeasurement) {
