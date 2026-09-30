@@ -1526,6 +1526,7 @@ export const layoutCardStyles = css`
     }
 
     .home-camera-section {
+      --home-section-color: #ef4444;
       margin-bottom: 36px;
     }
 
@@ -1535,15 +1536,8 @@ export const layoutCardStyles = css`
       box-shadow: inset 0 0 0 1px color-mix(in srgb, #ef4444 8%, transparent);
     }
 
-    .home-camera-section .mobile-layout-toggle {
-      color: #ef4444;
-      background: color-mix(in srgb, #ef4444 12%, var(--card-background-color));
-      box-shadow:
-        0 8px 18px rgba(15, 23, 42, 0.08),
-        inset 0 0 0 1px color-mix(in srgb, #ef4444 8%, transparent);
-    }
-
     .home-summaries-section {
+      --home-section-color: #f59e0b;
       margin-bottom: 36px;
     }
 
@@ -1553,15 +1547,8 @@ export const layoutCardStyles = css`
       box-shadow: inset 0 0 0 1px color-mix(in srgb, #f59e0b 9%, transparent);
     }
 
-    .home-summaries-section .mobile-layout-toggle.active {
-      color: #f59e0b;
-      background: color-mix(in srgb, #f59e0b 13%, var(--card-background-color));
-      box-shadow:
-        0 8px 18px rgba(15, 23, 42, 0.08),
-        inset 0 0 0 1px color-mix(in srgb, #f59e0b 9%, transparent);
-    }
-
     .home-todos-section {
+      --home-section-color: #7c3aed;
       margin-bottom: 36px;
     }
 
@@ -1586,6 +1573,7 @@ export const layoutCardStyles = css`
     }
 
     .home-custom-cards-section {
+      --home-section-color: #0ea5a8;
       margin-bottom: 36px;
     }
 
@@ -2957,6 +2945,69 @@ export const layoutCardStyles = css`
     .mobile-layout-toggle.static {
       cursor: default;
       pointer-events: none;
+    }
+
+    /* Home section headings: the section icon, then the tools at the end. */
+    .mobile-section-icon {
+      width: 30px;
+      height: 30px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex: 0 0 auto;
+      border-radius: 999px;
+      color: var(--home-section-color, var(--primary-color));
+      background: color-mix(in srgb, var(--home-section-color, var(--primary-color)) 12%, transparent);
+    }
+
+    .mobile-section-icon ha-icon {
+      --mdc-icon-size: 17px;
+    }
+
+    .mobile-section-tools {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      flex: 0 0 auto;
+    }
+
+    .mobile-section-toggle {
+      appearance: none;
+      width: 28px;
+      height: 28px;
+      padding: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex: 0 0 auto;
+      border: 0;
+      border-radius: 999px;
+      background: transparent;
+      color: var(--secondary-text-color);
+      cursor: pointer;
+      transition:
+        background-color 0.18s ease,
+        color 0.18s ease,
+        transform 0.18s ease;
+    }
+
+    .mobile-section-toggle:hover {
+      background: color-mix(in srgb, var(--primary-text-color) 7%, transparent);
+      color: var(--primary-text-color);
+    }
+
+    .mobile-section-toggle:active {
+      transform: scale(0.94);
+    }
+
+    .mobile-section-toggle:focus-visible,
+    .mobile-section-action:focus-visible {
+      outline: 2px solid var(--primary-color);
+      outline-offset: 2px;
+    }
+
+    .mobile-section-toggle ha-icon {
+      --mdc-icon-size: 18px;
     }
 
     .mobile-domain-title-copy {
@@ -9409,6 +9460,7 @@ export const layoutCardStyles = css`
       .mobile-lock-action,
       .favorite-quick-action,
       .mobile-section-action,
+      .mobile-section-toggle,
       .home-notification-shortcut {
         position: relative;
       }
@@ -9419,6 +9471,7 @@ export const layoutCardStyles = css`
       .mobile-lock-action::after,
       .favorite-quick-action::after,
       .mobile-section-action::after,
+      .mobile-section-toggle::after,
       .home-notification-shortcut::after {
         content: "";
         position: absolute;

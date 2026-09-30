@@ -31,7 +31,7 @@ import { restrictNonAdminDashboardSettings } from '../utils/security';
 import { areaEntityDeviceLabel, sortAreas, stripAreaFromEntityName } from '../utils/area-entities';
 import { navigateHomeAssistant } from '../utils/navigation';
 import { syncHassDarkThemeAttribute } from '../utils/theme';
-import { normalizeHiddenHomeInformationCards, normalizeHiddenHomeSections, normalizeHomeSectionsOrder } from '../utils/home-sections';
+import { HOME_SECTION_META, normalizeHiddenHomeInformationCards, normalizeHiddenHomeSections, normalizeHomeSectionsOrder } from '../utils/home-sections';
 import { buildHousePowerUsage } from '../utils/power-usage';
 import { formatEntityStateWithUnit, formatValueWithUnit } from '../utils/unit-format';
 import { showDomainEntitiesDialog } from './utils/show-domain-entities-dialog';
@@ -2035,6 +2035,52 @@ export class DwainsLayoutCard extends LitElement {
     }
   }
 
+  /**
+   * Mobile heading of a Home section: the section's own icon and title, with
+   * the grid/carousel toggle and "See all" as small buttons at the end.
+   */
+  private _renderMobileSectionHeading(
+    section: HomeSectionKey,
+    title: string,
+    options: {
+      toggle?: { gridMode: boolean; title: string; label: string; onToggle: (event: Event) => void };
+      onSeeAll?: (event: Event) => void;
+    } = {}
+  ) {
+    const { toggle, onSeeAll } = options;
+    return html`
+      <div class="mobile-section-heading">
+        <div class="mobile-section-title">
+          <span class="mobile-section-icon" aria-hidden="true">
+            <ha-icon icon=${HOME_SECTION_META[section].icon}></ha-icon>
+          </span>
+          <span class="mobile-section-title-label">${title}</span>
+        </div>
+        ${toggle || onSeeAll ? html`
+          <div class="mobile-section-tools">
+            ${toggle ? html`
+              <button
+                class="mobile-section-toggle"
+                type="button"
+                title=${toggle.title}
+                aria-label=${toggle.label}
+                @click=${toggle.onToggle}
+              >
+                <ha-icon icon=${toggle.gridMode ? 'mdi:view-carousel-outline' : 'mdi:view-grid-outline'}></ha-icon>
+              </button>
+            ` : nothing}
+            ${onSeeAll ? html`
+              <button class="mobile-section-action" type="button" @click=${onSeeAll}>
+                <span>${this._t('common.see_all')}</span>
+                <ha-icon icon="mdi:chevron-right"></ha-icon>
+              </button>
+            ` : nothing}
+          </div>
+        ` : nothing}
+      </div>
+    `;
+  }
+
   private _renderHomeSummaries() {
     const summaries = this._getHomeSummaryCards();
     if (!summaries.length) return nothing;
@@ -2045,19 +2091,7 @@ export class DwainsLayoutCard extends LitElement {
           <ha-icon icon="mdi:clipboard-list-outline"></ha-icon>
           <span>${this._t('home.summaries')}</span>
         </div>
-        <div class="mobile-section-heading">
-          <div class="mobile-section-title">
-            <button
-              class="mobile-layout-toggle active static"
-              type="button"
-              title=${this._t('home.summaries')}
-              aria-label=${this._t('home.summaries')}
-            >
-              <ha-icon icon="mdi:clipboard-list-outline"></ha-icon>
-            </button>
-            <span class="mobile-section-title-label">${this._t('home.summaries')}</span>
-          </div>
-        </div>
+        ${this._renderMobileSectionHeading('summaries', this._t('home.summaries'))}
         <div class="home-summary-list">
           ${repeat(
             summaries,
@@ -2099,19 +2133,7 @@ export class DwainsLayoutCard extends LitElement {
           <ha-icon icon="mdi:format-list-checks"></ha-icon>
           <span>${sectionTitle}</span>
         </div>
-        <div class="mobile-section-heading">
-          <div class="mobile-section-title">
-            <button
-              class="mobile-layout-toggle active"
-              type="button"
-              title=${sectionTitle}
-              aria-label=${sectionTitle}
-            >
-              <ha-icon icon="mdi:format-list-checks"></ha-icon>
-            </button>
-            <span class="mobile-section-title-label">${sectionTitle}</span>
-          </div>
-        </div>
+        ${this._renderMobileSectionHeading('todos', sectionTitle)}
         <div class="home-todos-grid">
           ${repeat(
             todoEntities,
@@ -2160,19 +2182,7 @@ export class DwainsLayoutCard extends LitElement {
           <ha-icon icon="mdi:cards-outline"></ha-icon>
           <span>${sectionTitle}</span>
         </div>
-        <div class="mobile-section-heading">
-          <div class="mobile-section-title">
-            <button
-              class="mobile-layout-toggle active static"
-              type="button"
-              title=${sectionTitle}
-              aria-label=${sectionTitle}
-            >
-              <ha-icon icon="mdi:cards-outline"></ha-icon>
-            </button>
-            <span class="mobile-section-title-label">${sectionTitle}</span>
-          </div>
-        </div>
+        ${this._renderMobileSectionHeading('custom_cards', sectionTitle)}
         <div class="home-custom-cards-grid">
           ${repeat(
             cards,
@@ -2408,28 +2418,15 @@ export class DwainsLayoutCard extends LitElement {
           <ha-icon icon="mdi:view-dashboard-outline"></ha-icon>
           <span>${this._t('home.house_information')}</span>
         </div>
-        <div class="mobile-section-heading">
-          <div class="mobile-section-title">
-            <button
-              class="mobile-layout-toggle ${gridMode ? 'active' : ''}"
-              type="button"
-              title=${gridMode ? this._t('home.swipe_house_information') : this._t('home.show_all_house_information')}
-              aria-label=${gridMode ? this._t('home.switch_house_information_swipe') : this._t('home.show_all_house_information')}
-              @click=${this._toggleMobileHomeDevicesLayout}
-            >
-              <ha-icon icon=${gridMode ? 'mdi:view-carousel-outline' : 'mdi:view-grid-outline'}></ha-icon>
-            </button>
-            <span class="mobile-section-title-label">${this._t('home.house_information')}</span>
-          </div>
-          <button
-            class="mobile-section-action"
-            type="button"
-            @click=${this._openMobileDeviceSwitcher}
-          >
-            <span>${this._t('common.see_all')}</span>
-            <ha-icon icon="mdi:chevron-right"></ha-icon>
-          </button>
-        </div>
+        ${this._renderMobileSectionHeading('devices', this._t('home.house_information'), {
+          toggle: {
+            gridMode,
+            title: gridMode ? this._t('home.swipe_house_information') : this._t('home.show_all_house_information'),
+            label: gridMode ? this._t('home.switch_house_information_swipe') : this._t('home.show_all_house_information'),
+            onToggle: this._toggleMobileHomeDevicesLayout,
+          },
+          onSeeAll: this._openMobileDeviceSwitcher,
+        })}
         <div class="home-status-grid">
           ${cards}
         </div>
@@ -2448,20 +2445,14 @@ export class DwainsLayoutCard extends LitElement {
           <ha-icon icon="mdi:cctv"></ha-icon>
           <span>${this._t('home.cameras')}</span>
         </div>
-        <div class="mobile-section-heading">
-          <div class="mobile-section-title">
-            <button
-              class="mobile-layout-toggle ${gridMode ? 'active' : ''}"
-              type="button"
-              title=${gridMode ? this._t('home.swipe_cameras') : this._t('home.show_all_cameras')}
-              aria-label=${gridMode ? this._t('home.switch_cameras_swipe') : this._t('home.show_all_cameras')}
-              @click=${this._toggleMobileHomeCamerasLayout}
-            >
-              <ha-icon icon=${gridMode ? 'mdi:view-carousel-outline' : 'mdi:view-grid-outline'}></ha-icon>
-            </button>
-            <span class="mobile-section-title-label">${this._t('home.cameras')}</span>
-          </div>
-        </div>
+        ${this._renderMobileSectionHeading('cameras', this._t('home.cameras'), {
+          toggle: {
+            gridMode,
+            title: gridMode ? this._t('home.swipe_cameras') : this._t('home.show_all_cameras'),
+            label: gridMode ? this._t('home.switch_cameras_swipe') : this._t('home.show_all_cameras'),
+            onToggle: this._toggleMobileHomeCamerasLayout,
+          },
+        })}
         <div class="home-camera-grid">
           ${repeat(
             cameras,
@@ -3042,36 +3033,15 @@ export class DwainsLayoutCard extends LitElement {
 
     return html`
       <section class="mobile-home-section mobile-home-areas layout-${layout}">
-        <div class="mobile-section-heading">
-          <div class="mobile-section-title">
-            ${desktopCollapsed ? html`
-              <span class="mobile-layout-toggle active" aria-hidden="true">
-                <ha-icon icon="mdi:view-grid-outline"></ha-icon>
-              </span>
-            ` : html`
-              <button
-                class="mobile-layout-toggle ${gridMode ? 'active' : ''}"
-                type="button"
-                title=${gridMode ? this._t('home.swipe_areas') : this._t('home.show_all_areas')}
-                aria-label=${gridMode ? this._t('home.switch_areas_swipe') : this._t('home.show_all_areas')}
-                @click=${this._toggleMobileHomeAreasLayout}
-              >
-                <ha-icon icon=${gridMode ? 'mdi:view-carousel-outline' : 'mdi:view-grid-outline'}></ha-icon>
-              </button>
-            `}
-            <span class="mobile-section-title-label">${this._t('home.areas')}</span>
-          </div>
-          ${desktopCollapsed ? nothing : html`
-            <button
-              class="mobile-section-action"
-              type="button"
-              @click=${this._openMobileAreaSwitcher}
-            >
-              <span>${this._t('common.see_all')}</span>
-              <ha-icon icon="mdi:chevron-right"></ha-icon>
-            </button>
-          `}
-        </div>
+        ${this._renderMobileSectionHeading('areas', this._t('home.areas'), desktopCollapsed ? {} : {
+          toggle: {
+            gridMode,
+            title: gridMode ? this._t('home.swipe_areas') : this._t('home.show_all_areas'),
+            label: gridMode ? this._t('home.switch_areas_swipe') : this._t('home.show_all_areas'),
+            onToggle: this._toggleMobileHomeAreasLayout,
+          },
+          onSeeAll: this._openMobileAreaSwitcher,
+        })}
         <div class="mobile-area-rail">
           ${repeat(
             renderedAreas,
@@ -3211,20 +3181,14 @@ export class DwainsLayoutCard extends LitElement {
           <ha-icon icon="mdi:star"></ha-icon>
           <span>${this._t('favorites.title')}</span>
         </div>
-        <div class="mobile-section-heading">
-          <div class="mobile-section-title">
-            <button
-              class="mobile-layout-toggle ${gridMode ? 'active' : ''}"
-              type="button"
-              title=${gridMode ? this._t('favorites.swipe') : this._t('favorites.show_all')}
-              aria-label=${gridMode ? this._t('favorites.switch_swipe') : this._t('favorites.show_all')}
-              @click=${this._toggleMobileHomeFavoritesLayout}
-            >
-              <ha-icon icon=${gridMode ? 'mdi:view-carousel-outline' : 'mdi:view-grid-outline'}></ha-icon>
-            </button>
-            <span class="mobile-section-title-label">${this._t('favorites.title')}</span>
-          </div>
-        </div>
+        ${this._renderMobileSectionHeading('favorites', this._t('favorites.title'), {
+          toggle: {
+            gridMode,
+            title: gridMode ? this._t('favorites.swipe') : this._t('favorites.show_all'),
+            label: gridMode ? this._t('favorites.switch_swipe') : this._t('favorites.show_all'),
+            onToggle: this._toggleMobileHomeFavoritesLayout,
+          },
+        })}
         <div class="favorites-grid">
           ${repeat(
             available,
