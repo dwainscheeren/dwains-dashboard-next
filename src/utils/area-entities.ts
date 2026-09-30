@@ -238,16 +238,61 @@ function sortByOrder(items: string[], order: string[]): string[] {
   });
 }
 
-// Helper to strip area name from entity name
+// Characters that may sit between an area name and the rest of an entity name:
+// whitespace, hyphen, underscore, colon and the en/em dash.
+const AREA_NAME_SEPARATORS = /^[\s\-_:\u2013\u2014]+/;
+
+function capitalizeFirstWord(name: string): string {
+  const firstWord = name.split(/\s/, 1)[0] || '';
+  // Keep brand style names like "iPhone" or "HomePod" untouched, like Home Assistant does.
+  if (firstWord !== firstWord.toLowerCase()) return name;
+  return name.charAt(0).toUpperCase() + name.slice(1);
+}
+
+/**
+ * Remove a leading area name from an entity name, so a tile on the
+ * "Living room" page shows "Ceiling light" instead of "Living room Ceiling light".
+ * The area name must be followed by a space, dash or underscore, the match
+ * ignores case and the result is never empty (the original name is returned then).
+ */
 export function stripAreaFromEntityName(entityName: string, areaName: string): string {
-  const lowerName = entityName.toLowerCase();
-  const lowerArea = areaName.toLowerCase();
+  const name = String(entityName ?? '');
+  const area = String(areaName ?? '').trim();
+  if (!name || !area || name.length <= area.length) return name;
 
-  if (lowerName.startsWith(lowerArea + ' ')) {
-    return entityName.substring(areaName.length + 1);
-  }
+  const prefix = name.slice(0, area.length);
+  if (prefix.toLocaleLowerCase() !== area.toLocaleLowerCase()) return name;
 
-  return entityName;
+  const rest = name.slice(area.length);
+  const separator = rest.match(AREA_NAME_SEPARATORS);
+  if (!separator) return name;
+
+  const stripped = rest.slice(separator[0].length).trim();
+  return stripped ? capitalizeFirstWord(stripped) : name;
+}
+
+/**
+ * The secondary line of an entity tile on an area page. It shows the device
+ * name (without the area prefix) when that adds information, and nothing when
+ * the device name is missing or already part of the displayed entity name.
+ */
+export function areaEntityDeviceLabel(
+  displayName: string,
+  deviceName: string | null | undefined,
+  areaName: string
+): string | undefined {
+  const device = String(deviceName ?? '').trim();
+  if (!device) return undefined;
+  const label = stripAreaFromEntityName(device, areaName);
+  const normalizedLabel = label.toLocaleLowerCase();
+  const normalizedDevice = device.toLocaleLowerCase();
+  const normalizedArea = String(areaName ?? '').trim().toLocaleLowerCase();
+  const normalizedName = String(displayName ?? '').trim().toLocaleLowerCase();
+  if (!normalizedName) return label;
+  if (normalizedLabel === normalizedArea || normalizedDevice === normalizedArea) return undefined;
+  if (normalizedName === normalizedLabel || normalizedName.startsWith(`${normalizedLabel} `)) return undefined;
+  if (normalizedName === normalizedDevice || normalizedName.startsWith(`${normalizedDevice} `)) return undefined;
+  return label;
 }
 
 /**

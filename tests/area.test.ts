@@ -7,6 +7,7 @@ import {
   isEntityActive,
 } from '../src/utils/area';
 import {
+  areaEntityDeviceLabel,
   getAreaGroupedEntities,
   getAreaGroupedEntitiesFromConfig,
   resolveAreaSortMode,
@@ -180,12 +181,47 @@ describe('sortAreas', () => {
 describe('stripAreaFromEntityName', () => {
   it('removes the area name prefix, ignoring case', () => {
     expect(stripAreaFromEntityName('Kitchen Ceiling light', 'Kitchen')).toBe('Ceiling light');
-    expect(stripAreaFromEntityName('kitchen spots', 'Kitchen')).toBe('spots');
+    expect(stripAreaFromEntityName('kitchen spots', 'Kitchen')).toBe('Spots');
+    expect(stripAreaFromEntityName('Woonkamer plafond lamp', 'woonkamer')).toBe('Plafond lamp');
+  });
+
+  it('accepts dashes and underscores as separators', () => {
+    expect(stripAreaFromEntityName('Living room - Floor lamp', 'Living room')).toBe('Floor lamp');
+    expect(stripAreaFromEntityName('Living room_floor_lamp', 'Living room')).toBe('Floor_lamp');
+    expect(stripAreaFromEntityName('Kitchen-spots', 'Kitchen')).toBe('Spots');
   });
 
   it('only strips a whole word prefix', () => {
     expect(stripAreaFromEntityName('Kitchenette lamp', 'Kitchen')).toBe('Kitchenette lamp');
     expect(stripAreaFromEntityName('Ceiling light', 'Kitchen')).toBe('Ceiling light');
+    expect(stripAreaFromEntityName('Lamp in the kitchen', 'Kitchen')).toBe('Lamp in the kitchen');
+  });
+
+  it('never returns an empty name', () => {
+    expect(stripAreaFromEntityName('Kitchen', 'Kitchen')).toBe('Kitchen');
+    expect(stripAreaFromEntityName('Kitchen - ', 'Kitchen')).toBe('Kitchen - ');
+    expect(stripAreaFromEntityName('', 'Kitchen')).toBe('');
+    expect(stripAreaFromEntityName('Kitchen lamp', '')).toBe('Kitchen lamp');
+  });
+
+  it('keeps brand style capitalization of the first word', () => {
+    expect(stripAreaFromEntityName('Office iMac', 'Office')).toBe('iMac');
+  });
+});
+
+describe('areaEntityDeviceLabel', () => {
+  it('shows the device name when it adds information', () => {
+    expect(areaEntityDeviceLabel('Power', 'Kitchen dishwasher', 'Kitchen')).toBe('Dishwasher');
+    expect(areaEntityDeviceLabel('Ceiling light', 'Hue bulb', 'Kitchen')).toBe('Hue bulb');
+  });
+
+  it('hides the device name when it repeats the entity name or the area', () => {
+    expect(areaEntityDeviceLabel('Plafond lamp', 'Woonkamer plafond lamp', 'Woonkamer')).toBeUndefined();
+    expect(areaEntityDeviceLabel('Plafond lamp', 'plafond lamp', 'Woonkamer')).toBeUndefined();
+    expect(areaEntityDeviceLabel('Dishwasher power', 'Dishwasher', 'Kitchen')).toBeUndefined();
+    expect(areaEntityDeviceLabel('Spots', 'Kitchen', 'Kitchen')).toBeUndefined();
+    expect(areaEntityDeviceLabel('Spots', null, 'Kitchen')).toBeUndefined();
+    expect(areaEntityDeviceLabel('Spots', '  ', 'Kitchen')).toBeUndefined();
   });
 });
 

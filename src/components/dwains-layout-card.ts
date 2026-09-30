@@ -28,7 +28,7 @@ import { getDeviceClassName, getDomainName } from '../utils/domain-names';
 import { filterHiddenDeviceEntities } from '../utils/device-admission';
 import { findReplacementAssignment, resolveEntityCardConfig } from '../utils/blueprint-replacements';
 import { restrictNonAdminDashboardSettings } from '../utils/security';
-import { sortAreas } from '../utils/area-entities';
+import { areaEntityDeviceLabel, sortAreas, stripAreaFromEntityName } from '../utils/area-entities';
 import { navigateHomeAssistant } from '../utils/navigation';
 import { syncHassDarkThemeAttribute } from '../utils/theme';
 import { normalizeHiddenHomeInformationCards, normalizeHiddenHomeSections, normalizeHomeSectionsOrder } from '../utils/home-sections';
@@ -5250,7 +5250,11 @@ export class DwainsLayoutCard extends LitElement {
     }
 
     const icon = this.hass.entities?.[entity.entity_id]?.icon || state.attributes?.icon || getDeviceClassIcon(domain, deviceClass) || getDomainIcon(domain);
-    const name = state.attributes?.friendly_name || this.hass.entities?.[entity.entity_id]?.name || entity.entity_id;
+    const fullName = state.attributes?.friendly_name || this.hass.entities?.[entity.entity_id]?.name || entity.entity_id;
+    // The page already shows the room, so drop a leading area name from the tile
+    // and use the second line for the device when that adds something.
+    const name = stripAreaFromEntityName(fullName, area.name);
+    const deviceLabel = areaEntityDeviceLabel(name, this._entityDeviceName(entity.entity_id), area.name);
     const active = this._isEntityActiveForUi(state, domain);
     const actionKind = this._mobileEntityActionKind(domain);
     const hasInlineSelect = this._mobileEntityHasInlineSelect(domain, state);
@@ -5269,7 +5273,8 @@ export class DwainsLayoutCard extends LitElement {
         style=${`--entity-color: ${this._mobileEntityColor(domain, deviceClass)};`}
         role="button"
         tabindex="0"
-        aria-label=${name}
+        aria-label=${fullName}
+        title=${fullName}
         @click=${() => this._showMoreInfo(entity.entity_id)}
         @keydown=${(event: KeyboardEvent) => this._handleMobileEntityKeydown(event, entity.entity_id)}
       >
@@ -5280,13 +5285,19 @@ export class DwainsLayoutCard extends LitElement {
           ${this._renderMobileEntityActions(state, domain, active)}
         </div>
         <div class="mobile-entity-content">
-          <div class="mobile-entity-meta">${area.name}</div>
+          ${deviceLabel ? html`<div class="mobile-entity-meta">${deviceLabel}</div>` : nothing}
           <div class="mobile-entity-name">${name}</div>
           <div class="mobile-entity-status">${this._mobileEntityStatusText(state, domain)}</div>
         </div>
         ${hasInlineSelect ? this._renderMobileEntitySelect(state, domain) : nothing}
       </article>
     `;
+  }
+
+  private _entityDeviceName(entityId: string): string | undefined {
+    const deviceId = this.hass.entities?.[entityId]?.device_id;
+    const device = deviceId ? this.hass.devices?.[deviceId] : undefined;
+    return device ? device.name_by_user || device.name || undefined : undefined;
   }
 
   private _renderTodoListCard(entity: EntityConfig) {
