@@ -10,6 +10,7 @@ import type { HassEntity, HomeAssistant } from '../types/home-assistant';
 import type { DwainsDashboardConfig, AreaConfig, EntityConfig, AreaData, AreaCustomCard, EntitiesDisplay, HomeCustomCard, HomeInformationCardKey, HomeSectionKey, MasterActionConfirmationDomain } from '../types/strategy';
 import { getAreaData, clearAreaDataCache } from '../utils/area';
 import { AreaEntityResolver } from '../utils/area-entity-resolver';
+import { ManagedSubscription } from '../utils/managed-subscription';
 import { isHiddenAsUnavailable, splitHiddenUnavailableEntities } from '../utils/entity-availability';
 import { getAreaConfigMap, getHiddenPersonIdSet, resolveStatusEntityAreaId } from '../utils/entity-lookups';
 import { getDomainStates } from '../utils/state-index';
@@ -211,7 +212,7 @@ export class DwainsLayoutCard extends LitElement {
   private _hostedCards?: Element[];
   private _timeInterval?: number;
   private _resizeObserver?: ResizeObserver;
-  private _persistentNotificationsUnsub?: () => void;
+  private _persistentNotificationsSubscription = new ManagedSubscription();
   private _persistentNotificationsLoaded = false;
   private _homeSummariesLoaded = false;
   private _homeSummariesRefreshInterval?: number;
@@ -423,6 +424,8 @@ export class DwainsLayoutCard extends LitElement {
 
   private _ensurePersistentNotificationsFeature(): void {
     if (!this._showNotificationsUi() || !this.hass || this._persistentNotificationsLoaded) return;
+    // A disconnected card loads and subscribes again when it is connected again.
+    if (!this.isConnected) return;
 
     this._persistentNotificationsLoaded = true;
     void this._loadPersistentNotifications(false);
@@ -457,6 +460,12 @@ export class DwainsLayoutCard extends LitElement {
     window.addEventListener('dwains-dashboard-next-open-home', this._handleOpenHomeEvent);
     this._startTimeUpdate();
     this._initializeObservers();
+    // After navigating away and back the card is connected again: subscribe
+    // again without waiting for a hass update that needs a render.
+    if (this.hass && this.config) {
+      this._ensurePersistentNotificationsFeature();
+      this._ensureHomeSummariesRefresh();
+    }
   }
 
   protected override willUpdate(changedProps: PropertyValues): void {
@@ -498,17 +507,14 @@ export class DwainsLayoutCard extends LitElement {
     window.removeEventListener('pointermove', this._handleSidebarResizeMove);
     window.removeEventListener('pointerup', this._handleSidebarResizeEnd);
     window.removeEventListener('pointercancel', this._handleSidebarResizeEnd);
-    this._persistentNotificationsUnsub?.();
-    this._persistentNotificationsUnsub = undefined;
+    this._persistentNotificationsSubscription.stop();
+    this._persistentNotificationsLoaded = false;
     this._cleanupEventListeners();
     this._cleanupObservers();
     if (this._timeInterval) {
       clearInterval(this._timeInterval);
     }
-    if (this._homeSummariesRefreshInterval) {
-      clearInterval(this._homeSummariesRefreshInterval);
-      this._homeSummariesRefreshInterval = undefined;
-    }
+    this._stopHomeSummariesRefresh();
     if (this._areaHeaderScrollRaf) {
       cancelAnimationFrame(this._areaHeaderScrollRaf);
       this._areaHeaderScrollRaf = undefined;
@@ -1117,16 +1123,7 @@ export class DwainsLayoutCard extends LitElement {
       }
 
       this._ensurePersistentNotificationsFeature();
-
-      if (!this._homeSummariesLoaded) {
-        this._homeSummariesLoaded = true;
-        void this._loadHomeAssistantSummaries();
-        this._homeSummariesRefreshInterval = window.setInterval(
-          () => void this._loadHomeAssistantSummaries(),
-          5 * 60 * 1000
-        );
-      }
-
+      this._ensureHomeSummariesRefresh();
       this._ensureFavoriteSuggestionsFeature();
     }
 
@@ -1135,6 +1132,7 @@ export class DwainsLayoutCard extends LitElement {
         this._ensurePersistentNotificationsFeature();
       } else {
         this._notificationsOpen = false;
+        this._persistentNotificationsSubscription.stop();
         this._persistentNotificationsLoaded = false;
         this._persistentNotifications = [];
       }
@@ -6286,6 +6284,26 @@ export class DwainsLayoutCard extends LitElement {
     });
   }
 
+  /** Loads the Home summaries now and every five minutes while the card is connected. */
+  private _ensureHomeSummariesRefresh(): void {
+    if (this._homeSummariesLoaded || !this.hass || !this.isConnected) return;
+
+    this._homeSummariesLoaded = true;
+    void this._loadHomeAssistantSummaries();
+    this._homeSummariesRefreshInterval = window.setInterval(
+      () => void this._loadHomeAssistantSummaries(),
+      5 * 60 * 1000
+    );
+  }
+
+  private _stopHomeSummariesRefresh(): void {
+    if (this._homeSummariesRefreshInterval) {
+      clearInterval(this._homeSummariesRefreshInterval);
+      this._homeSummariesRefreshInterval = undefined;
+    }
+    this._homeSummariesLoaded = false;
+  }
+
   private async _loadHomeAssistantSummaries(): Promise<void> {
     if (!this.hass) return;
 
@@ -6611,21 +6629,18 @@ export class DwainsLayoutCard extends LitElement {
   }
 
   private async _ensurePersistentNotificationsSubscription(): Promise<void> {
-    if (!this._showNotificationsUi() || this._persistentNotificationsUnsub || !this.hass) return;
+    if (!this._showNotificationsUi() || this._persistentNotificationsSubscription.active || !this.hass) return;
+    if (!this.isConnected) return;
 
     const connection = (this.hass as any).connection;
     if (!connection?.subscribeMessage) return;
 
     try {
-      const unsub = await connection.subscribeMessage(
+      // Stopping the subscription while this is pending unsubscribes as soon as it resolves.
+      await this._persistentNotificationsSubscription.start(() => connection.subscribeMessage(
         (event: any) => this._handlePersistentNotificationEvent(event),
         { type: 'persistent_notification/subscribe' }
-      );
-      if (typeof unsub === 'function') {
-        this._persistentNotificationsUnsub = () => {
-          void unsub();
-        };
-      }
+      ));
     } catch (err) {
       console.warn('Persistent notification subscription unavailable:', err);
     }
