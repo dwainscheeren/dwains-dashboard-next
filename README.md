@@ -55,7 +55,7 @@ More desktop, mobile, light-mode and dark-mode screenshots are available in the 
 
 ## Status
 
-Current release: `1.7.1`
+Current release: `1.8.1`
 
 ## Community And Support
 
