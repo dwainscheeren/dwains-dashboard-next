@@ -41,8 +41,14 @@ export const makeDialogManager = (
     // Load the dialog module
     await dialogImport();
 
+    // Mount where Home Assistant mounts its own dialogs. Since HA 2026.7 its
+    // controls read formatters and config from context that <home-assistant>
+    // provides, so cards inside a dialog under document.body break.
+    const mountRoot: ParentNode =
+      (document.querySelector("home-assistant") as HTMLElement | null)?.shadowRoot || document.body;
+
     // Remove any existing dialog element with same tag
-    const existingDialog = document.querySelector(dialogTag);
+    const existingDialog = mountRoot.querySelector(dialogTag) || document.querySelector(dialogTag);
     if (existingDialog) {
       existingDialog.remove();
     }
@@ -54,8 +60,7 @@ export const makeDialogManager = (
     // Store reference to active dialog
     activeDialogs.set(dialogTag, dialog);
 
-    // Always add dialog to document body
-    document.body.appendChild(dialog);
+    mountRoot.appendChild(dialog);
 
     // Show the dialog after a tick
     requestAnimationFrame(() => {
@@ -65,7 +70,7 @@ export const makeDialogManager = (
     // Clean up when dialog closes
     const cleanup = () => {
       activeDialogs.delete(dialogTag);
-      if (document.body.contains(dialog)) {
+      if (dialog.isConnected) {
         dialog.remove();
       }
 

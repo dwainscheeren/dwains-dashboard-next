@@ -56,7 +56,7 @@ export function buildHousePowerUsage(
         name: entity.areaName,
         icon: configArea ? getAreaIcon(configArea) : 'mdi:home',
         totalWatts: 0,
-        formattedTotal: '0 W',
+        formattedTotal: '0 W',
         entities: [],
         percentage: 0,
       };
@@ -155,9 +155,9 @@ export function getLivePowerValueWatts(state: HassEntity | undefined): number | 
 
 export function formatPowerWatts(watts: number): string {
   if (!Number.isFinite(watts)) return '';
-  if (watts >= 10000) return `${(watts / 1000).toFixed(0)} kW`;
-  if (watts >= 1000) return `${(watts / 1000).toFixed(1)} kW`;
-  return `${Math.round(watts)} W`;
+  if (watts >= 10000) return `${(watts / 1000).toFixed(0)} kW`;
+  if (watts >= 1000) return `${(watts / 1000).toFixed(1)} kW`;
+  return `${Math.round(watts)} W`;
 }
 
 function isVisiblePowerEntity(

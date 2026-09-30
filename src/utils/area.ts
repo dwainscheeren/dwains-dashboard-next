@@ -1,5 +1,6 @@
 import type { HomeAssistant, HassEntity } from '../types/home-assistant';
 import type { AreaConfig, AreaData, AlertInfo, DomainCounts, EntityConfig } from '../types/strategy';
+import { formatEntityStateWithUnit, formatValueWithUnit } from './unit-format';
 
 // Cache for area data to improve performance
 const areaDataCache = new Map<string, { data: AreaData; timestamp: number }>();
@@ -52,13 +53,13 @@ export const getAreaData = (area: AreaConfig, hass: HomeAssistant, areaEntities:
   if (temperatureEntityId) {
     const state = hass.states[temperatureEntityId];
     if (state && state.state !== 'unavailable' && state.state !== 'unknown') {
-      temperature = hass.formatEntityState(state);
+      temperature = formatEntityStateWithUnit(hass, state);
     }
   }
   if (humidityEntityId) {
     const state = hass.states[humidityEntityId];
     if (state && state.state !== 'unavailable' && state.state !== 'unknown') {
-      humidity = hass.formatEntityState(state);
+      humidity = formatEntityStateWithUnit(hass, state);
     }
   }
 
@@ -92,9 +93,9 @@ export const getAreaData = (area: AreaConfig, hass: HomeAssistant, areaEntities:
   // Format wattage display
   if (hasWattageData) {
     if (totalWattage >= 1000) {
-      wattage = `${(totalWattage / 1000).toFixed(1)} kW`;
+      wattage = formatValueWithUnit((totalWattage / 1000).toFixed(1), 'kW');
     } else {
-      wattage = `${Math.round(totalWattage)} W`;
+      wattage = formatValueWithUnit(Math.round(totalWattage), 'W');
     }
   }
 
@@ -128,9 +129,9 @@ export const getAreaData = (area: AreaConfig, hass: HomeAssistant, areaEntities:
   // Format energy display
   if (hasEnergyData) {
     if (totalEnergyValue >= 1000) {
-      totalEnergy = `${(totalEnergyValue / 1000).toFixed(1)} MWh`;
+      totalEnergy = formatValueWithUnit((totalEnergyValue / 1000).toFixed(1), 'MWh');
     } else {
-      totalEnergy = `${totalEnergyValue.toFixed(1)} kWh`;
+      totalEnergy = formatValueWithUnit(totalEnergyValue.toFixed(1), 'kWh');
     }
   }
 

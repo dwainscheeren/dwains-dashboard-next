@@ -19,6 +19,7 @@ import { navigateHomeAssistant } from '../utils/navigation';
 import { isHassDarkTheme } from '../utils/theme';
 import { normalizeHiddenHomeInformationCards, normalizeHiddenHomeSections, normalizeHomeSectionsOrder } from '../utils/home-sections';
 import { buildHousePowerUsage } from '../utils/power-usage';
+import { formatEntityStateWithUnit, formatValueWithUnit } from '../utils/unit-format';
 import { showDomainEntitiesDialog } from './utils/show-domain-entities-dialog';
 import { showCardEditorDialog } from './utils/show-card-editor-dialog';
 import { ensureBottomNav } from './dwains-bottom-nav';
@@ -276,7 +277,7 @@ export class DwainsLayoutCard extends LitElement {
       detail: {
         areaId: this._selectedView === 'area' ? this._selectedArea : null,
         icon: settingsSelected ? 'mdi:cog-outline' : area ? getAreaIcon(area) : 'mdi:home',
-        name: settingsSelected ? 'Settings' : area?.name || 'Home',
+        name: settingsSelected ? this._t('sidebar.dashboard_settings') : area?.name || this._t('sidebar.home'),
         view: this._selectedView || 'home',
       },
     }));
@@ -1439,7 +1440,7 @@ export class DwainsLayoutCard extends LitElement {
     .welcome-text {
       display: flex;
       align-items: baseline;
-      gap: 8px;
+      gap: 4px;
     }
 
     .welcome-greeting {
@@ -10616,8 +10617,8 @@ export class DwainsLayoutCard extends LitElement {
             </div>
             <div class="notifications-subtitle">
               ${hasNotifications
-                ? `${count} persistent ${count === 1 ? 'notification' : 'notifications'}`
-                : 'Persistent notifications from Home Assistant'}
+                ? `${count} ${this._t(count === 1 ? 'home.notification' : 'home.notifications').toLocaleLowerCase()}`
+                : this._t('home.notifications_description')}
             </div>
           </div>
           <div class="notifications-actions">
@@ -10827,7 +10828,7 @@ export class DwainsLayoutCard extends LitElement {
 
     return sortedFloors.map(([floorName, areas]) => {
       const floorTitle = floorName === 'no_floor' ?
-        this.hass.localize('ui.components.area-picker.no_floor') || 'Unassigned spaces' :
+        this.hass.localize('ui.components.area-picker.no_floor') || this._t('home.unassigned_spaces') :
         floorName;
 
       return html`
@@ -11076,7 +11077,7 @@ export class DwainsLayoutCard extends LitElement {
     if (activeLabel) {
       if (domain.count === 1 && domain.entities?.length === 1) {
         const areaName = this._entityAreaName(domain.entities[0]!);
-        return areaName ? `${activeLabel.singular} in ${areaName}` : activeLabel.singular;
+        return areaName ? `${activeLabel.singular} · ${areaName}` : activeLabel.singular;
       }
       return activeLabel.plural;
     }
@@ -11084,52 +11085,55 @@ export class DwainsLayoutCard extends LitElement {
     // Bij precies 1 actief: toon de ruimte ("Motion in Slaapkamer").
     if (domain.domain !== 'person' && domain.count === 1 && domain.entities?.length === 1) {
       const areaName = this._entityAreaName(domain.entities[0]!);
-      if (areaName) return `${domain.name} in ${areaName}`;
+      if (areaName) return `${domain.name} · ${areaName}`;
     }
     return domain.name;
+  }
+
+  private _statusLabel(key: string, count: number, plural = true): string {
+    const localized = plural ? this._tp(key, count) : this._t(key, { count });
+    const prefix = String(count);
+    if (!localized.startsWith(prefix)) return localized;
+    // "{count} lights on" becomes "Lights on"; the count is shown in its own badge.
+    const label = localized.slice(prefix.length).trim();
+    return label.charAt(0).toLocaleUpperCase() + label.slice(1);
+  }
+
+  private _statusPair(key: string, plural = true): { singular: string; plural: string } {
+    return {
+      singular: this._statusLabel(key, 1, plural),
+      plural: this._statusLabel(key, 2, plural),
+    };
   }
 
   private _statusCardActiveLabel(domain: DomainCount): { singular: string; plural: string } | undefined {
     if (domain.domain === 'person') return undefined;
 
-    if (domain.domain === 'light') return { singular: 'Light on', plural: 'Lights on' };
-    if (domain.domain === 'switch') return { singular: 'Switch on', plural: 'Switches on' };
-    if (domain.domain === 'cover') return { singular: 'Cover open', plural: 'Covers open' };
-    if (domain.domain === 'fan') return { singular: 'Fan on', plural: 'Fans on' };
-    if (domain.domain === 'lock') return { singular: 'Lock unlocked', plural: 'Locks unlocked' };
-    if (domain.domain === 'climate') return { singular: 'Climate active', plural: 'Climate active' };
-    if (domain.domain === 'media_player') return { singular: 'Media player playing', plural: 'Media players playing' };
-    if (domain.domain === 'vacuum') return { singular: 'Vacuum cleaning', plural: 'Vacuums cleaning' };
-    if (domain.domain === 'alarm_control_panel') return { singular: 'Alarm armed', plural: 'Alarms armed' };
+    if (domain.domain === 'light') return this._statusPair('status.light_on');
+    if (domain.domain === 'switch') return this._statusPair('status.switch_on');
+    if (domain.domain === 'cover') return this._statusPair('status.cover_open');
+    if (domain.domain === 'fan') return this._statusPair('status.fan_on');
+    if (domain.domain === 'lock') return this._statusPair('status.lock_unlocked');
+    if (domain.domain === 'climate') return this._statusPair('status.climate_active');
+    if (domain.domain === 'media_player') return this._statusPair('status.media_playing');
+    if (domain.domain === 'vacuum') return this._statusPair('status.vacuum_cleaning');
+    if (domain.domain === 'alarm_control_panel') return this._statusPair('status.alarm_armed');
 
     if (domain.domain === 'binary_sensor') {
       switch (domain.deviceClass) {
-        case 'door':
-          return { singular: 'Door open', plural: 'Doors open' };
-        case 'window':
-          return { singular: 'Window open', plural: 'Windows open' };
-        case 'opening':
-          return { singular: 'Opening open', plural: 'Openings open' };
-        case 'motion':
-          return { singular: 'Motion detected', plural: 'Motion detected' };
-        case 'smoke':
-          return { singular: 'Smoke detected', plural: 'Smoke detected' };
-        case 'gas':
-          return { singular: 'Gas detected', plural: 'Gas detected' };
-        case 'moisture':
-          return { singular: 'Moisture detected', plural: 'Moisture detected' };
-        case 'occupancy':
-          return { singular: 'Occupancy detected', plural: 'Occupancy detected' };
-        case 'presence':
-          return { singular: 'Presence detected', plural: 'Presence detected' };
-        case 'tamper':
-          return { singular: 'Tamper detected', plural: 'Tamper detected' };
-        case 'vibration':
-          return { singular: 'Vibration detected', plural: 'Vibration detected' };
-        case 'safety':
-          return { singular: 'Safety active', plural: 'Safety active' };
-        default:
-          return { singular: `${domain.name} active`, plural: `${domain.name} active` };
+        case 'door': return this._statusPair('status.door_open');
+        case 'window': return this._statusPair('status.window_open');
+        case 'opening': return this._statusPair('status.opening_open');
+        case 'motion': return this._statusPair('status.motion_detected', false);
+        case 'smoke': return this._statusPair('status.smoke_detected', false);
+        case 'gas': return this._statusPair('status.gas_detected', false);
+        case 'moisture': return this._statusPair('status.moisture_detected', false);
+        case 'occupancy': return this._statusPair('status.occupancy_detected', false);
+        case 'presence': return this._statusPair('status.presence_detected', false);
+        case 'tamper': return this._statusPair('status.tamper_detected', false);
+        case 'vibration': return this._statusPair('status.vibration_detected', false);
+        case 'safety': return this._statusPair('status.safety_active', false);
+        default: return undefined;
       }
     }
 
@@ -11443,8 +11447,8 @@ export class DwainsLayoutCard extends LitElement {
               </button>
               <div class="welcome-copy">
                 <div class="welcome-text">
-                  <span class="welcome-greeting">${greeting}</span>
-                  <span class="welcome-name">, ${userName}!</span>
+                  <span class="welcome-greeting">${greeting},</span>
+                  <span class="welcome-name">${userName}</span>
                   <span class="welcome-title">${greeting}, ${userName}</span>
                 </div>
                 <div class="welcome-return">${this._getHomeSnapshotText(weatherEntity)}</div>
@@ -11856,7 +11860,7 @@ export class DwainsLayoutCard extends LitElement {
     const personEntities = this._getVisiblePersonEntities();
     const homeCount = personEntities.filter(person => person.state === 'home').length;
     const subtitle = personEntities.length
-      ? `${homeCount}/${personEntities.length} ${this._t('person.home').toLocaleLowerCase()}`
+      ? `${homeCount}/${personEntities.length} ${this._t('person.home')}`
       : this._t('home.no_people');
 
     return html`
@@ -11955,12 +11959,17 @@ export class DwainsLayoutCard extends LitElement {
 
     if (personEntities.length) {
       const homeCount = personEntities.filter(person => person.state === 'home').length;
-      parts.push(`${homeCount}/${personEntities.length} home`);
+      const homeLabel = this._t('person.home');
+      parts.push(`${homeCount}/${personEntities.length} ${homeLabel}`);
     }
 
     if (this._showNotificationsUi() && this._persistentNotifications.length) {
       const count = this._persistentNotifications.length;
-      parts.push(`${count} ${count === 1 ? 'notification' : 'notifications'}`);
+      const notificationLabel = this._t(count === 1 ? 'home.notification' : 'home.notifications');
+      const localizedNotification = notificationLabel
+        ? notificationLabel.charAt(0).toLocaleLowerCase() + notificationLabel.slice(1)
+        : notificationLabel;
+      parts.push(`${count} ${localizedNotification}`);
     }
 
     const attentionCount = this._getHomeSummaryCards()
@@ -12005,7 +12014,7 @@ export class DwainsLayoutCard extends LitElement {
       this.hass?.config?.unit_system?.temperature ||
       '';
 
-    return `${temperature}${unit}`;
+    return formatValueWithUnit(temperature, unit);
   }
 
   private _weatherTitle(weatherEntity?: any): string {
@@ -12077,9 +12086,10 @@ export class DwainsLayoutCard extends LitElement {
 
     const average = values.reduce((total, item) => total + item.value, 0) / values.length;
     const unit = values[0]?.unit || (kind === 'temperature' ? '°C' : '%');
-    const value = kind === 'temperature'
-      ? `${average.toFixed(1)} ${unit}`
-      : `${Math.round(average)}${unit}`;
+    const value = formatValueWithUnit(
+      kind === 'temperature' ? average.toFixed(1) : Math.round(average),
+      unit
+    );
 
     return {
       kind,
@@ -12356,11 +12366,7 @@ export class DwainsLayoutCard extends LitElement {
   private _formatFavoriteState(state: any): string {
     const effectiveState = this._getEffectiveEntityState(state);
 
-    try {
-      return this.hass.formatEntityState(effectiveState);
-    } catch {
-      return String(effectiveState?.state || '');
-    }
+    return formatEntityStateWithUnit(this.hass, effectiveState);
   }
 
   private _getEffectiveEntityState<T extends { entity_id?: string; state?: string } | null | undefined>(state: T): T {
@@ -13083,22 +13089,13 @@ export class DwainsLayoutCard extends LitElement {
     const currentIndex = cards.findIndex(entry => entry.id === cardId);
     if (currentIndex < 0) return;
 
-    const currentCard = cards[currentIndex];
-    if (!currentCard) return;
-    const currentPlacement = currentCard.placement || 'bottom';
-    const currentPlacementIndex = cards
-      .slice(0, currentIndex)
-      .filter(entry => entry.placement === currentPlacement)
-      .length;
     const [card] = cards.splice(currentIndex, 1);
     if (!card) return;
-    let nextPlacementIndex = placementIndex;
-    if (currentPlacement === placement && currentPlacementIndex < placementIndex) {
-      nextPlacementIndex = Math.max(0, placementIndex - 1);
-    }
 
+    // Dropping a card on another card takes that card's position, in both
+    // directions. Dropping on the end of a section clamps to the last slot.
     card.placement = placement;
-    const insertAt = this._insertIndexForPlacement(cards, placement, nextPlacementIndex);
+    const insertAt = this._insertIndexForPlacement(cards, placement, placementIndex);
     cards.splice(insertAt, 0, card);
     void this._saveAreaCustomCards(areaId, cards);
   }
@@ -13367,7 +13364,7 @@ export class DwainsLayoutCard extends LitElement {
     const currentTemperature = singleClimateState?.attributes?.current_temperature;
     const temperatureUnit = (this.hass.config as any)?.unit_system?.temperature || '°';
     const climateValue = currentTemperature !== undefined && currentTemperature !== null
-      ? `${currentTemperature}${temperatureUnit}`
+      ? formatValueWithUnit(currentTemperature, temperatureUnit)
       : `${climates.length}`;
 
     return html`
@@ -13604,7 +13601,7 @@ export class DwainsLayoutCard extends LitElement {
                   <span class="mobile-domain-title-copy">
                     <span class="mobile-domain-title-label">${group.name}</span>
                     ${group.entities.length > 0 ? html`
-                      <span class="mobile-domain-count">(${group.entities.length} ${group.entities.length === 1 ? 'item' : 'items'})</span>
+                      <span class="mobile-domain-count">(${this._tp('common.item', group.entities.length)})</span>
                     ` : nothing}
                   </span>
                 </div>
@@ -14819,15 +14816,15 @@ export class DwainsLayoutCard extends LitElement {
     }
 
     if (domain === 'cover' && typeof state.attributes?.current_position === 'number') {
-      return `${formatted} · ${state.attributes.current_position}%`;
+      return `${formatted} · ${formatValueWithUnit(state.attributes.current_position, '%')}`;
     }
 
     if (domain === 'climate') {
       const current = state.attributes?.current_temperature;
       const target = state.attributes?.temperature;
       const unit = this.hass?.config?.unit_system?.temperature || '°C';
-      if (current !== undefined && target !== undefined) return `${current}${unit} · ${this._t('entity.climate_set', { value: `${target}${unit}` })}`;
-      if (current !== undefined) return `${current}${unit}`;
+      if (current !== undefined && target !== undefined) return `${formatValueWithUnit(current, unit)} · ${this._t('entity.climate_set', { value: formatValueWithUnit(target, unit) })}`;
+      if (current !== undefined) return formatValueWithUnit(current, unit);
     }
 
     if (domain === 'media_player' && state.attributes?.media_title) {
@@ -16032,7 +16029,7 @@ export class DwainsLayoutCard extends LitElement {
       deviceClass: domain.deviceClass,
       entityIds,
       customTitle: domain.name,
-      viewAllLabel: 'View all',
+      viewAllLabel: this._t('common.view_all'),
       onViewAll: () => this._openDeviceDomain(this._statusDeviceDomainKey(domain)),
     });
   }

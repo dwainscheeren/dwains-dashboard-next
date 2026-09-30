@@ -98,7 +98,7 @@ export class DwainsDashboardCardEditor extends LitElement {
     if (!this._strategyEditor) {
       return html`
         <div style="padding: 16px; text-align: center;">
-          <ha-circular-progress indeterminate></ha-circular-progress>
+          <ha-spinner></ha-spinner>
           <p style="margin-top: 16px;">${ddLocalize(this.hass, 'common.loading')}</p>
         </div>
       `;

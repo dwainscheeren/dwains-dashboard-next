@@ -64,12 +64,14 @@ export class DwainsCardEditorDialog extends LitElement {
 
   private _configEl?: any; // HA's eigen visuele editor-element
   private _loadingEditor = false;
+  private _seedPending = false;
   private _previewEl?: HTMLElement;
 
   public showDialog(params: CardEditorDialogParams): void {
     this._params = params;
     this._card = params.card ? { ...params.card } : undefined;
     this._picked = !!params.card;
+    this._seedPending = false;
     this._valid = !!this._card;
     this._search = "";
     this._useYaml = false;
@@ -90,6 +92,7 @@ export class DwainsCardEditorDialog extends LitElement {
 
   private _pick(type: CardType): void {
     this._card = { ...type.config };
+    this._seedPending = !type.manual;
     this._picked = true;
     this._useYaml = !!type.manual;
     this._editorReady = !!type.manual; // handmatig → geen native editor laden
@@ -104,6 +107,7 @@ export class DwainsCardEditorDialog extends LitElement {
       return;
     }
     this._picked = false;
+    this._seedPending = false;
     this._card = undefined;
     this._configEl = undefined;
     this._editorReady = false;
@@ -138,6 +142,17 @@ export class DwainsCardEditorDialog extends LitElement {
       ]);
 
       const ctor: any = customElements.get(tag);
+
+      // A freshly picked card starts from a working config, like Home
+      // Assistant's own card picker, so the preview does not show a
+      // configuration error before anything has been chosen.
+      if (this._seedPending) {
+        this._seedPending = false;
+        this._card = await this._seededCard(ctor, this._card);
+        this._valid = !!this._card?.type;
+        this._previewEl = undefined;
+      }
+
       if (ctor && typeof ctor.getConfigElement === "function") {
         const editor = await ctor.getConfigElement();
         if (editor) {
@@ -148,12 +163,16 @@ export class DwainsCardEditorDialog extends LitElement {
             if (!incoming || typeof incoming !== "object") return;
 
             const source = ev.composedPath?.()[0] ?? ev.target;
-            if (source !== editor && !incoming.type) return;
+            const fromEditor = source === editor;
+            if (!fromEditor && !incoming.type) return;
 
-            // Some custom-card editors contain nested HA fields that also emit
-            // config-changed with only their own partial value. Keep the card
-            // identity in that case instead of replacing the complete config.
-            const nextCard = { ...this._card, ...incoming } as LovelaceCardConfig;
+            // The editor itself always sends its complete config, so use it as
+            // is (this also lets options be cleared). Some custom-card editors
+            // contain nested fields that emit only their own partial value;
+            // merge those so the card identity is kept.
+            const nextCard = (fromEditor && incoming.type
+              ? { ...incoming }
+              : { ...this._card, ...incoming }) as LovelaceCardConfig;
             if (!nextCard.type) {
               this._valid = false;
               return;
@@ -161,6 +180,14 @@ export class DwainsCardEditorDialog extends LitElement {
 
             this._card = nextCard;
             this._valid = true;
+            // Hand the new config back to the editor, like Home Assistant's own
+            // card editor does. Without this the editor keeps rendering its first
+            // config and resets fields on the next hass update.
+            try {
+              editor.setConfig(this._card);
+            } catch {
+              /* editor toont zelf validatie */
+            }
             this._updatePreview();
           });
           // De EDITOR accepteert (anders dan de kaart) wél een incomplete config.
@@ -270,7 +297,7 @@ export class DwainsCardEditorDialog extends LitElement {
 
   protected render() {
     if (!this._params) return nothing;
-    const subtitle = this._params.areaName ? ` — ${this._params.areaName}` : "";
+    const subtitle = this._params.areaName ? ` · ${this._params.areaName}` : "";
     const title = this._picked
       ? this._params.card
         ? this._t("card_editor.title_edit")
@@ -315,6 +342,23 @@ export class DwainsCardEditorDialog extends LitElement {
 
   // Bouw een preview-config met passende, geldige entiteiten. null = geen
   // zinvolle preview mogelijk → toon alleen het icoon (geen foutkaart).
+  private async _seededCard(ctor: any, card: LovelaceCardConfig | undefined): Promise<LovelaceCardConfig | undefined> {
+    if (!card?.type) return card;
+    try {
+      if (typeof ctor?.getStubConfig === "function") {
+        const entityIds = Object.keys(this.hass?.states || {});
+        const stub = await ctor.getStubConfig(this.hass, entityIds, entityIds);
+        if (stub && typeof stub === "object") {
+          return { ...card, ...stub, type: card.type } as LovelaceCardConfig;
+        }
+      }
+    } catch {
+      /* val terug op de eigen preview-config */
+    }
+    const t = CARD_TYPES.find((x) => x.config.type === card.type);
+    return (t && this._previewConfigFor(t)) || card;
+  }
+
   private _previewConfigFor(t: CardType): any | null {
     if ((t as any).manual) return null;
     const type = t.config.type;
@@ -384,12 +428,14 @@ export class DwainsCardEditorDialog extends LitElement {
       : CARD_TYPES;
 
     return html`
-      <ha-textfield
+      <input
         class="search"
-        .label=${this._t("card_editor.search")}
+        type="search"
+        placeholder=${this._t("card_editor.search")}
+        aria-label=${this._t("card_editor.search")}
         .value=${this._search}
         @input=${(e: any) => (this._search = e.target.value)}
-      ></ha-textfield>
+      />
 
       <div class="grid">
         ${types.map(
@@ -399,7 +445,7 @@ export class DwainsCardEditorDialog extends LitElement {
                 <ha-icon icon=${t.icon}></ha-icon>
                 <div class="type-name">${this._t(t.labelKey)}</div>
               </div>
-              <div class="dd-preview-host" data-card-type=${t.config.type}></div>
+              <div class="dd-preview-host" inert data-card-type=${t.config.type}></div>
             </button>
           `
         )}
@@ -487,8 +533,21 @@ export class DwainsCardEditorDialog extends LitElement {
         padding: 4px 0 16px;
       }
       .search {
+        display: block;
         width: 100%;
+        min-height: 44px;
+        box-sizing: border-box;
         margin-bottom: 16px;
+        padding: 0 14px;
+        border: 1px solid var(--divider-color);
+        border-radius: 8px;
+        outline: none;
+        background: var(--card-background-color);
+        color: var(--primary-text-color);
+        font: inherit;
+      }
+      .search:focus {
+        border-color: var(--primary-color);
       }
       .grid {
         display: grid;

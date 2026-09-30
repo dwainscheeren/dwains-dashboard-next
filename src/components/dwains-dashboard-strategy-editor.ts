@@ -125,6 +125,17 @@ function rememberSettingsPage(page: SettingsPageKey): void {
   rememberedSettingsPageAt = Date.now();
 }
 
+// Registry data is loaded live by the editor and must never be written back.
+const LIVE_DATA_KEYS = ["areas", "devices", "entities", "floors"] as const;
+
+// Keep every stored dashboard option, including keys this editor does not
+// manage itself (blueprint pages, Home custom cards, future options).
+function persistableConfig(config: any): Record<string, any> {
+  const result: Record<string, any> = { ...(config || {}) };
+  LIVE_DATA_KEYS.forEach((key) => delete result[key]);
+  return result;
+}
+
 const SETTINGS_ICON_PATHS: Record<string, string> = {
   "mdi:card-account-details-star-outline": mdiCardAccountDetailsStarOutline,
   "mdi:chevron-right": mdiChevronRight,
@@ -303,12 +314,16 @@ export class DwainsDashboardStrategyEditor extends LitElement {
   public async setConfig(config: any): Promise<void> {
     // Only store the user configuration, not live data
     this._config = {
+      ...persistableConfig(config),
       type: config?.type || "custom:dwains-dashboard-next",
       areas_display: config?.areas_display || {},
+      floors_display: config?.floors_display || {},
       areas_options: config?.areas_options || {},
       blueprint_replacements: config?.blueprint_replacements || {},
       device_admission: config?.device_admission || {},
       favorites: config?.favorites || [],
+      pages: config?.pages || [],
+      home_custom_cards: config?.home_custom_cards || [],
       settings: config?.settings || {},
       // These will be populated from live data
       areas: [],
@@ -332,6 +347,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
       void this._fetchData();
     }
   }
+
 
   private async _fetchData() {
     if (!this.hass) return;
@@ -1018,12 +1034,12 @@ export class DwainsDashboardStrategyEditor extends LitElement {
           <div class="entity-picker">
             <div class="entity-picker-header">
               <h4>${this._t('settings.selected_entities')}</h4>
-              <mwc-button @click=${this._addFavoriteEntity} outlined>
-                <svg viewBox="0 0 24 24" width="20" height="20" style="margin-right: 8px;">
+              <ha-button appearance="outlined" size="s" @click=${this._addFavoriteEntity}>
+                <svg slot="start" viewBox="0 0 24 24" width="20" height="20">
                   <path fill="currentColor" d="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z" />
                 </svg>
                 ${this._t('settings.add_entity')}
-              </mwc-button>
+              </ha-button>
             </div>
 
             ${this._renderSelectedEntities()}
@@ -1095,12 +1111,12 @@ export class DwainsDashboardStrategyEditor extends LitElement {
             <div class="weather-picker">
               <div class="weather-picker-header">
                 <h4>${this._t('settings.selected_weather')}</h4>
-                <mwc-button @click=${this._addWeatherEntity} outlined>
-                  <svg viewBox="0 0 24 24" width="20" height="20" style="margin-right: 8px;">
+                <ha-button appearance="outlined" size="s" @click=${this._addWeatherEntity}>
+                  <svg slot="start" viewBox="0 0 24 24" width="20" height="20">
                     <path fill="currentColor" d="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z" />
                   </svg>
                   ${this._t('settings.select_weather')}
-                </mwc-button>
+                </ha-button>
               </div>
 
               ${this._renderSelectedWeatherEntity()}
@@ -1123,12 +1139,12 @@ export class DwainsDashboardStrategyEditor extends LitElement {
           <div class="alarm-picker">
             <div class="alarm-picker-header">
               <h4>${this._t('settings.selected_alarm')}</h4>
-              <mwc-button @click=${this._addAlarmEntity} outlined>
-                <svg viewBox="0 0 24 24" width="20" height="20" style="margin-right: 8px;">
+              <ha-button appearance="outlined" size="s" @click=${this._addAlarmEntity}>
+                <svg slot="start" viewBox="0 0 24 24" width="20" height="20">
                   <path fill="currentColor" d="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z" />
                 </svg>
                 ${this._t('settings.select_alarm')}
-              </mwc-button>
+              </ha-button>
             </div>
 
             ${this._renderSelectedAlarmEntity()}
@@ -1597,11 +1613,11 @@ export class DwainsDashboardStrategyEditor extends LitElement {
           <ha-svg-icon .path=${mdiThermometerWater} class="area-help-icon"></ha-svg-icon>
           <div class="area-help-text">
             <p>
-              To show temperature and humidity sensors in the overview, link a sensor to this room in Home Assistant via
-              <button class="link" @click=${this._editAreaRegistry}>${this._t('settings.edit_room')}</button>.
+              ${this._t('settings.area_sensor_help_before')}
+              <button class="link" @click=${this._editAreaRegistry}>${this._t('settings.edit_room')}</button>${this._t('settings.area_sensor_help_after')}
             </p>
             <p>
-              The wattage badge automatically sums all power sensors (unit 'W') in this room that are visible (not hidden in the UI).
+              ${this._t('settings.area_power_help')}
             </p>
           </div>
         </div>
@@ -2484,7 +2500,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
             @click=${() => this._setDevicesHidden(allDeviceIds, false)}
           >
             <ha-icon icon="mdi:eye-outline"></ha-icon>
-            Show all devices
+            ${this._t('settings.show_all_devices')}
           </button>
           <button
             type="button"
@@ -2492,7 +2508,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
             @click=${() => this._setDevicesHidden(allDeviceIds, true)}
           >
             <ha-icon icon="mdi:eye-off-outline"></ha-icon>
-            Hide all devices
+            ${this._t('settings.hide_all_devices')}
           </button>
         </div>
 
@@ -2510,7 +2526,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
                       <ha-icon icon=${group.icon}></ha-icon>
                     </span>
                     <span>${group.label}</span>
-                    <small>${groupDeviceIds.length - hiddenInGroup}/${groupDeviceIds.length} visible</small>
+                    <small>${this._t('settings.visible_count', { visible: groupDeviceIds.length - hiddenInGroup, total: groupDeviceIds.length })}</small>
                   </div>
 
                   <div class="device-admission-panel">
@@ -2520,14 +2536,14 @@ export class DwainsDashboardStrategyEditor extends LitElement {
                         ?disabled=${hiddenInGroup === 0}
                         @click=${() => this._setDevicesHidden(groupDeviceIds, false)}
                       >
-                        Show type
+                        ${this._t('settings.show_type')}
                       </button>
                       <button
                         type="button"
                         ?disabled=${hiddenInGroup === groupDeviceIds.length}
                         @click=${() => this._setDevicesHidden(groupDeviceIds, true)}
                       >
-                        Hide type
+                        ${this._t('settings.hide_type')}
                       </button>
                     </div>
 
@@ -2542,7 +2558,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
                             <div class="device-admission-area-header">
                               <div>
                                 <strong>${areaGroup.areaName}</strong>
-                                <span>${areaDeviceIds.length - hiddenInArea}/${areaDeviceIds.length} visible</span>
+                                <span>${this._t('settings.visible_count', { visible: areaDeviceIds.length - hiddenInArea, total: areaDeviceIds.length })}</span>
                               </div>
                               <div class="device-admission-area-actions">
                                 <button
@@ -2550,14 +2566,14 @@ export class DwainsDashboardStrategyEditor extends LitElement {
                                   ?disabled=${hiddenInArea === 0}
                                   @click=${() => this._setDevicesHidden(areaDeviceIds, false)}
                                 >
-                                  Show area
+                                  ${this._t('settings.show_area')}
                                 </button>
                                 <button
                                   type="button"
                                   ?disabled=${hiddenInArea === areaDeviceIds.length}
                                   @click=${() => this._setDevicesHidden(areaDeviceIds, true)}
                                 >
-                                  Hide area
+                                  ${this._t('settings.hide_area')}
                                 </button>
                               </div>
                             </div>
@@ -3883,11 +3899,14 @@ export class DwainsDashboardStrategyEditor extends LitElement {
           </div>
 
           <div class="entity-search">
-            <ha-textfield
-              .label=${this._t('settings.search_weather')}
+            <input
+              class="entity-search-input"
+              type="search"
+              placeholder=${this._t('settings.search_weather')}
+              aria-label=${this._t('settings.search_weather')}
               .value=${this._weatherSearchFilter}
               @input=${(e: Event) => this._weatherSearchFilter = (e.target as HTMLInputElement).value}
-            ></ha-textfield>
+            />
           </div>
 
           <div class="entity-list">
@@ -3948,11 +3967,14 @@ export class DwainsDashboardStrategyEditor extends LitElement {
           </div>
 
           <div class="entity-search">
-            <ha-textfield
-              .label=${this._t('settings.search_alarm')}
+            <input
+              class="entity-search-input"
+              type="search"
+              placeholder=${this._t('settings.search_alarm')}
+              aria-label=${this._t('settings.search_alarm')}
               .value=${this._alarmSearchFilter}
               @input=${(e: Event) => this._alarmSearchFilter = (e.target as HTMLInputElement).value}
-            ></ha-textfield>
+            />
           </div>
 
           <div class="entity-list">
@@ -4017,11 +4039,14 @@ export class DwainsDashboardStrategyEditor extends LitElement {
           </div>
 
           <div class="entity-search">
-            <ha-textfield
-              .label=${this._t('settings.search')}
+            <input
+              class="entity-search-input"
+              type="search"
+              placeholder=${this._t('settings.search')}
+              aria-label=${this._t('settings.search')}
               .value=${this._entitySearchFilter}
               @input=${(e: Event) => this._entitySearchFilter = (e.target as HTMLInputElement).value}
-            ></ha-textfield>
+            />
           </div>
 
           <div class="entity-list">
@@ -4319,7 +4344,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
         <div class="no-persons">
           <p>${this._t('settings.no_person_entities')}</p>
           <p style="font-size: 12px; color: var(--secondary-text-color);">
-            Add person entities to see them here.
+            ${this._t('settings.add_person_entities_hint')}
           </p>
         </div>
       `;
@@ -4406,16 +4431,20 @@ export class DwainsDashboardStrategyEditor extends LitElement {
       ...config
     };
 
-    // Only save essential configuration, not live data
+    // Save the complete user configuration, but never the live registry data.
+    const merged = this._config;
     const cleanConfig = {
+      ...persistableConfig(merged),
       type: "custom:dwains-dashboard-next",
-      areas_display: config.areas_display || {},
-      areas_options: config.areas_options || {},
-      blueprint_replacements: config.blueprint_replacements || {},
-      device_admission: config.device_admission || {},
-      favorites: config.favorites || [],
-      home_custom_cards: config.home_custom_cards || [],
-      settings: config.settings || {}
+      areas_display: merged.areas_display || {},
+      floors_display: merged.floors_display || {},
+      areas_options: merged.areas_options || {},
+      blueprint_replacements: merged.blueprint_replacements || {},
+      device_admission: merged.device_admission || {},
+      favorites: merged.favorites || [],
+      pages: merged.pages || [],
+      home_custom_cards: merged.home_custom_cards || [],
+      settings: merged.settings || {}
     };
 
     const event = new CustomEvent("config-changed", {
@@ -6439,6 +6468,23 @@ export class DwainsDashboardStrategyEditor extends LitElement {
 
       .entity-search {
         margin-bottom: 16px;
+      }
+
+      .entity-search-input {
+        width: 100%;
+        min-height: 44px;
+        box-sizing: border-box;
+        padding: 0 14px;
+        border: 1px solid var(--divider-color);
+        border-radius: 8px;
+        outline: none;
+        background: var(--card-background-color);
+        color: var(--primary-text-color);
+        font: inherit;
+      }
+
+      .entity-search-input:focus {
+        border-color: var(--primary-color);
       }
 
       .entity-list {

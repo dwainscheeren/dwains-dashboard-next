@@ -121,6 +121,8 @@ export class DwainsDashboardStrategy implements LovelaceStrategy {
       areas_options: config.areas_options,
       // Pass through favorites configuration
       favorites: config.favorites || [],
+      // Pass through Lovelace cards added to the Home page
+      home_custom_cards: config.home_custom_cards || [],
       // Pass through blueprint-pagina's
       pages: config.pages || [],
       // Pass through replace-card blueprints
