@@ -13,12 +13,10 @@ import {
   mdiGestureTapButton,
   mdiHeartOutline,
   mdiHomeEditOutline,
-  mdiPackageVariantClosedCheck,
   mdiPencil,
   mdiPuzzleEditOutline,
   mdiShieldAccount,
   mdiThermometerWater,
-  mdiTuneVariant,
   mdiViewDashboardEdit,
 } from "@mdi/js";
 import { css, html, LitElement, nothing } from "lit";
@@ -80,7 +78,8 @@ interface SettingsPageItem {
   color: string;
   title: string;
   description: string;
-  summary?: string;
+  /** Short facts, shown as chips that wrap. */
+  summary?: string[];
 }
 
 interface DeviceVisibilityDevice {
@@ -139,10 +138,8 @@ const SETTINGS_ICON_PATHS: Record<string, string> = {
   "mdi:gesture-tap-button": mdiGestureTapButton,
   "mdi:heart-outline": mdiHeartOutline,
   "mdi:home-edit-outline": mdiHomeEditOutline,
-  "mdi:package-variant-closed-check": mdiPackageVariantClosedCheck,
   "mdi:puzzle-edit-outline": mdiPuzzleEditOutline,
   "mdi:shield-account": mdiShieldAccount,
-  "mdi:tune-variant": mdiTuneVariant,
   "mdi:view-dashboard-edit": mdiViewDashboardEdit,
 };
 
@@ -441,18 +438,6 @@ export class DwainsDashboardStrategyEditor extends LitElement {
   private _renderLoadingShell() {
     return html`
       <div class="editor-container settings-loading-shell" aria-busy="true">
-        <div class="settings-overview-hero settings-overview-hero-skeleton">
-          <div>
-            <h2>${this._t('settings.title')}</h2>
-            <p>${this._t('settings.loading')}</p>
-            <div class="settings-version-chip">
-              ${this._renderSettingsIcon("mdi:package-variant-closed-check")}
-              <span>${this._t('settings.loaded_version')}</span>
-              <strong>v${DD_NEXT_VERSION}</strong>
-            </div>
-          </div>
-          ${this._renderSettingsIcon("mdi:tune-variant", "settings-hero-icon")}
-        </div>
         <section class="settings-nav-section">
           <h3>${this._t('settings.loading')}</h3>
           <div class="settings-nav-list">
@@ -491,19 +476,6 @@ export class DwainsDashboardStrategyEditor extends LitElement {
 
     return html`
       <div class="editor-container">
-        <div class="settings-overview-hero">
-          <div>
-            <h2>${this._t('settings.title')}</h2>
-            <p>${this._t('settings.subtitle')}</p>
-            <div class="settings-version-chip">
-              ${this._renderSettingsIcon("mdi:package-variant-closed-check")}
-              <span>${this._t('settings.loaded_version')}</span>
-              <strong>v${DD_NEXT_VERSION}</strong>
-            </div>
-          </div>
-          ${this._renderSettingsIcon("mdi:tune-variant", "settings-hero-icon")}
-        </div>
-
         ${groups.map((group) => {
           const groupItems = items.filter((item) => item.group === group.key);
           if (!groupItems.length) return nothing;
@@ -517,6 +489,9 @@ export class DwainsDashboardStrategyEditor extends LitElement {
             </section>
           `;
         })}
+        <p class="settings-version-footer">
+          ${this._t('settings.loaded_version')} <strong>v${DD_NEXT_VERSION}</strong>
+        </p>
       </div>
     `;
   }
@@ -556,7 +531,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
         color: "var(--primary-color)",
         title: this._t('settings.dashboard'),
         description: this._t('settings.dashboard_description'),
-        summary: this._dashboardTitle || this._t('settings.current_dashboard'),
+        summary: [this._dashboardTitle || this._t('settings.current_dashboard')],
       },
       {
         page: "home",
@@ -565,7 +540,11 @@ export class DwainsDashboardStrategyEditor extends LitElement {
         color: "#0ea5e9",
         title: this._t('settings.home_page'),
         description: this._t('settings.home_page_description'),
-        summary: `${visibleHomeSections} · ${this._t('settings.house_cards', { visible: visibleHouseInfoCards, total: DEFAULT_HOME_INFORMATION_CARDS.length })} · ${this._tp('common.favorite', favoriteCount)}`,
+        summary: [
+          this._tp('settings.section_count', visibleHomeSections),
+          this._t('settings.house_cards', { visible: visibleHouseInfoCards, total: DEFAULT_HOME_INFORMATION_CARDS.length }),
+          this._tp('common.favorite', favoriteCount),
+        ],
       },
       {
         page: "header",
@@ -574,7 +553,10 @@ export class DwainsDashboardStrategyEditor extends LitElement {
         color: "#22a06b",
         title: this._t('settings.header_status'),
         description: this._t('settings.header_status_description'),
-        summary: `${this._config?.settings?.show_notifications === false ? this._t('settings.notifications_hidden') : this._t('settings.notifications_shown')} · ${this._config?.settings?.alarm_entity_id ? this._t('settings.alarm_selected') : this._t('settings.no_alarm_selected')}`,
+        summary: [
+          this._config?.settings?.show_notifications === false ? this._t('settings.notifications_hidden') : this._t('settings.notifications_shown'),
+          this._config?.settings?.alarm_entity_id ? this._t('settings.alarm_selected') : this._t('settings.no_alarm_selected'),
+        ],
       },
       {
         page: "controls",
@@ -583,7 +565,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
         color: "#d97706",
         title: this._t('settings.controls_confirmations'),
         description: this._t('settings.controls_confirmations_description'),
-        summary: this._t('settings.controls_confirmations_summary', { count: protectedMasterActionCount }),
+        summary: [this._t('settings.controls_confirmations_summary', { count: protectedMasterActionCount })],
       },
       {
         page: "people",
@@ -592,7 +574,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
         color: "#8b5cf6",
         title: this._t('settings.people'),
         description: this._t('settings.people_description'),
-        summary: this._tp('common.person', personCount),
+        summary: [this._tp('common.person', personCount)],
       },
       {
         page: "areas",
@@ -601,7 +583,11 @@ export class DwainsDashboardStrategyEditor extends LitElement {
         color: "#14b8a6",
         title: this._t('settings.areas'),
         description: this._t('settings.areas_description'),
-        summary: `${this._tp('common.area', areaCount)} · ${this._t(`settings.area_order_${areaSortMode}`)} · ${areasUnavailableMode}`,
+        summary: [
+          this._tp('common.area', areaCount),
+          this._t(`settings.area_order_${areaSortMode}`),
+          areasUnavailableMode,
+        ],
       },
       {
         page: "devices",
@@ -610,7 +596,11 @@ export class DwainsDashboardStrategyEditor extends LitElement {
         color: "#0891b2",
         title: this._t('settings.devices_page'),
         description: this._t('settings.devices_page_description'),
-        summary: `${this._t('settings.types_visible', { visible: deviceTypeCount - hiddenDeviceTypeCount, total: deviceTypeCount })} · ${this._t('settings.hidden_devices_count', { count: hiddenDeviceCount })} · ${devicesUnavailableMode}`,
+        summary: [
+          this._t('settings.types_visible', { visible: deviceTypeCount - hiddenDeviceTypeCount, total: deviceTypeCount }),
+          this._t('settings.hidden_devices_count', { count: hiddenDeviceCount }),
+          devicesUnavailableMode,
+        ],
       },
       {
         page: "replacements",
@@ -619,7 +609,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
         color: "#7c3aed",
         title: this._t('settings.blueprint_replacements'),
         description: this._t('settings.blueprint_replacements_description'),
-        summary: this._tp('common.active', replacementCount),
+        summary: [this._tp('common.active', replacementCount)],
       },
       {
         page: "permissions",
@@ -628,9 +618,11 @@ export class DwainsDashboardStrategyEditor extends LitElement {
         color: "#ef4444",
         title: this._t('settings.user_permissions'),
         description: this._t('settings.user_permissions_description'),
-        summary: this._config?.settings?.restrict_non_admin_ha_sidebar || this._config?.settings?.restrict_non_admin_dashboard_settings
-          ? this._t('settings.restrictions_enabled')
-          : this._t('settings.default_access'),
+        summary: [
+          this._config?.settings?.restrict_non_admin_ha_sidebar || this._config?.settings?.restrict_non_admin_dashboard_settings
+            ? this._t('settings.restrictions_enabled')
+            : this._t('settings.default_access'),
+        ],
       },
       {
         page: "support",
@@ -639,7 +631,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
         color: "#f59e0b",
         title: this._t('settings.support'),
         description: this._t('settings.support_description'),
-        summary: this._t('settings.optional'),
+        summary: [this._t('settings.optional')],
       },
     ];
   }
@@ -658,8 +650,14 @@ export class DwainsDashboardStrategyEditor extends LitElement {
         <div class="settings-nav-copy">
           <div class="settings-nav-title">${item.title}</div>
           <div class="settings-nav-description">${item.description}</div>
+          ${item.summary?.length
+            ? html`
+                <div class="settings-nav-summary">
+                  ${item.summary.filter(Boolean).map((part) => html`<span>${part}</span>`)}
+                </div>
+              `
+            : nothing}
         </div>
-        ${item.summary ? html`<span class="settings-nav-summary">${item.summary}</span>` : nothing}
         ${this._renderSettingsIcon("mdi:chevron-right", "settings-nav-chevron")}
       </button>
     `;
@@ -4495,85 +4493,6 @@ export class DwainsDashboardStrategyEditor extends LitElement {
         padding: 16px;
       }
 
-      .settings-overview-hero {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 20px;
-        max-width: 720px;
-        margin: 0 auto 18px;
-        padding: 22px 24px;
-        border: 1px solid var(--divider-color);
-        border-radius: 12px;
-        background:
-          radial-gradient(circle at top right, color-mix(in srgb, var(--primary-color) 12%, transparent), transparent 42%),
-          var(--card-background-color);
-        box-shadow: 0 8px 26px rgba(15, 23, 42, 0.06);
-      }
-
-      .settings-overview-hero h2 {
-        margin: 0;
-        color: var(--primary-text-color);
-        font-size: 22px;
-        font-weight: 700;
-        letter-spacing: 0;
-      }
-
-      .settings-overview-hero p {
-        margin: 6px 0 0;
-        color: var(--secondary-text-color);
-        font-size: 13px;
-        line-height: 1.45;
-      }
-
-      .settings-version-chip {
-        width: fit-content;
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        margin-top: 12px;
-        padding: 7px 10px;
-        border-radius: 999px;
-        color: var(--primary-color);
-        background: color-mix(in srgb, var(--primary-color) 10%, transparent);
-        font-size: 12px;
-        font-weight: 700;
-        line-height: 1;
-      }
-
-      .settings-version-chip ha-icon,
-      .settings-version-chip svg {
-        width: 16px;
-        height: 16px;
-        fill: currentColor;
-        --mdc-icon-size: 16px;
-      }
-
-      .settings-version-chip strong {
-        color: var(--primary-text-color);
-        font-weight: 800;
-      }
-
-      .settings-overview-hero > ha-icon,
-      .settings-overview-hero > svg {
-        flex: 0 0 auto;
-        width: 48px;
-        height: 48px;
-        border-radius: 999px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: var(--primary-color);
-        background: color-mix(in srgb, var(--primary-color) 12%, transparent);
-        fill: currentColor;
-        --mdc-icon-size: 26px;
-      }
-
-      .settings-overview-hero > svg {
-        padding: 11px;
-        box-sizing: border-box;
-      }
-
       .settings-nav-section {
         max-width: 720px;
         margin: 0 auto 16px;
@@ -4599,7 +4518,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
         width: 100%;
         min-height: 76px;
         display: grid;
-        grid-template-columns: 44px minmax(0, 1fr) auto 24px;
+        grid-template-columns: 44px minmax(0, 1fr) 24px;
         align-items: center;
         gap: 14px;
         padding: 12px 16px;
@@ -4657,17 +4576,36 @@ export class DwainsDashboardStrategyEditor extends LitElement {
         line-height: 1.35;
       }
 
+      /* Summary facts wrap instead of being cut off. */
       .settings-nav-summary {
-        justify-self: end;
-        max-width: 180px;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-        padding: 6px 10px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 8px;
+      }
+
+      .settings-nav-summary span {
+        max-width: 100%;
+        padding: 4px 9px;
         border-radius: 999px;
         color: var(--settings-item-color);
         background: color-mix(in srgb, var(--settings-item-color) 10%, transparent);
         font-size: 12px;
+        font-weight: 700;
+        line-height: 1.3;
+        overflow-wrap: anywhere;
+      }
+
+      .settings-version-footer {
+        max-width: 720px;
+        margin: 4px auto 0;
+        padding: 0 14px;
+        color: var(--secondary-text-color);
+        font-size: 12px;
+        line-height: 1.4;
+      }
+
+      .settings-version-footer strong {
         font-weight: 700;
       }
 
@@ -4681,10 +4619,6 @@ export class DwainsDashboardStrategyEditor extends LitElement {
 
       .settings-loading-shell {
         min-height: 420px;
-      }
-
-      .settings-overview-hero-skeleton {
-        opacity: 0.92;
       }
 
       .settings-nav-item-skeleton {
@@ -4828,27 +4762,11 @@ export class DwainsDashboardStrategyEditor extends LitElement {
       }
 
       @media (max-width: 700px) {
-        .settings-overview-hero,
         .settings-nav-section,
+        .settings-version-footer,
         .settings-detail-content,
         .settings-detail-toolbar {
           max-width: none;
-        }
-
-        .settings-overview-hero {
-          align-items: flex-start;
-          padding: 18px;
-        }
-
-        .settings-overview-hero > ha-icon,
-        .settings-overview-hero > svg {
-          width: 40px;
-          height: 40px;
-          --mdc-icon-size: 22px;
-        }
-
-        .settings-overview-hero > svg {
-          padding: 9px;
         }
 
         .settings-nav-item {
@@ -4864,15 +4782,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
         }
 
         .settings-nav-summary {
-          grid-column: 2 / -1;
-          justify-self: start;
-          max-width: 100%;
-          margin-top: -4px;
-        }
-
-        .settings-nav-chevron {
-          grid-column: 3;
-          grid-row: 1;
+          margin-top: 6px;
         }
 
         .settings-detail-toolbar {

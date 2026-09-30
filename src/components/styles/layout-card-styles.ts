@@ -872,16 +872,18 @@ export const layoutCardStyles = css`
     }
 
     .settings-page-view {
+      /* Distance of the save bar from the bottom of the screen. */
+      --dd-settings-bar-bottom: 16px;
       width: min(1180px, calc(100% - 32px));
       min-height: 100%;
       margin: 0 auto;
-      padding: 18px 0 104px;
+      padding: 18px 0 24px;
       box-sizing: border-box;
     }
 
     .settings-page-header {
       display: grid;
-      grid-template-columns: auto minmax(0, 1fr) auto;
+      grid-template-columns: auto minmax(0, 1fr);
       align-items: center;
       gap: 16px;
       margin: 0 0 16px;
@@ -896,7 +898,6 @@ export const layoutCardStyles = css`
     }
 
     .settings-page-back,
-    .settings-secondary,
     .settings-primary {
       appearance: none;
       border: 0;
@@ -940,26 +941,12 @@ export const layoutCardStyles = css`
       line-height: 1.35;
     }
 
-    .settings-page-actions,
-    .settings-page-bottom-actions {
-      display: flex;
-      align-items: center;
-      justify-content: flex-end;
-      gap: 10px;
-    }
-
-    .settings-secondary,
     .settings-primary {
       min-height: 40px;
-      padding: 0 18px;
+      padding: 0 22px;
       border-radius: 999px;
       font-size: 14px;
       font-weight: 800;
-    }
-
-    .settings-secondary {
-      background: transparent;
-      color: var(--primary-color);
     }
 
     .settings-primary {
@@ -974,16 +961,6 @@ export const layoutCardStyles = css`
       box-shadow: none;
     }
 
-    .settings-save-error {
-      margin: 0 0 14px;
-      padding: 12px 14px;
-      border-radius: 14px;
-      background: color-mix(in srgb, var(--error-color) 12%, var(--card-background-color));
-      color: var(--error-color);
-      font-weight: 750;
-      font-size: 13px;
-    }
-
     .settings-page-editor {
       overflow: hidden;
       border-radius: 18px;
@@ -996,8 +973,86 @@ export const layoutCardStyles = css`
       display: block;
     }
 
-    .settings-page-bottom-actions {
-      display: none;
+    .settings-save-bar {
+      position: sticky;
+      bottom: var(--dd-settings-bar-bottom);
+      z-index: 5;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin: 14px 0 0;
+      padding: 8px 8px 8px 16px;
+      border: 1px solid color-mix(in srgb, var(--divider-color) 62%, transparent);
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--card-background-color) 92%, transparent);
+      box-shadow: 0 16px 34px rgba(15, 23, 42, 0.13);
+      backdrop-filter: blur(18px) saturate(170%);
+      -webkit-backdrop-filter: blur(18px) saturate(170%);
+    }
+
+    .settings-save-status {
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--secondary-text-color);
+      font-size: 13px;
+      font-weight: 700;
+      line-height: 1.3;
+    }
+
+    .settings-save-text {
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
+
+    .settings-save-dot {
+      flex: 0 0 auto;
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: var(--success-color, #43a047);
+    }
+
+    .settings-save-bar.is-dirty .settings-save-status {
+      color: var(--primary-text-color);
+    }
+
+    .settings-save-bar.is-dirty .settings-save-dot {
+      background: var(--warning-color, #ff9800);
+    }
+
+    .settings-save-bar.is-saving .settings-save-dot {
+      background: var(--primary-color);
+      animation: dd-settings-saving 1s ease-in-out infinite;
+    }
+
+    .settings-save-bar.is-error {
+      border-radius: 18px;
+      border-color: color-mix(in srgb, var(--error-color) 40%, transparent);
+    }
+
+    .settings-save-bar.is-error .settings-save-status {
+      color: var(--error-color);
+    }
+
+    .settings-save-bar.is-error .settings-save-dot {
+      background: var(--error-color);
+    }
+
+    .settings-save-bar .settings-primary {
+      flex: 0 0 auto;
+    }
+
+    @keyframes dd-settings-saving {
+      50% { opacity: 0.3; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .settings-save-bar.is-saving .settings-save-dot {
+        animation: none;
+      }
     }
 
     /* Ruimte voor de mobiele onderbalk */
@@ -6980,13 +7035,14 @@ export const layoutCardStyles = css`
       }
 
       .settings-page-view {
+        /* Same clearance as the other sheets above the bottom navigation. */
+        --dd-settings-bar-bottom: calc(82px + env(safe-area-inset-bottom, 0px));
         width: 100%;
         margin: 0;
         padding: 8px 10px calc(152px + env(safe-area-inset-bottom, 0px));
       }
 
       .settings-page-header {
-        grid-template-columns: auto minmax(0, 1fr);
         gap: 12px;
         margin: 0 0 12px;
         padding: 12px 14px;
@@ -7009,35 +7065,19 @@ export const layoutCardStyles = css`
         font-size: 13px;
       }
 
-      .settings-page-actions {
-        display: none;
-      }
-
       .settings-page-editor {
         border-radius: 18px;
         box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
       }
 
-      .settings-page-bottom-actions {
-        position: sticky;
-        bottom: calc(88px + env(safe-area-inset-bottom, 0px));
-        z-index: 5;
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        align-items: center;
-        margin: 12px 0 0;
-        padding: 8px;
-        border: 1px solid color-mix(in srgb, var(--divider-color) 62%, transparent);
-        border-radius: 999px;
-        background: color-mix(in srgb, var(--card-background-color) 92%, transparent);
-        box-shadow: 0 16px 34px rgba(15, 23, 42, 0.13);
-        backdrop-filter: blur(18px) saturate(170%);
-        -webkit-backdrop-filter: blur(18px) saturate(170%);
-      }
-
-      .settings-page-bottom-actions .settings-secondary,
-      .settings-page-bottom-actions .settings-primary {
-        width: 100%;
+      .settings-save-bar {
+        position: fixed;
+        left: 10px;
+        right: 10px;
+        bottom: var(--dd-settings-bar-bottom);
+        z-index: 110;
+        margin: 0;
+        padding: 6px 6px 6px 14px;
       }
 
       .global-header.mobile {

@@ -6484,8 +6484,25 @@ export class DwainsLayoutCard extends LitElement {
   }
 
   private _renderSettingsView(): TemplateResult {
-    const canSave = this._settingsDirty && !this._settingsSavePending;
+    const saving = this._settingsSavePending;
+    const canSave = this._settingsDirty && !saving;
+    const saveState = this._settingsSaveError
+      ? 'error'
+      : saving
+        ? 'saving'
+        : this._settingsDirty
+          ? 'dirty'
+          : 'saved';
+    const saveStatus = saveState === 'error'
+      ? this._settingsSaveError
+      : saveState === 'saving'
+        ? this._t('common.saving')
+        : saveState === 'dirty'
+          ? this._t('settings.unsaved_changes')
+          : this._t('settings.all_saved');
 
+    // One header with the title and one save bar. The save bar sticks to the
+    // bottom of the page and sits above the bottom navigation on phones.
     return html`
       <section class="settings-page-view">
         <header class="settings-page-header">
@@ -6502,37 +6519,26 @@ export class DwainsLayoutCard extends LitElement {
             <h1>${this._t('sidebar.dashboard_settings')}</h1>
             <p>${this._t('settings.subtitle')}</p>
           </div>
-          <div class="settings-page-actions">
-            <button type="button" class="settings-secondary" @click=${this._closeSettingsPage}>
-              ${this._t('common.back')}
-            </button>
-            <button
-              type="button"
-              class="settings-primary"
-              ?disabled=${!canSave}
-              @click=${this._saveSettingsPage}
-            >
-              ${this._settingsSavePending ? this._t('common.saving') : this._t('common.save')}
-            </button>
-          </div>
         </header>
-        ${this._settingsSaveError
-          ? html`<div class="settings-save-error">${this._settingsSaveError}</div>`
-          : nothing}
         <div class="settings-page-editor" @config-changed=${this._handleSettingsConfigChanged}>
           <dwains-dashboard-next-strategy-editor></dwains-dashboard-next-strategy-editor>
         </div>
-        <div class="settings-page-bottom-actions">
-          <button type="button" class="settings-secondary" @click=${this._closeSettingsPage}>
-            ${this._t('common.back')}
-          </button>
+        <div class="settings-save-bar is-${saveState}">
+          <div
+            class="settings-save-status"
+            role=${saveState === 'error' ? 'alert' : 'status'}
+            aria-live="polite"
+          >
+            <span class="settings-save-dot" aria-hidden="true"></span>
+            <span class="settings-save-text">${saveStatus}</span>
+          </div>
           <button
             type="button"
             class="settings-primary"
             ?disabled=${!canSave}
             @click=${this._saveSettingsPage}
           >
-            ${this._settingsSavePending ? this._t('common.saving') : this._t('common.save')}
+            ${this._t('common.save')}
           </button>
         </div>
       </section>
