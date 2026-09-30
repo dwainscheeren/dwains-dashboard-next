@@ -110,6 +110,17 @@ dist/dwains-dashboard-next.js
 
 Editors, dialogs and languages are split into separate files in `dist/chunks/` and are only loaded when needed. When testing a build in your own Home Assistant, copy the whole `dist/` folder, not only the main file.
 
+### Tests
+
+Unit tests use [Vitest](https://vitest.dev) and live in `tests/`:
+
+```bash
+npm test            # run all tests once
+npm run test:watch  # re-run tests on every change
+```
+
+CI runs `npm run type-check`, `npm run i18n:check`, `npm test` and `npm run build` on every push and pull request.
+
 ### Screenshots
 
 Automated desktop and mobile screenshots can be generated against a running Home Assistant instance:
