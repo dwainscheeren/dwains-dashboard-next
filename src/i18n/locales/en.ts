@@ -74,6 +74,8 @@ export const en = {
   'favorites.swipe': 'Swipe favorites',
   'favorites.show_all': 'Show all favorites',
   'favorites.switch_swipe': 'Switch favorites to swipe cards',
+  'favorites.show_header': 'Show favorites',
+  'favorites.hide_header': 'Hide favorites',
 
   'person.home': 'Home',
   'person.away': 'Away',

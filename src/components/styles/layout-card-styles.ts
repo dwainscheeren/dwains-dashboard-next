@@ -40,6 +40,24 @@ export const layoutCardStyles = css`
       touch-action: manipulation;
     }
 
+    /* Visible keyboard focus for cards and chips that act as buttons. */
+    .status-card-compact:focus-visible,
+    .home-status-card:focus-visible,
+    .weather-compact:focus-visible,
+    .welcome-weather:focus-visible,
+    .welcome-alarm:focus-visible,
+    .area-button:focus-visible,
+    .area-light-toggle:focus-visible,
+    .mobile-area-card:focus-visible,
+    .mobile-entity-card:focus-visible {
+      outline: 2px solid var(--primary-color);
+      outline-offset: 2px;
+    }
+
+    .area-button.selected:focus-visible {
+      outline-color: var(--primary-text-color);
+    }
+
     .dd-static-icon {
       width: 20px;
       height: 20px;
@@ -314,8 +332,13 @@ export const layoutCardStyles = css`
       display: flex;
       align-items: center;
       gap: 8px;
+      margin: 0;
       padding: 4px 12px;
+      border: 0;
       background: var(--secondary-background-color);
+      color: inherit;
+      font: inherit;
+      text-align: left;
       border-radius: 20px;
       cursor: pointer;
       transition: all 0.2s ease;
@@ -1123,8 +1146,13 @@ export const layoutCardStyles = css`
       display: flex;
       align-items: center;
       gap: 8px;
+      margin: 0;
       padding: 8px 16px;
+      border: 0;
       border-radius: 20px;
+      color: inherit;
+      font: inherit;
+      text-align: left;
       cursor: pointer;
       transition: all 0.2s ease;
       font-weight: 500;
@@ -1170,9 +1198,13 @@ export const layoutCardStyles = css`
       display: flex;
       align-items: center;
       gap: 8px;
+      margin: 0;
       padding: 8px 16px;
+      border: 0;
       background: var(--primary-color);
       color: var(--text-primary-color);
+      font: inherit;
+      text-align: left;
       border-radius: 20px;
       cursor: pointer;
       transition: all 0.2s ease;

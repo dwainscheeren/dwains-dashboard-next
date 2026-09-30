@@ -76,6 +76,8 @@ export const it = {
   'favorites.swipe': 'Scorri i preferiti',
   'favorites.show_all': 'Mostra tutti i preferiti',
   'favorites.switch_swipe': 'Mostra i preferiti come schede scorrevoli',
+  'favorites.show_header': 'Mostra preferiti',
+  'favorites.hide_header': 'Nascondi preferiti',
 
   'person.home': 'Casa',
   'person.away': 'Fuori casa',

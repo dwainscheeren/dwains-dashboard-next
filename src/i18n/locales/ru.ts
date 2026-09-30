@@ -76,6 +76,8 @@ export const ru = {
   'favorites.swipe': 'Прокручивать избранное',
   'favorites.show_all': 'Показать всё избранное',
   'favorites.switch_swipe': 'Переключить избранное на карточки с прокруткой',
+  'favorites.show_header': 'Показать избранное',
+  'favorites.hide_header': 'Скрыть избранное',
 
   'person.home': 'Дома',
   'person.away': 'Нет дома',

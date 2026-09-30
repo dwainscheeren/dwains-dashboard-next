@@ -73,6 +73,8 @@ export const zhHant = {
   'favorites.swipe': '滑動收藏夾',
   'favorites.show_all': '顯示所有收藏夾',
   'favorites.switch_swipe': '切換收藏夾至刷卡',
+  'favorites.show_header': '顯示我的最愛',
+  'favorites.hide_header': '隱藏我的最愛',
   'person.home': '在家',
   'person.away': '外出',
   'person.nobody_home': '沒人在家',

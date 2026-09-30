@@ -1432,7 +1432,7 @@ export class DwainsLayoutCard extends LitElement {
     const count = this._persistentNotifications.length;
     if (!count) return nothing;
 
-    const label = `${count} persistent ${count === 1 ? 'notification' : 'notifications'}`;
+    const label = `${count} ${this._t(count === 1 ? 'home.notification' : 'home.notifications').toLocaleLowerCase()}`;
     const displayCount = count > 99 ? '99+' : String(count);
 
     return html`
@@ -1685,19 +1685,20 @@ export class DwainsLayoutCard extends LitElement {
     if (!temperature) return nothing;
 
     return html`
-      <div
+      <button
         class="weather-compact"
+        type="button"
         title=${this._weatherTitle(weatherEntity)}
         aria-label=${this._weatherTitle(weatherEntity)}
         @click=${() => this._showMoreInfo(weatherEntity.entity_id)}
       >
-        <div class="weather-icon-compact">
+        <span class="weather-icon-compact">
           <ha-icon icon=${weatherEntity.attributes.icon || 'mdi:weather-cloudy'}></ha-icon>
-        </div>
-        <div class="weather-temp-compact">
+        </span>
+        <span class="weather-temp-compact">
           ${temperature}
-        </div>
-      </div>
+        </span>
+      </button>
     `;
   }
 
@@ -1714,10 +1715,13 @@ export class DwainsLayoutCard extends LitElement {
               <div
                 class="status-card-compact ${domain.domain} ${domain.value ? 'has-value' : ''} header-card"
                 style=${this._domainStatusStyle(domain.domain, domain.deviceClass)}
+                role="button"
+                tabindex="0"
                 @click=${() => this._handleStatusCardClick(domain)}
+                @keydown=${(event: KeyboardEvent) => this._handleActivationKeydown(event, () => this._handleStatusCardClick(domain))}
                 data-domain=${domain.domain}
                 title=${this._statusCardTitle(domain)}
-                aria-label=${this._statusCardTitle(domain)}
+                aria-label=${this._statusCardAccessibleLabel(domain)}
               >
                 <div class="status-card-icon-compact">
                   <ha-icon icon=${domain.icon}></ha-icon>
@@ -1741,6 +1745,10 @@ export class DwainsLayoutCard extends LitElement {
     return html`
       <button
         class="header-expand-button"
+        type="button"
+        aria-expanded=${this._headerExpanded ? 'true' : 'false'}
+        aria-label=${this._t(this._headerExpanded ? 'favorites.hide_header' : 'favorites.show_header')}
+        title=${this._t(this._headerExpanded ? 'favorites.hide_header' : 'favorites.show_header')}
         @click=${this._toggleHeader}
         data-extra-count=${ifDefined(extraCount || undefined)}
       >
@@ -1774,6 +1782,14 @@ export class DwainsLayoutCard extends LitElement {
       if (areaName) return `${domain.name} · ${areaName}`;
     }
     return domain.name;
+  }
+
+  // The card title plus the value or count that is only shown visually.
+  private _statusCardAccessibleLabel(domain: DomainCount): string {
+    const title = this._statusCardTitle(domain);
+    if (domain.value) return `${title}: ${domain.value}`;
+    if (domain.count > 0) return `${title}: ${domain.count}`;
+    return title;
   }
 
   private _statusLabel(key: string, count: number, plural = true): string {
@@ -2174,8 +2190,9 @@ export class DwainsLayoutCard extends LitElement {
             <div class="welcome-subheader">
               ${alarmContent}
               ${weatherEntity && weatherTemperature ? html`
-                <div
+                <button
                   class="welcome-weather"
+                  type="button"
                   title=${this._weatherTitle(weatherEntity)}
                   aria-label=${this._weatherTitle(weatherEntity)}
                   @click=${() => this._showMoreInfo(weatherEntity.entity_id)}
@@ -2183,7 +2200,7 @@ export class DwainsLayoutCard extends LitElement {
                   <ha-icon icon=${weatherEntity.attributes.icon || 'mdi:weather-cloudy'}></ha-icon>
                   <span class="weather-temp">${weatherTemperature}</span>
                   <span class="weather-label">${this._t('home.outside')}</span>
-                </div>
+                </button>
               ` : nothing}
             </div>
           ` : nothing}
@@ -2211,10 +2228,13 @@ export class DwainsLayoutCard extends LitElement {
         <div
           class="home-status-card ${domain.domain} ${domain.value ? 'has-value' : ''}"
           style=${this._domainStatusStyle(domain.domain, domain.deviceClass)}
+          role="button"
+          tabindex="0"
           @click=${() => this._handleStatusCardClick(domain)}
+          @keydown=${(event: KeyboardEvent) => this._handleActivationKeydown(event, () => this._handleStatusCardClick(domain))}
           data-domain=${domain.domain}
           title=${this._statusCardTitle(domain)}
-          aria-label=${this._statusCardTitle(domain)}
+          aria-label=${this._statusCardAccessibleLabel(domain)}
         >
           <div class="status-card-icon">
             <ha-icon icon=${domain.icon}></ha-icon>
@@ -2511,15 +2531,20 @@ export class DwainsLayoutCard extends LitElement {
   }
 
   private _handleHousePowerKeydown = (event: KeyboardEvent): void => {
-    if (event.key !== 'Enter' && event.key !== ' ') return;
-    event.preventDefault();
-    this._openDeviceDomain('energy');
+    this._handleActivationKeydown(event, () => this._openDeviceDomain('energy'));
   };
 
   private _handleHouseClimateKeydown(event: KeyboardEvent, scope: HouseClimateScope): void {
+    this._handleActivationKeydown(event, () => this._showHouseClimateEntities(undefined, scope));
+  }
+
+  // Enter/Space activation for role="button" cards. Keys pressed on a nested
+  // control (a real button inside the card) are left to that control.
+  private _handleActivationKeydown(event: KeyboardEvent, action: () => void): void {
+    if (event.target !== event.currentTarget) return;
     if (event.key !== 'Enter' && event.key !== ' ') return;
     event.preventDefault();
-    this._showHouseClimateEntities(undefined, scope);
+    action();
   }
 
   private _showHouseClimateEntities(kind?: HouseClimateMetric['kind'], scope: HouseClimateScope = 'indoor'): void {
@@ -2558,7 +2583,11 @@ export class DwainsLayoutCard extends LitElement {
     return html`
       <div
         class="home-status-card house-persons-card person"
+        role="button"
+        tabindex="0"
+        aria-label=${`${this._t('home.people')}: ${subtitle}`}
         @click=${() => this._openDeviceDomain('person')}
+        @keydown=${(event: KeyboardEvent) => this._handleActivationKeydown(event, () => this._openDeviceDomain('person'))}
         data-domain="person"
       >
         <div class="house-persons-head">
@@ -2963,10 +2992,14 @@ export class DwainsLayoutCard extends LitElement {
     };
 
     return html`
-      <div class="welcome-alarm ${getAlarmClass()}" @click=${() => this._showMoreInfo(alarm?.entity_id || '')}>
+      <button
+        class="welcome-alarm ${getAlarmClass()}"
+        type="button"
+        @click=${() => this._showMoreInfo(alarm?.entity_id || '')}
+      >
         <ha-icon icon=${getAlarmIcon()}></ha-icon>
         <span class="alarm-text">${getAlarmText()}</span>
-          </div>
+      </button>
     `;
   }
 
@@ -3060,9 +3093,7 @@ export class DwainsLayoutCard extends LitElement {
   }
 
   private _handleFavoriteKeydown(event: KeyboardEvent, entityId: string): void {
-    if (event.key !== 'Enter' && event.key !== ' ') return;
-    event.preventDefault();
-    this._showMoreInfo(entityId);
+    this._handleActivationKeydown(event, () => this._showMoreInfo(entityId));
   }
 
   private _formatFavoriteState(state: any): string {
@@ -6087,10 +6118,7 @@ export class DwainsLayoutCard extends LitElement {
   }
 
   private _handleHomeNavigationKeydown = (event: KeyboardEvent) => {
-    if (event.key !== 'Enter' && event.key !== ' ') return;
-
-    event.preventDefault();
-    this._selectView('home');
+    this._handleActivationKeydown(event, () => this._selectView('home'));
   };
 
   private _toggleHeader() {

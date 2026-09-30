@@ -73,6 +73,8 @@ export const nl = {
   'favorites.swipe': 'Veeg favorieten',
   'favorites.show_all': 'Toon alle favorieten',
   'favorites.switch_swipe': 'Wissel van favoriet naar swipe-kaarten',
+  'favorites.show_header': 'Favorieten tonen',
+  'favorites.hide_header': 'Favorieten verbergen',
   'person.home': 'Home',
   'person.away': 'Away',
   'person.nobody_home': 'Niemand thuis',

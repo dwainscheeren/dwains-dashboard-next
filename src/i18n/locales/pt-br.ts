@@ -76,6 +76,8 @@ export const ptBR = {
   'favorites.swipe': 'Deslizar favoritos',
   'favorites.show_all': 'Mostrar todos os favoritos',
   'favorites.switch_swipe': 'Exibir favoritos como cartões deslizantes',
+  'favorites.show_header': 'Mostrar favoritos',
+  'favorites.hide_header': 'Ocultar favoritos',
 
   'person.home': 'Em casa',
   'person.away': 'Fora',

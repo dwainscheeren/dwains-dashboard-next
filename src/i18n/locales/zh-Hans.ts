@@ -73,6 +73,8 @@ export const zhHans = {
   'favorites.swipe': '滑动收藏夹',
   'favorites.show_all': '显示所有收藏夹',
   'favorites.switch_swipe': '切换收藏夹至刷卡',
+  'favorites.show_header': '显示我的最爱',
+  'favorites.hide_header': '隐藏我的最爱',
   'person.home': '在家',
   'person.away': '外出',
   'person.nobody_home': '没人在家',

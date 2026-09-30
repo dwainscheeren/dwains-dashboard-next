@@ -73,6 +73,8 @@ export const fr = {
   'favorites.swipe': 'Faites glisser les favoris',
   'favorites.show_all': 'Afficher tous les favoris',
   'favorites.switch_swipe': 'Basculer les favoris vers les cartes magnétiques',
+  'favorites.show_header': 'Afficher les favoris',
+  'favorites.hide_header': 'Masquer les favoris',
   'person.home': 'Maison',
   'person.away': 'Loin',
   'person.nobody_home': 'Personne à la maison',

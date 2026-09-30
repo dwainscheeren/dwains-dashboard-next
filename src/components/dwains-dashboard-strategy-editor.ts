@@ -1339,10 +1339,15 @@ export class DwainsDashboardStrategyEditor extends LitElement {
                       class="area-icon"
                     ></ha-icon>
                   ` : nothing}
-                  <span class="area-name clickable" @click=${() => this._editArea(area.area_id)}>
-                    ${area.name}
-                    <ha-icon icon="mdi:chevron-right" class="chevron"></ha-icon>
-                  </span>
+                  <button
+                    type="button"
+                    class="area-name clickable"
+                    aria-label=${`${this._t('common.edit')}: ${area.name}`}
+                    @click=${() => this._editArea(area.area_id)}
+                  >
+                    <span class="area-name-text">${area.name}</span>
+                    <ha-icon icon="mdi:chevron-right" class="chevron" aria-hidden="true"></ha-icon>
+                  </button>
                   <div class="area-actions">
                     ${sortMode === 'custom' ? html`
                       <ha-icon-button
@@ -3985,14 +3990,14 @@ export class DwainsDashboardStrategyEditor extends LitElement {
                 const friendlyName = state?.attributes?.friendly_name || entityId;
 
                 return html`
-                  <div class="entity-option" @click=${() => this._selectWeatherEntity(entityId)}>
+                  <button type="button" class="entity-option" @click=${() => this._selectWeatherEntity(entityId)}>
                     <ha-state-icon
                       .stateObj=${state}
                       class="entity-icon"
                     ></ha-state-icon>
                     <span class="entity-name">${friendlyName}</span>
                     <span class="entity-id">${entityId}</span>
-                  </div>
+                  </button>
                 `;
               }
             )}
@@ -4053,14 +4058,14 @@ export class DwainsDashboardStrategyEditor extends LitElement {
                 const friendlyName = state?.attributes?.friendly_name || entityId;
 
                 return html`
-                  <div class="entity-option" @click=${() => this._selectAlarmEntity(entityId)}>
+                  <button type="button" class="entity-option" @click=${() => this._selectAlarmEntity(entityId)}>
                     <ha-state-icon
                       .stateObj=${state}
                       class="entity-icon"
                     ></ha-state-icon>
                     <span class="entity-name">${friendlyName}</span>
                     <span class="entity-id">${entityId}</span>
-                  </div>
+                  </button>
                 `;
               }
             )}
@@ -4125,14 +4130,14 @@ export class DwainsDashboardStrategyEditor extends LitElement {
                 const friendlyName = state?.attributes?.friendly_name || entityId;
 
                 return html`
-                  <div class="entity-option" @click=${() => this._selectEntity(entityId)}>
+                  <button type="button" class="entity-option" @click=${() => this._selectEntity(entityId)}>
                     <ha-state-icon
                       .stateObj=${state}
                       class="entity-icon"
                     ></ha-state-icon>
                     <span class="entity-name">${friendlyName}</span>
                     <span class="entity-id">${entityId}</span>
-                  </div>
+                  </button>
                 `;
               }
             )}
@@ -5862,11 +5867,34 @@ export class DwainsDashboardStrategyEditor extends LitElement {
         cursor: pointer;
         display: flex;
         align-items: center;
+        align-self: stretch;
         gap: 4px;
+        min-width: 0;
+        min-height: 40px;
+        margin: 0;
+        padding: 0;
+        border: 0;
+        border-radius: 6px;
+        background: none;
+        color: inherit;
+        font: inherit;
+        text-align: left;
       }
 
       .area-name.clickable:hover {
         color: var(--primary-color);
+      }
+
+      .area-name.clickable:focus-visible,
+      .entity-option:focus-visible {
+        outline: 2px solid var(--primary-color);
+        outline-offset: 2px;
+      }
+
+      .area-name-text {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
       }
 
       .area-name .chevron {
@@ -6581,8 +6609,14 @@ export class DwainsDashboardStrategyEditor extends LitElement {
         display: flex;
         align-items: center;
         gap: 12px;
+        width: 100%;
+        margin: 0;
         padding: 12px;
+        border: 0;
         background: var(--primary-background-color);
+        color: inherit;
+        font: inherit;
+        text-align: left;
         border-radius: 8px;
         cursor: pointer;
         transition: all 0.2s ease;
