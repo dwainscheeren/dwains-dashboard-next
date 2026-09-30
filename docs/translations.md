@@ -17,6 +17,7 @@ Dwains Dashboard Next follows the language selected in the Home Assistant user p
 - Simplified Chinese (`zh-Hans`)
 - Russian (`ru`)
 - Italian (`it`)
+- Brazilian Portuguese (`pt-BR`)
 
 Regional language codes are supported automatically. For example, `de-DE`, `fr-FR`, and `es-ES` use their matching base language. Chinese script and regional codes such as `zh-Hant`, `zh-Hans`, `zh-TW`, and `zh-CN` are recognized automatically. Unsupported languages fall back to English.
 
