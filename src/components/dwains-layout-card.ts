@@ -1413,14 +1413,14 @@ export class DwainsLayoutCard extends LitElement {
               aria-current=${this._selectedView === 'home' ? 'page' : nothing}
               @click=${() => this._selectView('home')}
             ></button>
-            <div class="area-icon">
+            <div class="area-icon" aria-hidden="true">
               <ha-icon icon="mdi:home"></ha-icon>
             </div>
-            <div class="area-info">
+            <div class="area-info" aria-hidden="true">
               <div class="area-name">${this._t('sidebar.home')}</div>
             </div>
             ${this._renderHomeNotificationShortcut()}
-            <ha-icon class="area-menu-chevron" icon="mdi:chevron-right"></ha-icon>
+            <ha-icon class="area-menu-chevron" icon="mdi:chevron-right" aria-hidden="true"></ha-icon>
           </div>
 
           ${this._renderAreaButtons()}
@@ -1543,11 +1543,12 @@ export class DwainsLayoutCard extends LitElement {
     const hasPicture = area.picture ? true : false;
     const pictureContrastClass = hasPicture ? this._getPictureContrastClass(area.picture) : '';
 
-    const sensorsText = [
+    const sensors = [
       areaData.temperature,
       areaData.humidity,
       areaData.wattage
-    ].filter(Boolean).join(' • ');
+    ].filter(Boolean);
+    const sensorsText = sensors.join(' • ');
     const lightsOn = areaData.domains.light?.on || 0;
     const lightToggleLabel = this._tp('sidebar.turn_off_area_lights', lightsOn, { area: area.name });
 
@@ -1560,7 +1561,7 @@ export class DwainsLayoutCard extends LitElement {
             <button
               class="area-button-action"
               type="button"
-              aria-label=${sensorsText ? `${area.name}, ${sensorsText}` : area.name}
+              aria-label=${[area.name, ...sensors].join(', ')}
               aria-current=${this._selectedView === 'area' && isSelected ? 'page' : nothing}
               @click=${() => this._selectArea(area.area_id)}
             ></button>
@@ -1570,7 +1571,7 @@ export class DwainsLayoutCard extends LitElement {
 
             <div class="area-content">
               <!-- Top section: Name and sensors -->
-              <div class="area-top-section">
+              <div class="area-top-section" aria-hidden="true">
               <div class="area-name">${area.name}</div>
               ${sensorsText ? html`
                 <div class="area-sensors">${sensorsText}</div>
@@ -1580,7 +1581,7 @@ export class DwainsLayoutCard extends LitElement {
               <!-- Bottom section: Icon and badges -->
               <div class="area-bottom-section">
                 <!-- Left: Main area icon -->
-                <div class="area-main-icon">
+                <div class="area-main-icon" aria-hidden="true">
                   <ha-icon icon=${getAreaIcon(area)}></ha-icon>
                 </div>
 
@@ -1601,49 +1602,49 @@ export class DwainsLayoutCard extends LitElement {
                   ` : nothing}
 
                   ${areaData.domains.switch && areaData.domains.switch.on > 0 ? html`
-                    <span class="info-badge switch" style=${this._domainBadgeStyle('switch')}>
+                    <span aria-hidden="true" class="info-badge switch" style=${this._domainBadgeStyle('switch')}>
                       <ha-icon icon=${getDomainIcon('switch')}></ha-icon>
                       <span class="badge-count">${areaData.domains.switch.on}</span>
                     </span>
                   ` : nothing}
 
                   ${areaData.domains.climate && areaData.domains.climate.on > 0 ? html`
-                    <span class="info-badge climate" style=${this._domainBadgeStyle('climate')}>
+                    <span aria-hidden="true" class="info-badge climate" style=${this._domainBadgeStyle('climate')}>
                       <ha-icon icon=${getDomainIcon('climate')}></ha-icon>
                       <span class="badge-count">${areaData.domains.climate.on}</span>
                     </span>
                   ` : nothing}
 
                   ${areaData.domains.media_player && areaData.domains.media_player.on > 0 ? html`
-                    <span class="info-badge media_player" style=${this._domainBadgeStyle('media_player')}>
+                    <span aria-hidden="true" class="info-badge media_player" style=${this._domainBadgeStyle('media_player')}>
                       <ha-icon icon=${getDomainIcon('media_player')}></ha-icon>
                       <span class="badge-count">${areaData.domains.media_player.on}</span>
                     </span>
                   ` : nothing}
 
                   ${areaData.domains.cover && areaData.domains.cover.on > 0 ? html`
-                    <span class="info-badge cover" style=${this._domainBadgeStyle('cover')}>
+                    <span aria-hidden="true" class="info-badge cover" style=${this._domainBadgeStyle('cover')}>
                       <ha-icon icon=${getDomainIcon('cover')}></ha-icon>
                       <span class="badge-count">${areaData.domains.cover.on}</span>
                     </span>
                   ` : nothing}
 
                   ${areaData.domains.fan && areaData.domains.fan.on > 0 ? html`
-                    <span class="info-badge fan" style=${this._domainBadgeStyle('fan')}>
+                    <span aria-hidden="true" class="info-badge fan" style=${this._domainBadgeStyle('fan')}>
                       <ha-icon icon=${getDomainIcon('fan')}></ha-icon>
                       <span class="badge-count">${areaData.domains.fan.on}</span>
                     </span>
                   ` : nothing}
 
                   ${areaData.domains.motion && areaData.domains.motion.on > 0 ? html`
-                    <span class="info-badge motion" style=${this._domainBadgeStyle('binary_sensor', 'motion')}>
+                    <span aria-hidden="true" class="info-badge motion" style=${this._domainBadgeStyle('binary_sensor', 'motion')}>
                       <ha-icon icon=${getDeviceClassIcon('binary_sensor', 'motion')}></ha-icon>
                       <span class="badge-count">${areaData.domains.motion.on}</span>
                     </span>
                   ` : nothing}
 
             ${areaData.alerts.length > 0 ? html`
-                    <span class="info-badge alerts">
+                    <span aria-hidden="true" class="info-badge alerts">
                       <ha-icon icon="mdi:alert-circle"></ha-icon>
                       <span class="badge-count">${areaData.alerts.length}</span>
                     </span>
@@ -1651,7 +1652,7 @@ export class DwainsLayoutCard extends LitElement {
                 </div>
               </div>
             </div>
-            <ha-icon class="area-menu-chevron" icon="mdi:chevron-right"></ha-icon>
+            <ha-icon class="area-menu-chevron" icon="mdi:chevron-right" aria-hidden="true"></ha-icon>
           </div>
         `;
   }
@@ -3505,13 +3506,24 @@ export class DwainsLayoutCard extends LitElement {
         @dragend=${this._clearCustomCardDragState}
       >
         <div class="dd-card-toolbar">
-          <button class="drag" title=${this._t('layout.drag_card')} aria-label=${this._t('layout.drag_card')}>
+          <button class="drag" type="button" title=${this._t('layout.drag_card')} aria-label=${this._t('layout.drag_card')}>
             <ha-icon icon="mdi:drag"></ha-icon>
           </button>
-          <button title=${this._t('common.edit')} @click=${() => this._editCard(areaId, entry.id)}>
+          <button
+            type="button"
+            title=${this._t('common.edit')}
+            aria-label=${this._t('common.edit')}
+            @click=${() => this._editCard(areaId, entry.id)}
+          >
             <ha-icon icon="mdi:pencil"></ha-icon>
           </button>
-          <button class="del" title=${this._t('common.delete')} @click=${() => this._deleteCard(areaId, entry.id)}>
+          <button
+            class="del"
+            type="button"
+            title=${this._t('common.delete')}
+            aria-label=${this._t('common.delete')}
+            @click=${() => this._deleteCard(areaId, entry.id)}
+          >
             <ha-icon icon="mdi:delete"></ha-icon>
           </button>
         </div>
@@ -5289,7 +5301,7 @@ export class DwainsLayoutCard extends LitElement {
     const labelFor = (action: string) => this._t('action.entity_action', { action, name });
 
     return html`
-      <div class="mobile-cover-actions" role="group" aria-label=${name} @click=${(event: Event) => event.stopPropagation()}>
+      <div class="mobile-cover-actions" @click=${(event: Event) => event.stopPropagation()}>
         ${canOpen ? html`
           <button
             class="mobile-entity-action mobile-cover-action ${value === 'opening' ? 'active' : ''}"

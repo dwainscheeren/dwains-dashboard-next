@@ -1197,7 +1197,7 @@ export class DwainsDomainEntitiesDialog extends LitElement {
     const labelFor = (action: string) => this._t('action.entity_action', { action, name });
 
     return html`
-      <div class="domain-cover-actions" role="group" aria-label=${name} @click=${(event: Event) => event.stopPropagation()}>
+      <div class="domain-cover-actions" @click=${(event: Event) => event.stopPropagation()}>
         ${canOpen ? html`
           <button
             class="domain-entity-action domain-cover-action ${value === 'opening' ? 'active' : ''}"

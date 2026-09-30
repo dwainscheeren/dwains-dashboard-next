@@ -180,10 +180,21 @@ export class DwainsPageCard extends LitElement {
           </div>
           <div class="page-actions">
             ${this._canManageDashboard() ? html`
-              <button title=${this._t('common.edit')} @click=${this._editPage}>
+              <button
+                type="button"
+                title=${this._t('common.edit')}
+                aria-label=${this._t('common.edit')}
+                @click=${this._editPage}
+              >
                 <ha-icon icon="mdi:pencil"></ha-icon>
               </button>
-              <button class="danger" title=${this._t('common.delete')} @click=${this._deletePage}>
+              <button
+                class="danger"
+                type="button"
+                title=${this._t('common.delete')}
+                aria-label=${this._t('common.delete')}
+                @click=${this._deletePage}
+              >
                 <ha-icon icon="mdi:delete"></ha-icon>
               </button>
             ` : nothing}
@@ -247,6 +258,16 @@ export class DwainsPageCard extends LitElement {
     }
     .page-actions ha-icon {
       --mdc-icon-size: 20px;
+    }
+    .page-actions button:focus-visible {
+      outline: 2px solid var(--primary-color);
+      outline-offset: 2px;
+    }
+    @media (pointer: coarse) {
+      .page-actions button {
+        width: 44px;
+        height: 44px;
+      }
     }
     dwains-dashboard-next-card-host {
       display: block;
