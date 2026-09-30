@@ -9306,4 +9306,94 @@ export const layoutCardStyles = css`
         min-width: 0 !important;
       }
     }
+
+    /* Touch screens: small controls get a target of at least 40x40px. Mouse
+       and trackpad users (fine pointers) keep the compact desktop sizes. */
+    @media (pointer: coarse) {
+      /* Controls that can simply grow. */
+      .dd-card-toolbar button,
+      .dd-generated-card-toolbar button,
+      .mobile-domain-order-button,
+      .mobile-domain-drag-handle,
+      .mobile-layout-toggle,
+      .mobile-domain-master-action,
+      .mobile-cover-action,
+      .area-quick-action,
+      .notifications-icon-button,
+      .notification-dismiss,
+      .header-expand-button {
+        min-width: 40px;
+        min-height: 40px;
+      }
+
+      .mobile-domain-master,
+      .mobile-domain-master-actions,
+      .area-quick-control {
+        min-height: 40px;
+      }
+
+      /* Three 40px cover buttons do not fit next to the entity icon, so the
+         cover buttons may wrap below it. */
+      .mobile-entity-top {
+        flex-wrap: wrap;
+      }
+
+      .mobile-cover-actions {
+        margin-left: auto;
+      }
+
+      /* Switch-like and pill controls keep their look and get a larger,
+         invisible hit area instead. */
+      .mobile-entity-toggle,
+      .mobile-entity-more,
+      .mobile-scene-action,
+      .mobile-lock-action,
+      .favorite-quick-action,
+      .mobile-section-action,
+      .home-notification-shortcut {
+        position: relative;
+      }
+
+      .mobile-entity-toggle::after,
+      .mobile-entity-more::after,
+      .mobile-scene-action::after,
+      .mobile-lock-action::after,
+      .favorite-quick-action::after,
+      .mobile-section-action::after,
+      .home-notification-shortcut::after {
+        content: "";
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: max(100%, 44px);
+        height: max(100%, 44px);
+        transform: translate(-50%, -50%);
+      }
+    }
+
+    @media (pointer: coarse) and (max-width: 768px) {
+      /* A cover control with two 40px buttons is too wide for a three column
+         bar, so that bar scrolls sideways like the four and five item bars. */
+      .area-content-area .area-header .area-mobile-quick-controls.count-3:has(> .area-quick-control.cover) {
+        display: flex;
+        justify-content: flex-start;
+        overflow-x: auto;
+      }
+
+      .area-content-area .area-header .area-mobile-quick-controls.count-3:has(> .area-quick-control.cover) > .area-quick-control {
+        flex: 0 0 auto;
+        width: auto;
+        min-width: 88px;
+      }
+
+      /* The taller quick control bar sits at the bottom of the area header;
+         grow the header by the same amount so it does not cover the title. */
+      .area-content-area .area-header.has-quick-controls:not(.is-stuck) {
+        min-height: calc(164px + env(safe-area-inset-top, 0px));
+      }
+
+      .area-content-area .area-header.has-picture.has-quick-controls:not(.is-stuck) {
+        min-height: calc(196px + env(safe-area-inset-top, 0px));
+      }
+    }
 `;
