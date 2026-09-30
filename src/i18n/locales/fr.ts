@@ -185,6 +185,7 @@ export const fr = {
   'action.open_camera': 'Ouvrir la caméra',
   'action.turn_off': 'Éteindre',
   'action.more_info': 'Plus d\'informations',
+  'action.entity_action': '{action} : {name}',
   'action.turn_on_all': 'Allumez tout',
   'action.turn_off_all': 'Éteignez tout',
   'action.open_all': 'Tout ouvrir',

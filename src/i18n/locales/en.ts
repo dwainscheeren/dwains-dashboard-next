@@ -191,6 +191,7 @@ export const en = {
   'action.open_camera': 'Open camera',
   'action.turn_off': 'Turn off',
   'action.more_info': 'More info',
+  'action.entity_action': '{action}: {name}',
   'action.turn_on_all': 'Turn on all',
   'action.turn_off_all': 'Turn off all',
   'action.open_all': 'Open all',

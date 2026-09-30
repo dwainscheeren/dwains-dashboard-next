@@ -185,6 +185,7 @@ export const zhHans = {
   'action.open_camera': '打开摄影机',
   'action.turn_off': '关闭',
   'action.more_info': '更多信息',
+  'action.entity_action': '{action}：{name}',
   'action.turn_on_all': '全部打开',
   'action.turn_off_all': '全部关闭',
   'action.open_all': '全部打开',

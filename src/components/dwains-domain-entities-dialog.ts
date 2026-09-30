@@ -1136,14 +1136,18 @@ export class DwainsDomainEntitiesDialog extends LitElement {
     const entityId = state?.entity_id;
     const actionKind = this._entityActionKind(domain);
     const unavailable = this._isUnavailable(state);
+    const name = this._entityDisplayName(state);
+    const labelFor = (action: string) => this._t('action.entity_action', { action, name });
 
     if (actionKind === 'toggle') {
       return html`
         <button
           class="domain-entity-action domain-entity-toggle"
           type="button"
+          role="switch"
+          aria-checked=${active ? 'true' : 'false'}
           title=${active ? this._t('action.turn_off') : this._t('action.turn_on')}
-          aria-label=${active ? this._t('action.turn_off') : this._t('action.turn_on')}
+          aria-label=${name}
           ?disabled=${unavailable}
           @click=${(event: Event) => this._handleEntityToggle(event, state, domain)}
         ></button>
@@ -1161,7 +1165,7 @@ export class DwainsDomainEntitiesDialog extends LitElement {
           class="domain-entity-action domain-lock-action ${unlocked ? 'is-unlocked' : ''}"
           type="button"
           title=${unlocked ? this._t('action.lock') : this._t('action.unlock')}
-          aria-label=${unlocked ? this._t('action.lock') : this._t('action.unlock')}
+          aria-label=${labelFor(unlocked ? this._t('action.lock') : this._t('action.unlock'))}
           ?disabled=${unavailable}
           @click=${(event: Event) => this._handleLockAction(event, state)}
         >
@@ -1175,7 +1179,7 @@ export class DwainsDomainEntitiesDialog extends LitElement {
         class="domain-entity-action domain-entity-more"
         type="button"
         title=${this._t('action.more_info')}
-        aria-label=${this._t('action.more_info')}
+        aria-label=${labelFor(this._t('action.more_info'))}
         @click=${(event: Event) => this._handleMoreInfo(event, entityId)}
       >
         <ha-icon icon="mdi:chevron-right"></ha-icon>
@@ -1189,15 +1193,17 @@ export class DwainsDomainEntitiesDialog extends LitElement {
     const canOpen = this._coverSupportsFeature(state, 1);
     const canClose = this._coverSupportsFeature(state, 2);
     const canStop = this._coverSupportsFeature(state, 8);
+    const name = this._entityDisplayName(state);
+    const labelFor = (action: string) => this._t('action.entity_action', { action, name });
 
     return html`
-      <div class="domain-cover-actions" @click=${(event: Event) => event.stopPropagation()}>
+      <div class="domain-cover-actions" role="group" aria-label=${name} @click=${(event: Event) => event.stopPropagation()}>
         ${canOpen ? html`
           <button
             class="domain-entity-action domain-cover-action ${value === 'opening' ? 'active' : ''}"
             type="button"
             title=${this._t('action.open')}
-            aria-label=${this._t('action.open')}
+            aria-label=${labelFor(this._t('action.open'))}
             ?disabled=${unavailable}
             @click=${(event: Event) => this._handleCoverAction(event, state, 'open')}
           >
@@ -1209,7 +1215,7 @@ export class DwainsDomainEntitiesDialog extends LitElement {
             class="domain-entity-action domain-cover-action ${value === 'opening' || value === 'closing' ? 'active' : ''}"
             type="button"
             title=${this._t('action.stop')}
-            aria-label=${this._t('action.stop')}
+            aria-label=${labelFor(this._t('action.stop'))}
             ?disabled=${unavailable}
             @click=${(event: Event) => this._handleCoverAction(event, state, 'stop')}
           >
@@ -1221,7 +1227,7 @@ export class DwainsDomainEntitiesDialog extends LitElement {
             class="domain-entity-action domain-cover-action ${value === 'closing' ? 'active' : ''}"
             type="button"
             title=${this._t('action.close')}
-            aria-label=${this._t('action.close')}
+            aria-label=${labelFor(this._t('action.close'))}
             ?disabled=${unavailable}
             @click=${(event: Event) => this._handleCoverAction(event, state, 'close')}
           >
@@ -1286,6 +1292,8 @@ export class DwainsDomainEntitiesDialog extends LitElement {
   }
 
   private _handleEntityKeydown(event: KeyboardEvent, entityId: string): void {
+    // Keys pressed on a control inside the card belong to that control.
+    if (event.target !== event.currentTarget) return;
     if (event.key !== 'Enter' && event.key !== ' ') return;
 
     event.preventDefault();
@@ -1346,6 +1354,11 @@ export class DwainsDomainEntitiesDialog extends LitElement {
       console.warn(`Failed to toggle lock ${entityId}:`, err);
       this._showToast(this._t('entity.lock_failed'));
     }
+  }
+
+  private _entityDisplayName(state: any): string {
+    const entityId = String(state?.entity_id || '');
+    return state?.attributes?.friendly_name || this.hass?.entities?.[entityId]?.name || entityId;
   }
 
   // Show a short message in Home Assistant's own snackbar.

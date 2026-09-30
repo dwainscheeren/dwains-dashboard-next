@@ -193,6 +193,7 @@ export const ptBR = {
   'action.open_camera': 'Abrir câmera',
   'action.turn_off': 'Desligar',
   'action.more_info': 'Mais informações',
+  'action.entity_action': '{action}: {name}',
   'action.turn_on_all': 'Ligar tudo',
   'action.turn_off_all': 'Desligar tudo',
   'action.open_all': 'Abrir tudo',

@@ -185,6 +185,7 @@ export const zhHant = {
   'action.open_camera': '開啟攝影機',
   'action.turn_off': '關閉',
   'action.more_info': '更多資訊',
+  'action.entity_action': '{action}：{name}',
   'action.turn_on_all': '全部開啟',
   'action.turn_off_all': '全部關閉',
   'action.open_all': '全部打開',

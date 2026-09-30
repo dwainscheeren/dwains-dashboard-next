@@ -1410,6 +1410,7 @@ export class DwainsLayoutCard extends LitElement {
               class="area-button-action"
               type="button"
               aria-label=${this._t('sidebar.home')}
+              aria-current=${this._selectedView === 'home' ? 'page' : nothing}
               @click=${() => this._selectView('home')}
             ></button>
             <div class="area-icon">
@@ -1560,6 +1561,7 @@ export class DwainsLayoutCard extends LitElement {
               class="area-button-action"
               type="button"
               aria-label=${sensorsText ? `${area.name}, ${sensorsText}` : area.name}
+              aria-current=${this._selectedView === 'area' && isSelected ? 'page' : nothing}
               @click=${() => this._selectArea(area.area_id)}
             ></button>
             ${hasPicture ? html`
@@ -3094,6 +3096,11 @@ export class DwainsLayoutCard extends LitElement {
             class="favorite-quick-action"
             type="button"
             title=${this._favoriteQuickTitle(state, domain)}
+            role=${ifDefined(this._isOnOffDomain(domain) ? 'switch' : undefined)}
+            aria-checked=${ifDefined(this._isOnOffDomain(domain) ? String(this._isEntityActiveForUi(state, domain)) : undefined)}
+            aria-label=${this._isOnOffDomain(domain)
+              ? name
+              : this._t('action.entity_action', { action: this._favoriteQuickTitle(state, domain), name })}
             @click=${(event: Event) => this._handleFavoriteQuickAction(event, state, domain)}
           >
             <ha-icon icon=${this._favoriteQuickIcon(state, domain)}></ha-icon>
@@ -3220,6 +3227,15 @@ export class DwainsLayoutCard extends LitElement {
     }
     if (['off', 'closed', 'locked', 'not_home', 'idle'].includes(value)) return 'is-off';
     return 'is-active';
+  }
+
+  private _isOnOffDomain(domain: string): boolean {
+    return ['light', 'switch', 'fan', 'input_boolean'].includes(domain);
+  }
+
+  private _entityDisplayName(state: any): string {
+    const entityId = String(state?.entity_id || '');
+    return state?.attributes?.friendly_name || this.hass?.entities?.[entityId]?.name || entityId;
   }
 
   private _favoriteSupportsQuickToggle(domain: string): boolean {
@@ -5198,14 +5214,18 @@ export class DwainsLayoutCard extends LitElement {
     const entityId = state?.entity_id;
     const actionKind = this._mobileEntityActionKind(domain);
     const unavailable = ['unavailable', 'unknown'].includes(String(state?.state || '').toLowerCase());
+    const name = this._entityDisplayName(state);
+    const labelFor = (action: string) => this._t('action.entity_action', { action, name });
 
     if (actionKind === 'toggle') {
       return html`
         <button
           class="mobile-entity-action mobile-entity-toggle"
           type="button"
+          role="switch"
+          aria-checked=${active ? 'true' : 'false'}
           title=${active ? this._t('action.turn_off') : this._t('action.turn_on')}
-          aria-label=${active ? this._t('action.turn_off') : this._t('action.turn_on')}
+          aria-label=${name}
           ?disabled=${unavailable}
           @click=${(event: Event) => this._handleMobileEntityToggle(event, state, domain)}
         ></button>
@@ -5223,7 +5243,7 @@ export class DwainsLayoutCard extends LitElement {
           class="mobile-entity-action mobile-lock-action ${unlocked ? 'is-unlocked' : ''}"
           type="button"
           title=${unlocked ? this._t('action.lock') : this._t('action.unlock')}
-          aria-label=${unlocked ? this._t('action.lock') : this._t('action.unlock')}
+          aria-label=${labelFor(unlocked ? this._t('action.lock') : this._t('action.unlock'))}
           ?disabled=${unavailable}
           @click=${(event: Event) => this._handleMobileLockAction(event, state)}
         >
@@ -5238,7 +5258,7 @@ export class DwainsLayoutCard extends LitElement {
           class="mobile-entity-action mobile-scene-action"
           type="button"
           title=${this._t('action.activate')}
-          aria-label=${this._t('action.activate')}
+          aria-label=${labelFor(this._t('action.activate'))}
           @click=${(event: Event) => this._handleMobileSceneAction(event, state)}
         >
           <ha-icon icon="mdi:play"></ha-icon>
@@ -5251,7 +5271,7 @@ export class DwainsLayoutCard extends LitElement {
         class="mobile-entity-action mobile-entity-more"
         type="button"
         title=${this._t('action.more_info')}
-        aria-label=${this._t('action.more_info')}
+        aria-label=${labelFor(this._t('action.more_info'))}
         @click=${(event: Event) => this._handleMobileMoreInfo(event, entityId)}
       >
         <ha-icon icon="mdi:chevron-right"></ha-icon>
@@ -5265,15 +5285,17 @@ export class DwainsLayoutCard extends LitElement {
     const canOpen = this._coverSupportsFeature(state, 1);
     const canClose = this._coverSupportsFeature(state, 2);
     const canStop = this._coverSupportsFeature(state, 8);
+    const name = this._entityDisplayName(state);
+    const labelFor = (action: string) => this._t('action.entity_action', { action, name });
 
     return html`
-      <div class="mobile-cover-actions" @click=${(event: Event) => event.stopPropagation()}>
+      <div class="mobile-cover-actions" role="group" aria-label=${name} @click=${(event: Event) => event.stopPropagation()}>
         ${canOpen ? html`
           <button
             class="mobile-entity-action mobile-cover-action ${value === 'opening' ? 'active' : ''}"
             type="button"
             title=${this._t('action.open')}
-            aria-label=${this._t('action.open')}
+            aria-label=${labelFor(this._t('action.open'))}
             ?disabled=${unavailable}
             @click=${(event: Event) => this._handleMobileCoverAction(event, state, 'open')}
           >
@@ -5285,7 +5307,7 @@ export class DwainsLayoutCard extends LitElement {
             class="mobile-entity-action mobile-cover-action ${value === 'opening' || value === 'closing' ? 'active' : ''}"
             type="button"
             title=${this._t('action.stop')}
-            aria-label=${this._t('action.stop')}
+            aria-label=${labelFor(this._t('action.stop'))}
             ?disabled=${unavailable}
             @click=${(event: Event) => this._handleMobileCoverAction(event, state, 'stop')}
           >
@@ -5297,7 +5319,7 @@ export class DwainsLayoutCard extends LitElement {
             class="mobile-entity-action mobile-cover-action ${value === 'closing' ? 'active' : ''}"
             type="button"
             title=${this._t('action.close')}
-            aria-label=${this._t('action.close')}
+            aria-label=${labelFor(this._t('action.close'))}
             ?disabled=${unavailable}
             @click=${(event: Event) => this._handleMobileCoverAction(event, state, 'close')}
           >

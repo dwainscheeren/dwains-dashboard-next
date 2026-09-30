@@ -193,6 +193,7 @@ export const ru = {
   'action.open_camera': 'Открыть камеру',
   'action.turn_off': 'Выключить',
   'action.more_info': 'Подробнее',
+  'action.entity_action': '{action}: {name}',
   'action.turn_on_all': 'Включить все',
   'action.turn_off_all': 'Выключить все',
   'action.open_all': 'Открыть все',

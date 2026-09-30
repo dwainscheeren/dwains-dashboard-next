@@ -193,6 +193,7 @@ export const it = {
   'action.open_camera': 'Apri telecamera',
   'action.turn_off': 'Spegni',
   'action.more_info': 'Altre informazioni',
+  'action.entity_action': '{action}: {name}',
   'action.turn_on_all': 'Accendi tutto',
   'action.turn_off_all': 'Spegni tutto',
   'action.open_all': 'Apri tutto',
