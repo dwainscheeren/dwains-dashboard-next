@@ -384,12 +384,14 @@ export class DwainsCardEditorDialog extends LitElement {
       : CARD_TYPES;
 
     return html`
-      <ha-textfield
+      <input
         class="search"
-        .label=${this._t("card_editor.search")}
+        type="search"
+        placeholder=${this._t("card_editor.search")}
+        aria-label=${this._t("card_editor.search")}
         .value=${this._search}
         @input=${(e: any) => (this._search = e.target.value)}
-      ></ha-textfield>
+      />
 
       <div class="grid">
         ${types.map(
@@ -487,8 +489,21 @@ export class DwainsCardEditorDialog extends LitElement {
         padding: 4px 0 16px;
       }
       .search {
+        display: block;
         width: 100%;
+        min-height: 44px;
+        box-sizing: border-box;
         margin-bottom: 16px;
+        padding: 0 14px;
+        border: 1px solid var(--divider-color);
+        border-radius: 8px;
+        outline: none;
+        background: var(--card-background-color);
+        color: var(--primary-text-color);
+        font: inherit;
+      }
+      .search:focus {
+        border-color: var(--primary-color);
       }
       .grid {
         display: grid;

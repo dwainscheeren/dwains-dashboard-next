@@ -949,12 +949,12 @@ export class DwainsDashboardStrategyEditor extends LitElement {
           <div class="entity-picker">
             <div class="entity-picker-header">
               <h4>${this._t('settings.selected_entities')}</h4>
-              <mwc-button @click=${this._addFavoriteEntity} outlined>
-                <svg viewBox="0 0 24 24" width="20" height="20" style="margin-right: 8px;">
+              <ha-button appearance="outlined" size="s" @click=${this._addFavoriteEntity}>
+                <svg slot="start" viewBox="0 0 24 24" width="20" height="20">
                   <path fill="currentColor" d="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z" />
                 </svg>
                 ${this._t('settings.add_entity')}
-              </mwc-button>
+              </ha-button>
             </div>
 
             ${this._renderSelectedEntities()}
@@ -1026,12 +1026,12 @@ export class DwainsDashboardStrategyEditor extends LitElement {
             <div class="weather-picker">
               <div class="weather-picker-header">
                 <h4>${this._t('settings.selected_weather')}</h4>
-                <mwc-button @click=${this._addWeatherEntity} outlined>
-                  <svg viewBox="0 0 24 24" width="20" height="20" style="margin-right: 8px;">
+                <ha-button appearance="outlined" size="s" @click=${this._addWeatherEntity}>
+                  <svg slot="start" viewBox="0 0 24 24" width="20" height="20">
                     <path fill="currentColor" d="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z" />
                   </svg>
                   ${this._t('settings.select_weather')}
-                </mwc-button>
+                </ha-button>
               </div>
 
               ${this._renderSelectedWeatherEntity()}
@@ -1054,12 +1054,12 @@ export class DwainsDashboardStrategyEditor extends LitElement {
           <div class="alarm-picker">
             <div class="alarm-picker-header">
               <h4>${this._t('settings.selected_alarm')}</h4>
-              <mwc-button @click=${this._addAlarmEntity} outlined>
-                <svg viewBox="0 0 24 24" width="20" height="20" style="margin-right: 8px;">
+              <ha-button appearance="outlined" size="s" @click=${this._addAlarmEntity}>
+                <svg slot="start" viewBox="0 0 24 24" width="20" height="20">
                   <path fill="currentColor" d="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z" />
                 </svg>
                 ${this._t('settings.select_alarm')}
-              </mwc-button>
+              </ha-button>
             </div>
 
             ${this._renderSelectedAlarmEntity()}
@@ -3763,11 +3763,14 @@ export class DwainsDashboardStrategyEditor extends LitElement {
           </div>
 
           <div class="entity-search">
-            <ha-textfield
-              .label=${this._t('settings.search_weather')}
+            <input
+              class="entity-search-input"
+              type="search"
+              placeholder=${this._t('settings.search_weather')}
+              aria-label=${this._t('settings.search_weather')}
               .value=${this._weatherSearchFilter}
               @input=${(e: Event) => this._weatherSearchFilter = (e.target as HTMLInputElement).value}
-            ></ha-textfield>
+            />
           </div>
 
           <div class="entity-list">
@@ -3828,11 +3831,14 @@ export class DwainsDashboardStrategyEditor extends LitElement {
           </div>
 
           <div class="entity-search">
-            <ha-textfield
-              .label=${this._t('settings.search_alarm')}
+            <input
+              class="entity-search-input"
+              type="search"
+              placeholder=${this._t('settings.search_alarm')}
+              aria-label=${this._t('settings.search_alarm')}
               .value=${this._alarmSearchFilter}
               @input=${(e: Event) => this._alarmSearchFilter = (e.target as HTMLInputElement).value}
-            ></ha-textfield>
+            />
           </div>
 
           <div class="entity-list">
