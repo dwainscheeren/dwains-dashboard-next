@@ -252,7 +252,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
   private _settingsPage: SettingsPageKey = restoreSettingsPage();
 
   @state()
-  private _homeSettingsDetail: 'overview' | 'house_information' | 'climate' | 'cameras' | 'custom_cards' | 'favorites' = 'overview';
+  private _homeSettingsDetail: 'overview' | 'house_information' | 'climate' | 'outdoor_climate' | 'cameras' | 'custom_cards' | 'favorites' = 'overview';
 
   // Dashboard-eigenschappen (naam + sidebar-icoon)
   @state() private _dashboardId?: string;
@@ -725,6 +725,14 @@ export class DwainsDashboardStrategyEditor extends LitElement {
       };
     }
 
+    if (this._homeSettingsDetail === 'outdoor_climate') {
+      return {
+        title: this._t('home.outdoor_climate'),
+        description: this._t('settings.home_outdoor_climate_areas_description'),
+        backLabel: this._t('home_section.devices.label'),
+      };
+    }
+
     const section: HomeSectionKey = this._homeSettingsDetail === 'house_information'
       ? 'devices'
       : this._homeSettingsDetail;
@@ -737,7 +745,9 @@ export class DwainsDashboardStrategyEditor extends LitElement {
   }
 
   private _backFromHomeSettingsDetail = (): void => {
-    this._homeSettingsDetail = this._homeSettingsDetail === 'climate' ? 'house_information' : 'overview';
+    this._homeSettingsDetail = this._homeSettingsDetail === 'climate' || this._homeSettingsDetail === 'outdoor_climate'
+      ? 'house_information'
+      : 'overview';
     this._closeInlinePickers();
   };
 
@@ -947,6 +957,15 @@ export class DwainsDashboardStrategyEditor extends LitElement {
         this._t('home.indoor_climate'),
         this._t('settings.home_climate_areas_description'),
         this._renderHomeClimateAreaSettings()
+      );
+    }
+
+    if (this._homeSettingsDetail === 'outdoor_climate') {
+      return this._renderSettingsPanel(
+        "mdi:sun-thermometer-outline",
+        this._t('home.outdoor_climate'),
+        this._t('settings.home_outdoor_climate_areas_description'),
+        this._renderHomeOutdoorClimateAreaSettings()
       );
     }
 
@@ -2271,6 +2290,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
   private _renderHomeClimateAreaSettings() {
     if (!this._config || !this.hass) return nothing;
     const excluded = this._getExcludedHomeClimateAreas();
+    const outdoor = this._getHomeOutdoorClimateAreas();
     const hiddenAreas = new Set(this._config.areas_display?.hidden || []);
     const areas = sortAreas(this._config.areas || [], { ...this._config.areas_display, hidden: [] }, ddLocale(this.hass))
       .filter(area => !hiddenAreas.has(area.area_id));
@@ -2278,11 +2298,59 @@ export class DwainsDashboardStrategyEditor extends LitElement {
       <div class="home-info-card-section home-climate-area-settings">
         <div class="home-info-card-header"><div><h4>${this._t('settings.home_climate_areas_title')}</h4><p>${this._t('settings.home_climate_areas_description')}</p></div></div>
         <div class="home-info-card-list">
-          ${areas.map(area => { const included = !excluded.has(area.area_id); return html`
-            <div class="home-info-card-item ${included ? 'enabled' : 'disabled'}">
+          ${areas.map(area => {
+            // Outdoor areas are always left out of the indoor average.
+            const isOutdoor = outdoor.has(area.area_id);
+            const included = !isOutdoor && !excluded.has(area.area_id);
+            return html`
+              <div class="home-info-card-item ${included ? 'enabled' : 'disabled'}">
+                <div class="home-section-icon"><ha-icon icon=${area.icon || 'mdi:floor-plan'}></ha-icon></div>
+                <div class="home-section-copy">
+                  <div class="home-section-title">${area.name}</div>
+                  ${isOutdoor ? html`<div class="home-section-description">${this._t('settings.home_climate_area_outdoor')}</div>` : nothing}
+                </div>
+                <ha-switch
+                  .checked=${included}
+                  ?disabled=${isOutdoor}
+                  @change=${(event: Event) => this._toggleHomeClimateArea(area.area_id, (event.target as any).checked)}
+                ></ha-switch>
+              </div>
+            `;
+          })}
+        </div>
+      </div>
+    `;
+  }
+
+  private _getHomeOutdoorClimateAreas(): Set<string> {
+    return new Set(this._config?.settings?.home_outdoor_climate_areas || []);
+  }
+
+  private _toggleHomeOutdoorClimateArea(areaId: string, outdoor: boolean): void {
+    if (!this._config) return;
+    const areas = this._getHomeOutdoorClimateAreas();
+    if (outdoor) areas.add(areaId); else areas.delete(areaId);
+    this._fireConfigChanged({
+      ...this._config,
+      settings: { ...this._config.settings, home_outdoor_climate_areas: [...areas] },
+    });
+  }
+
+  private _renderHomeOutdoorClimateAreaSettings() {
+    if (!this._config || !this.hass) return nothing;
+    const outdoor = this._getHomeOutdoorClimateAreas();
+    // Hidden areas are listed too: a garden or roof is often hidden from the
+    // dashboard but still has the outdoor sensors.
+    const areas = sortAreas(this._config.areas || [], { ...this._config.areas_display, hidden: [] }, ddLocale(this.hass));
+    return html`
+      <div class="home-info-card-section home-climate-area-settings">
+        <div class="home-info-card-header"><div><h4>${this._t('settings.home_outdoor_climate_areas_title')}</h4><p>${this._t('settings.home_outdoor_climate_areas_description')}</p></div></div>
+        <div class="home-info-card-list">
+          ${areas.map(area => { const isOutdoor = outdoor.has(area.area_id); return html`
+            <div class="home-info-card-item ${isOutdoor ? 'enabled' : 'disabled'}">
               <div class="home-section-icon"><ha-icon icon=${area.icon || 'mdi:floor-plan'}></ha-icon></div>
               <div class="home-section-copy"><div class="home-section-title">${area.name}</div></div>
-              <ha-switch .checked=${included} @change=${(event: Event) => this._toggleHomeClimateArea(area.area_id, (event.target as any).checked)}></ha-switch>
+              <ha-switch .checked=${isOutdoor} @change=${(event: Event) => this._toggleHomeOutdoorClimateArea(area.area_id, (event.target as any).checked)}></ha-switch>
             </div>
           `; })}
         </div>
@@ -2307,12 +2375,13 @@ export class DwainsDashboardStrategyEditor extends LitElement {
           ${DEFAULT_HOME_INFORMATION_CARDS.map(card => {
             const meta = HOME_INFORMATION_CARD_META[card];
             const enabled = !hiddenCards.has(card);
-            const clickable = card === 'climate';
+            const detail = card === 'climate' || card === 'outdoor_climate' ? card : undefined;
+            const clickable = Boolean(detail);
 
             return html`
               <div
                 class="home-info-card-item ${enabled ? 'enabled' : 'disabled'} ${clickable ? 'has-detail' : ''}"
-                @click=${() => { if (clickable) this._homeSettingsDetail = 'climate'; }}
+                @click=${() => { if (detail) this._homeSettingsDetail = detail; }}
               >
                 <div class="home-section-icon"><ha-icon icon=${meta.icon}></ha-icon></div>
                 <div class="home-section-copy">

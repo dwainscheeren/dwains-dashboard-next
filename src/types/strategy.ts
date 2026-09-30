@@ -39,7 +39,7 @@ export interface LovelaceCardConfig {
 }
 
 export type HomeSectionKey = 'summaries' | 'cameras' | 'areas' | 'devices' | 'todos' | 'custom_cards' | 'favorites';
-export type HomeInformationCardKey = 'people' | 'climate' | 'power' | 'device_groups';
+export type HomeInformationCardKey = 'people' | 'climate' | 'outdoor_climate' | 'power' | 'device_groups';
 export type MasterActionConfirmationDomain = 'light' | 'switch' | 'fan' | 'cover' | 'lock';
 export type MasterActionConfirmationSettings = Partial<Record<MasterActionConfirmationDomain, boolean>>;
 
@@ -66,6 +66,8 @@ export interface DwainsDashboardSettings {
   home_information_cards_hidden?: HomeInformationCardKey[];
   /** Areas excluded from the House information climate average. */
   home_climate_excluded_areas?: string[];
+  /** Outdoor areas shown in the Outdoor climate card and left out of the indoor average. */
+  home_outdoor_climate_areas?: string[];
   home_camera_order?: string[];
   home_cameras_hidden?: string[];
   hidden_device_types?: string[];

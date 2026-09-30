@@ -38,10 +38,18 @@ House information can show:
 
 - People
 - Indoor climate
+- Outdoor climate
 - House power usage
 - Device group cards such as lights, switches and covers
 
 Each house information card can be enabled or disabled in Dashboard settings.
+
+### Indoor and outdoor climate
+
+The climate cards use the temperature and humidity sensors that are linked to each area in Home Assistant. Link them in **Settings > Areas, labels & zones**, open the area and choose its temperature and humidity sensor.
+
+- **Indoor climate** shows the average of all visible areas. Open **Dashboard settings > Home page > House information > Indoor climate** to leave areas out of the average.
+- **Outdoor climate** shows the areas you mark as outdoors, such as a garden or roof. Open **Dashboard settings > Home page > House information > Outdoor climate** to choose them. Outdoor areas are always left out of the indoor average, and hidden areas can be used too. The card only appears once an outdoor area with a linked sensor is selected.
 
 ## To-do Lists
 

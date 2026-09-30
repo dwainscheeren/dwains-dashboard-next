@@ -113,6 +113,7 @@ export const nl = {
   'home.no_live_power_sensors': 'Geen live-stroomsensoren',
   'home.no_room_power_usage': 'Er is momenteel geen stroomverbruik in de kamer',
   'home.indoor_climate': 'Binnenklimaat',
+  'home.outdoor_climate': "Buitenklimaat",
   'home.average_temperature': 'Gemiddelde temperatuur',
   'home.average_humidity': 'Gemiddelde luchtvochtigheid',
   'home.temperature': 'Temperatuur',
@@ -552,6 +553,8 @@ export const nl = {
   'home_card.people.description': 'Aanwezigheidskaarten voor de mensen in dit huis.',
   'home_card.climate.label': 'Binnenklimaat',
   'home_card.climate.description': 'Gemiddelde temperatuur en vochtigheid van kamersensoren.',
+  'home_card.outdoor_climate.label': "Buitenklimaat",
+  'home_card.outdoor_climate.description': "Temperatuur en luchtvochtigheid van buitenruimtes.",
   'home_card.power.label': 'Stroomverbruik in huis',
   'home_card.power.description': 'Huidig ​​stroomverbruik in het hele huis en topkamers.',
   'home_card.device_groups.label': 'Apparaatgroepen',
@@ -638,5 +641,8 @@ export const nl = {
   'settings.home_climate_areas_description': "Kies welke Home Assistant-ruimtes meetellen voor de gemiddelde temperatuur en luchtvochtigheid in Woninginformatie.",
   'settings.home_climate_area_included': "Telt mee in het huisgemiddelde",
   'settings.home_climate_area_excluded': "Telt niet mee in het huisgemiddelde",
+  'settings.home_outdoor_climate_areas_title': "Buitenruimtes",
+  'settings.home_outdoor_climate_areas_description': "Kies welke Home Assistant-ruimtes buiten zijn. Hun gekoppelde temperatuur- en luchtvochtigheidssensoren staan op de kaart Buitenklimaat en tellen niet mee voor het binnenklimaat.",
+  'settings.home_climate_area_outdoor': "Gebruikt voor buitenklimaat",
 
 } as const satisfies TranslationDictionary;

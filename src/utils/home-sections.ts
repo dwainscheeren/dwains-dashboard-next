@@ -58,6 +58,7 @@ export const HOME_SECTION_META: Record<HomeSectionKey, LocalizedMeta> = {
 export const DEFAULT_HOME_INFORMATION_CARDS: HomeInformationCardKey[] = [
   'people',
   'climate',
+  'outdoor_climate',
   'power',
   'device_groups',
 ];
@@ -72,6 +73,11 @@ export const HOME_INFORMATION_CARD_META: Record<HomeInformationCardKey, Localize
     labelKey: 'home_card.climate.label',
     icon: 'mdi:home-thermometer-outline',
     descriptionKey: 'home_card.climate.description',
+  },
+  outdoor_climate: {
+    labelKey: 'home_card.outdoor_climate.label',
+    icon: 'mdi:sun-thermometer-outline',
+    descriptionKey: 'home_card.outdoor_climate.description',
   },
   power: {
     labelKey: 'home_card.power.label',

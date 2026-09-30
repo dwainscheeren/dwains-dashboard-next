@@ -113,6 +113,7 @@ export const fr = {
   'home.no_live_power_sensors': 'Pas de capteurs de puissance sous tension',
   'home.no_room_power_usage': 'Aucune consommation d\'énergie dans la pièce pour le moment',
   'home.indoor_climate': 'Climat intérieur',
+  'home.outdoor_climate': "Climat extérieur",
   'home.average_temperature': 'Température moyenne',
   'home.average_humidity': 'Humidité moyenne',
   'home.temperature': 'Température',
@@ -552,6 +553,8 @@ export const fr = {
   'home_card.people.description': 'Cartes de présence pour les personnes de cette maison.',
   'home_card.climate.label': 'Climat intérieur',
   'home_card.climate.description': 'Température et humidité moyennes des capteurs d\'ambiance.',
+  'home_card.outdoor_climate.label': "Climat extérieur",
+  'home_card.outdoor_climate.description': "Température et humidité des espaces extérieurs.",
   'home_card.power.label': 'Consommation électrique de la maison',
   'home_card.power.description': 'Consommation électrique actuelle de toute la maison et principales pièces.',
   'home_card.device_groups.label': 'Groupes d\'appareils',
@@ -638,5 +641,8 @@ export const fr = {
   'settings.home_climate_areas_description': "Choisissez quelles pièces de Home Assistant sont incluses dans la température et l'humidité moyennes des informations de la maison.",
   'settings.home_climate_area_included': "Incluse dans la moyenne de la maison",
   'settings.home_climate_area_excluded': "Exclue de la moyenne de la maison",
+  'settings.home_outdoor_climate_areas_title': "Espaces extérieurs",
+  'settings.home_outdoor_climate_areas_description': "Choisissez quelles pièces de Home Assistant sont à l'extérieur. Leurs capteurs de température et d'humidité attribués apparaissent dans la carte Climat extérieur et ne comptent pas pour le climat intérieur.",
+  'settings.home_climate_area_outdoor': "Utilisée pour le climat extérieur",
 
 } as const satisfies TranslationDictionary;

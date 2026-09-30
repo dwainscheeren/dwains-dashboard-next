@@ -117,6 +117,7 @@ export const en = {
   'home.no_live_power_sensors': 'No live power sensors',
   'home.no_room_power_usage': 'No room power usage right now',
   'home.indoor_climate': 'Indoor climate',
+  'home.outdoor_climate': "Outdoor climate",
   'home.average_temperature': 'Average temperature',
   'home.average_humidity': 'Average humidity',
   'home.temperature': 'Temperature',
@@ -570,6 +571,8 @@ export const en = {
   'home_card.people.description': 'Presence cards for the people in this home.',
   'home_card.climate.label': 'Indoor climate',
   'home_card.climate.description': 'Average temperature and humidity from room sensors.',
+  'home_card.outdoor_climate.label': "Outdoor climate",
+  'home_card.outdoor_climate.description': "Temperature and humidity from outdoor areas.",
   'home_card.power.label': 'House power usage',
   'home_card.power.description': 'Current whole-house power usage and top rooms.',
   'home_card.device_groups.label': 'Device groups',
@@ -659,6 +662,9 @@ export const en = {
   'settings.home_climate_areas_description': "Choose which Home Assistant areas are included in the average temperature and humidity shown in House information.",
   'settings.home_climate_area_included': "Included in house average",
   'settings.home_climate_area_excluded': "Excluded from house average",
+  'settings.home_outdoor_climate_areas_title': "Outdoor areas",
+  'settings.home_outdoor_climate_areas_description': "Choose which Home Assistant areas are outdoors. Their assigned temperature and humidity sensors are shown in the Outdoor climate card and left out of the indoor climate.",
+  'settings.home_climate_area_outdoor': "Used for outdoor climate",
 
 } as const;
 

@@ -119,6 +119,7 @@ export const ru = {
   'home.no_live_power_sensors': 'Нет датчиков текущей мощности',
   'home.no_room_power_usage': 'Сейчас нет данных о потреблении по комнатам',
   'home.indoor_climate': 'Климат в помещении',
+  'home.outdoor_climate': "Климат на улице",
   'home.average_temperature': 'Средняя температура',
   'home.average_humidity': 'Средняя влажность',
   'home.temperature': 'Температура',
@@ -572,6 +573,8 @@ export const ru = {
   'home_card.people.description': 'Карточки присутствия людей в доме.',
   'home_card.climate.label': 'Климат в помещении',
   'home_card.climate.description': 'Средняя температура и влажность по датчикам комнат.',
+  'home_card.outdoor_climate.label': "Климат на улице",
+  'home_card.outdoor_climate.description': "Температура и влажность уличных зон.",
   'home_card.power.label': 'Потребление электроэнергии',
   'home_card.power.description': 'Текущее потребление всего дома и наиболее потребляющие комнаты.',
   'home_card.device_groups.label': 'Группы устройств',
@@ -661,5 +664,8 @@ export const ru = {
   'settings.home_climate_areas_description': "Выберите, какие помещения Home Assistant учитываются в средней температуре и влажности в информации о доме.",
   'settings.home_climate_area_included': "Учитывается в среднем по дому",
   'settings.home_climate_area_excluded': "Не учитывается в среднем по дому",
+  'settings.home_outdoor_climate_areas_title': "Уличные зоны",
+  'settings.home_outdoor_climate_areas_description': "Выберите, какие помещения Home Assistant находятся на улице. Их назначенные датчики температуры и влажности показываются в карточке климата на улице и не учитываются в климате в помещении.",
+  'settings.home_climate_area_outdoor': "Используется для климата на улице",
 
 } as const satisfies TranslationDictionary;

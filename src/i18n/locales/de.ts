@@ -113,6 +113,7 @@ export const de = {
   'home.no_live_power_sensors': 'Keine Leistungssensoren verfügbar',
   'home.no_room_power_usage': 'Aktuell kein Stromverbrauch in den Räumen',
   'home.indoor_climate': 'Raumklima',
+  'home.outdoor_climate': "Außenklima",
   'home.average_temperature': 'Ø Temperatur',
   'home.average_humidity': 'Ø Luftfeuchtigkeit',
   'home.temperature': 'Temperatur',
@@ -552,6 +553,8 @@ export const de = {
   'home_card.people.description': 'Anwesenheitskarten für Personen in diesem Zuhause.',
   'home_card.climate.label': 'Raumklima',
   'home_card.climate.description': 'Durchschnittliche Temperatur und Luftfeuchtigkeit von Raumsensoren.',
+  'home_card.outdoor_climate.label': "Außenklima",
+  'home_card.outdoor_climate.description': "Temperatur und Luftfeuchtigkeit aus Außenbereichen.",
   'home_card.power.label': 'Stromverbrauch im Haus',
   'home_card.power.description': 'Aktueller Stromverbrauch im gesamten Haus und in den Räumen mit dem höchsten Verbrauch.',
   'home_card.device_groups.label': 'Gerätegruppen',
@@ -638,5 +641,8 @@ export const de = {
   'settings.home_climate_areas_description': "Lege fest, welche Home-Assistant-Bereiche bei der durchschnittlichen Temperatur und Luftfeuchtigkeit in den Hausinformationen berücksichtigt werden.",
   'settings.home_climate_area_included': "Im Hausdurchschnitt enthalten",
   'settings.home_climate_area_excluded': "Vom Hausdurchschnitt ausgeschlossen",
+  'settings.home_outdoor_climate_areas_title': "Außenbereiche",
+  'settings.home_outdoor_climate_areas_description': "Lege fest, welche Home-Assistant-Bereiche draußen liegen. Ihre zugewiesenen Temperatur- und Feuchtigkeitssensoren erscheinen in der Karte Außenklima und zählen nicht zum Raumklima.",
+  'settings.home_climate_area_outdoor': "Für das Außenklima verwendet",
 
 } as const satisfies TranslationDictionary;

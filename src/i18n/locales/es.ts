@@ -113,6 +113,7 @@ export const es = {
   'home.no_live_power_sensors': 'Sin sensores de energía en vivo',
   'home.no_room_power_usage': 'No hay uso de energía en la habitación en este momento',
   'home.indoor_climate': 'Clima interior',
+  'home.outdoor_climate': "Clima exterior",
   'home.average_temperature': 'Temperatura media',
   'home.average_humidity': 'Humedad media',
   'home.temperature': 'Temperatura',
@@ -552,6 +553,8 @@ export const es = {
   'home_card.people.description': 'Tarjetas de presencia para las personas de este hogar.',
   'home_card.climate.label': 'Clima interior',
   'home_card.climate.description': 'Temperatura y humedad promedio de los sensores de la habitación.',
+  'home_card.outdoor_climate.label': "Clima exterior",
+  'home_card.outdoor_climate.description': "Temperatura y humedad de las áreas exteriores.",
   'home_card.power.label': 'Uso de energía en la casa',
   'home_card.power.description': 'Uso actual de energía en toda la casa y habitaciones superiores.',
   'home_card.device_groups.label': 'Grupos de dispositivos',
@@ -638,5 +641,8 @@ export const es = {
   'settings.home_climate_areas_description': "Elige qué áreas de Home Assistant se incluyen en la temperatura y la humedad medias de la información de la casa.",
   'settings.home_climate_area_included': "Incluida en la media de la casa",
   'settings.home_climate_area_excluded': "Excluida de la media de la casa",
+  'settings.home_outdoor_climate_areas_title': "Áreas exteriores",
+  'settings.home_outdoor_climate_areas_description': "Elige qué áreas de Home Assistant están en el exterior. Sus sensores de temperatura y humedad asignados se muestran en la tarjeta Clima exterior y no cuentan para el clima interior.",
+  'settings.home_climate_area_outdoor': "Usada para el clima exterior",
 
 } as const satisfies TranslationDictionary;

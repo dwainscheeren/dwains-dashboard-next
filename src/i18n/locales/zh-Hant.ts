@@ -113,6 +113,7 @@ export const zhHant = {
   'home.no_live_power_sensors': '沒有即時用電感測器',
   'home.no_room_power_usage': '目前沒有房間用電量',
   'home.indoor_climate': '室內氣候',
+  'home.outdoor_climate': "室外氣候",
   'home.average_temperature': '平均氣溫',
   'home.average_humidity': '平均濕度',
   'home.temperature': '溫度',
@@ -550,6 +551,8 @@ export const zhHant = {
   'home_card.people.description': '這個家庭成員的在家狀態卡片。',
   'home_card.climate.label': '室內氣候',
   'home_card.climate.description': '房間感測器的平均溫度與濕度。',
+  'home_card.outdoor_climate.label': "室外氣候",
+  'home_card.outdoor_climate.description': "來自室外區域的溫度和濕度。",
   'home_card.power.label': '住家用電',
   'home_card.power.description': '目前全屋用電量與用電最多的房間。',
   'home_card.device_groups.label': '裝置群組',
@@ -636,5 +639,8 @@ export const zhHant = {
   'settings.home_climate_areas_description': "選擇哪些 Home Assistant 區域計入住家資訊中顯示的平均溫度和濕度。",
   'settings.home_climate_area_included': "計入住家平均值",
   'settings.home_climate_area_excluded': "不計入住家平均值",
+  'settings.home_outdoor_climate_areas_title': "室外區域",
+  'settings.home_outdoor_climate_areas_description': "選擇哪些 Home Assistant 區域位於室外。它們指定的溫度和濕度感測器會顯示在室外氣候卡片中，並且不計入室內氣候。",
+  'settings.home_climate_area_outdoor': "用於室外氣候",
 
 } as const satisfies TranslationDictionary;
