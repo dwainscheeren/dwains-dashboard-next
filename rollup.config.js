@@ -6,11 +6,13 @@ import { readFileSync } from 'node:fs';
 
 const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8'));
 
-// Simple banner plugin to stamp build time
+// Stamp the build time on the entry file only, so chunk names stay stable
+// between builds of the same source.
 const buildStamp = () => {
   return {
     name: 'build-stamp',
-    renderChunk(code) {
+    renderChunk(code, chunk) {
+      if (!chunk.isEntry) return null;
       const stamp = `/* Dwains Dashboard Next build: ${new Date().toISOString()} */\n`;
       return { code: stamp + code, map: null };
     }
@@ -30,15 +32,44 @@ const versionStamp = () => {
   };
 };
 
+// Terser does not touch template literals, so the Lit css`` blocks kept all
+// their indentation and comments. Only safe rewrites: drop comments, collapse
+// whitespace and remove spaces around { } ; , > and after :.
+const minifyCssLiterals = () => {
+  return {
+    name: 'minify-css-literals',
+    transform(code, id) {
+      if (!id.includes('/src/') || !/\bcss\s*`/.test(code)) return null;
+      // TypeScript emits the tag as "css `...`", with a space.
+      const minified = code.replace(/\bcss\s*`([^`]*)`/g, (match, body) => {
+        if (body.includes('${')) return match;
+        const css = body
+          .replace(/\/\*[\s\S]*?\*\//g, '')
+          .replace(/\s+/g, ' ')
+          .replace(/\s*([{};,>])\s*/g, '$1')
+          .replace(/: /g, ':')
+          .replace(/;}/g, '}')
+          .trim();
+        return `css\`${css}\``;
+      });
+      return { code: minified, map: null };
+    }
+  };
+};
+
 const production = !process.env.ROLLUP_WATCH;
 
 export default {
   input: 'src/index.ts',
   output: {
-    file: 'dist/dwains-dashboard-next.js',
+    // The entry keeps its fixed name for HACS. Editors, dialogs and languages
+    // become separate chunks that are only loaded when needed. HACS downloads
+    // everything under dist/, subfolders included.
+    dir: 'dist',
+    entryFileNames: 'dwains-dashboard-next.js',
+    chunkFileNames: 'chunks/[name]-[hash].js',
     format: 'es',
-    sourcemap: !production,
-    inlineDynamicImports: true
+    sourcemap: !production
   },
   plugins: [
     nodeResolve({
@@ -51,6 +82,7 @@ export default {
       tsconfig: './tsconfig.json',
       sourceMap: !production
     }),
+    production && minifyCssLiterals(),
     buildStamp(),
     production && terser({
       format: {

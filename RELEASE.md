@@ -15,7 +15,8 @@ Dwains Dashboard Next follows semantic versioning.
 - Every public release uses a `vX.Y.Z` Git tag.
 - Keep `package.json`, `package-lock.json` and the built file in `dist/` in sync.
 - Keep release notes on the GitHub release page, not in the main README.
-- HACS users receive published GitHub releases, so a release must include the built dashboard file.
+- HACS users receive published GitHub releases, so a release must include the built dashboard files: `dist/dwains-dashboard-next.js` and everything in `dist/chunks/`.
+- Do not attach release assets. When a release has assets, HACS downloads only those assets, which would leave out the chunks. Without assets HACS downloads everything under `dist/`, subfolders included.
 - Use a minor release when user-facing features are added, even if bug fixes are included in the same release.
 - Use a patch release only when there are no new user-facing features.
 
@@ -26,7 +27,7 @@ Dwains Dashboard Next follows semantic versioning.
 3. Update `README.md` with the current release when needed.
 4. Run `npm run type-check`.
 5. Run `npm run build`.
-6. Confirm `dist/dwains-dashboard-next.js` changed when source changed.
+6. Confirm `dist/dwains-dashboard-next.js` and `dist/chunks/` changed when source changed. Stage removed chunks too (`git add -A dist`), because chunk names contain a content hash.
 7. Commit with `Release X.Y.Z`.
 8. Create tag `vX.Y.Z`.
 9. Push the commit and tag.

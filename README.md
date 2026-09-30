@@ -108,6 +108,8 @@ The production dashboard file is generated at:
 dist/dwains-dashboard-next.js
 ```
 
+Editors, dialogs and languages are split into separate files in `dist/chunks/` and are only loaded when needed. When testing a build in your own Home Assistant, copy the whole `dist/` folder, not only the main file.
+
 ### Screenshots
 
 Automated desktop and mobile screenshots can be generated against a running Home Assistant instance:
@@ -170,6 +172,8 @@ The dashboard file is:
 ```text
 dist/dwains-dashboard-next.js
 ```
+
+HACS downloads everything under `dist/`, including the `dist/chunks/` folder that the dashboard file loads on demand.
 
 ## License
 

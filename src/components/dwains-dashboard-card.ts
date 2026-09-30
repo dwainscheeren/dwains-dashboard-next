@@ -9,8 +9,20 @@ import './dwains-layout-card';  // Import the file to register the custom elemen
  * Simple Custom Card wrapper for DwainsLayoutCard
  * Based on the original dwains-dashboard-layout.js approach
  */
+async function loadCardEditor(): Promise<void> {
+  const { DwainsDashboardCardEditor } = await import('./dwains-dashboard-card-editor');
+  if (!customElements.get('dwains-dashboard-next-card-editor')) {
+    customElements.define('dwains-dashboard-next-card-editor', DwainsDashboardCardEditor);
+  }
+  // Legacy editor alias for early Next configs when old DD is not installed.
+  if (!customElements.get('dwains-dashboard-card-editor')) {
+    customElements.define('dwains-dashboard-card-editor', class extends DwainsDashboardCardEditor {});
+  }
+}
+
 export class DwainsDashboardCard extends LitElement {
-  static getConfigElement() {
+  static async getConfigElement() {
+    await loadCardEditor();
     return document.createElement("dwains-dashboard-next-card-editor");
   }
 

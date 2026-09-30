@@ -5,8 +5,8 @@
   "main": "dist/dwains-dashboard-next.js",
   "type": "module",
   "scripts": {
-    "build": "rollup -c",
-    "watch": "rollup -c -w",
+    "build": "rm -rf dist/chunks && rollup -c",
+    "watch": "rm -rf dist/chunks && rollup -c -w",
     "clean": "rm -rf dist",
     "type-check": "tsc --noEmit",
     "i18n:check": "node scripts/check-translations.mjs",

@@ -6105,6 +6105,7 @@ export class DwainsLayoutCard extends LitElement {
       this._updateUrlArea(null);
       this._clearSettingsEditState();
     } else if (view === 'settings') {
+      void loadStrategyEditor().then(() => this.requestUpdate());
       this._selectedArea = null;
       this._editMode = false;
       this._rememberAreaEditMode(null);
@@ -6413,6 +6414,11 @@ export class DwainsLayoutCard extends LitElement {
   private _syncSettingsEditor(): void {
     const editor = this.renderRoot?.querySelector('dwains-dashboard-next-strategy-editor') as any;
     if (!editor || !this.hass || !this.config) return;
+    // Wait until the lazily loaded editor has upgraded.
+    if (typeof editor.setConfig !== 'function') {
+      void loadStrategyEditor().then(() => this.requestUpdate());
+      return;
+    }
 
     editor.hass = this.hass;
     if (!this._settingsEditorInitialized) {
