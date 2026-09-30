@@ -1061,6 +1061,13 @@ export class DwainsLayoutCard extends LitElement {
       const oldHass = changedProps.get('hass') as HomeAssistant | undefined;
       if (!oldHass) return true;
 
+      // Language and theme changes do not touch any entity state.
+      const previous = oldHass as any;
+      const current = this.hass as any;
+      if (previous.locale !== current.locale || previous.language !== current.language || previous.themes !== current.themes) {
+        return true;
+      }
+
       if (this._hasUpdateEntityChanges(oldHass, this.hass)) return true;
 
       // Check if any visible entities changed
