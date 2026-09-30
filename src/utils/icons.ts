@@ -4,7 +4,7 @@ export const getDomainIcon = (domain: string): string => {
     switch: 'mdi:flash',
     sensor: 'mdi:eye',
     energy: 'mdi:flash',
-    binary_sensor: 'mdi:radiobox-blank',
+    binary_sensor: 'mdi:checkbox-marked-circle-outline',
     cover: 'mdi:window-shutter',
     climate: 'mdi:thermostat',
     fan: 'mdi:fan',
@@ -44,6 +44,14 @@ export const getDomainIcon = (domain: string): string => {
     time: 'mdi:clock-outline',
     timer: 'mdi:timer-outline',
     counter: 'mdi:counter',
+    datetime: 'mdi:calendar-clock',
+    notify: 'mdi:message-badge-outline',
+    assist_satellite: 'mdi:account-voice',
+    conversation: 'mdi:forum-outline',
+    tts: 'mdi:speaker-message',
+    stt: 'mdi:microphone-message',
+    wake_word: 'mdi:chat-sleep',
+    ai_task: 'mdi:star-four-points-outline',
   };
   return icons[domain] || 'mdi:shape-outline';
 };
@@ -103,7 +111,13 @@ export const getDeviceClassIcon = (domain: string, deviceClass?: string): string
 
   const domainIcons: Record<string, Record<string, string>> = {
     binary_sensor: {
+      carbon_monoxide: 'mdi:molecule-co',
+      connectivity: 'mdi:check-network-outline',
       door: 'mdi:door',
+      garage_door: 'mdi:garage',
+      moving: 'mdi:arrow-right-bold-outline',
+      running: 'mdi:cog-play-outline',
+      tamper: 'mdi:lock-alert',
       window: 'mdi:window-closed',
       motion: 'mdi:motion-sensor',
       occupancy: 'mdi:home-account',

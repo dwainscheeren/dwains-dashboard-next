@@ -69,7 +69,6 @@ export const de = {
   'navigation.current_page': 'Aktuelle Seite',
   'navigation.open_page': 'Seite öffnen',
   'navigation.overview': 'Übersicht',
-  'navigation.all_device_groups': 'Alle Gerätegruppen',
   'favorites.title': 'Favoriten',
   'favorites.empty': 'Noch keine Favoriten ausgewählt.',
   'favorites.swipe': 'Favoriten swipen',

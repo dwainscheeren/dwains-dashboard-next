@@ -71,7 +71,6 @@ export const ptBR = {
   'navigation.current_page': 'Página atual',
   'navigation.open_page': 'Abrir página',
   'navigation.overview': 'Visão geral',
-  'navigation.all_device_groups': 'Todos os grupos de dispositivos',
 
   'favorites.title': 'Favoritos',
   'favorites.empty': 'Nenhum favorito selecionado ainda.',

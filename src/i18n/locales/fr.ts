@@ -69,7 +69,6 @@ export const fr = {
   'navigation.current_page': 'Page actuelle',
   'navigation.open_page': 'Ouvrir la page',
   'navigation.overview': 'Aperçu',
-  'navigation.all_device_groups': 'Tous les groupes d\'appareils',
   'favorites.title': 'Favoris',
   'favorites.empty': 'Aucun favori sélectionné pour l\'instant.',
   'favorites.swipe': 'Faites glisser les favoris',

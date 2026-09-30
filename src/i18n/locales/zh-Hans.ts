@@ -69,7 +69,6 @@ export const zhHans = {
   'navigation.current_page': '目前页面',
   'navigation.open_page': '打开页面',
   'navigation.overview': '总览',
-  'navigation.all_device_groups': '所有设备群组',
   'favorites.title': '我的最爱',
   'favorites.empty': '尚未选择任何最爱。',
   'favorites.swipe': '滑动收藏夹',

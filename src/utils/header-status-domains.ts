@@ -55,7 +55,7 @@ const BINARY_SENSOR_CONFIG: Record<string, { icon: string }> = {
   opening: { icon: getDeviceClassIcon('binary_sensor', 'opening') },
   presence: { icon: getDeviceClassIcon('binary_sensor', 'presence') },
   safety: { icon: getDeviceClassIcon('binary_sensor', 'safety') },
-  tamper: { icon: 'mdi:lock-alert' },
+  tamper: { icon: getDeviceClassIcon('binary_sensor', 'tamper') },
   vibration: { icon: getDeviceClassIcon('binary_sensor', 'vibration') }
 };
 

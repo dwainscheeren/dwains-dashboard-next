@@ -71,7 +71,6 @@ export const ru = {
   'navigation.current_page': 'Текущая страница',
   'navigation.open_page': 'Открыть страницу',
   'navigation.overview': 'Обзор',
-  'navigation.all_device_groups': 'Все группы устройств',
 
   'favorites.title': 'Избранное',
   'favorites.empty': 'Избранные элементы ещё не выбраны.',

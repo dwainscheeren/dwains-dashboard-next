@@ -69,7 +69,6 @@ export const zhHant = {
   'navigation.current_page': '目前頁面',
   'navigation.open_page': '開啟頁面',
   'navigation.overview': '總覽',
-  'navigation.all_device_groups': '所有裝置群組',
   'favorites.title': '我的最愛',
   'favorites.empty': '尚未選擇任何最愛。',
   'favorites.swipe': '滑動收藏夾',

@@ -69,7 +69,6 @@ export const nl = {
   'navigation.current_page': 'Huidige pagina',
   'navigation.open_page': 'Pagina openen',
   'navigation.overview': 'Overzicht',
-  'navigation.all_device_groups': 'Alle apparaatgroepen',
   'favorites.title': 'Favorieten',
   'favorites.empty': 'Nog geen favorieten geselecteerd.',
   'favorites.swipe': 'Veeg favorieten',

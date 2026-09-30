@@ -35,6 +35,7 @@ import {
   type PowerEntitySummary,
 } from '../utils/power-usage';
 import { subscribeEnergyPowerConfig } from '../utils/energy-prefs';
+import { isRegistryEntryVisible } from '../utils/entity-visibility';
 import { syncHassDarkThemeAttribute } from '../utils/theme';
 import { formatValueWithUnit } from '../utils/unit-format';
 import { TRANSLATIONS_LOADED_EVENT } from '../i18n';
@@ -70,6 +71,21 @@ interface MaintenanceSummary {
   lowBatteryCount: number;
   unavailableDeviceCount: number;
   totalCount: number;
+}
+
+/** One device group, shown in the sidebar and on the overview. */
+interface DeviceGroupCard {
+  key: string;
+  icon: string;
+  title: string;
+  subtitle: string;
+  color: string;
+  /** Extra class for the sidebar button. */
+  className?: string;
+  /** Short value in the sidebar badge (the subtitle is hidden there on desktop). */
+  badge?: string;
+  /** Number on the overview card icon, only for groups that need attention. */
+  alertCount?: number;
 }
 
 /**
@@ -139,12 +155,10 @@ export class DwainsDevicesCard extends LitElement {
 
     if (!this._selectedDomain) {
       const data = this._buildData();
-      const maintenance = this._buildMaintenanceData();
-      const showMaintenanceMenu = this._maintenanceSummary(maintenance).totalCount > 0;
       const showEnergyMenu = this._showEnergyMenu();
       if (urlDomain === NEW_DEVICES_KEY) {
         this._selectedDomain = NEW_DEVICES_KEY;
-      } else if (urlDomain === MAINTENANCE_KEY && showMaintenanceMenu) {
+      } else if (urlDomain === MAINTENANCE_KEY) {
         this._selectedDomain = MAINTENANCE_KEY;
       } else if (urlDomain === ENERGY_KEY && showEnergyMenu) {
         this._selectedDomain = ENERGY_KEY;
@@ -263,12 +277,7 @@ export class DwainsDevicesCard extends LitElement {
     if (config?.entities) {
       config.entities.forEach((entity) => {
         if (isConfigEntityInArea(config, entity, areaId)) {
-          const registry = this._hass.entities?.[entity.entity_id];
-          if (
-            registry?.hidden_by ||
-            registry?.entity_category === 'diagnostic' ||
-            registry?.entity_category === 'config'
-          ) {
+          if (!isRegistryEntryVisible(this._hass.entities?.[entity.entity_id])) {
             return;
           }
           entities.push(entity);
@@ -283,12 +292,7 @@ export class DwainsDevicesCard extends LitElement {
         !processedEntities.has(state.entity_id) &&
         state.attributes?.area_id === areaId
       ) {
-        const registry = this._hass.entities?.[state.entity_id];
-        if (
-          registry?.hidden_by ||
-          registry?.entity_category === 'diagnostic' ||
-          registry?.entity_category === 'config'
-        ) {
+        if (!isRegistryEntryVisible(this._hass.entities?.[state.entity_id])) {
           return;
         }
         entities.push({
@@ -306,15 +310,10 @@ export class DwainsDevicesCard extends LitElement {
   private _getFilteredAreaEntities(areaId: string): EntityConfig[] {
     let filteredEntities = this._getAreaEntities(areaId);
 
-    // Respecteer HA entity-registry zichtbaarheid en categorieën.
-    filteredEntities = filteredEntities.filter((entity) => {
-      const registry = this._hass.entities?.[entity.entity_id];
-      return !(
-        registry?.hidden_by ||
-        registry?.entity_category === 'diagnostic' ||
-        registry?.entity_category === 'config'
-      );
-    });
+    // Same registry rules as the room pages (hidden, disabled, config and diagnostic).
+    filteredEntities = filteredEntities.filter((entity) =>
+      isRegistryEntryVisible(this._hass.entities?.[entity.entity_id])
+    );
 
     // Verborgen entiteiten via areas_options[areaId].groups_options[*].hidden.
     if (this.config?.areas_options) {
@@ -403,7 +402,8 @@ export class DwainsDevicesCard extends LitElement {
       if (!entityId) return;
 
       const registry = this._hass.entities?.[entityId];
-      if (registry?.hidden_by) return;
+      // Diagnostic battery sensors do count here, hidden and disabled entities do not.
+      if (registry?.hidden_by || registry?.hidden === true || registry?.disabled_by) return;
 
       const deviceId = this._deviceIdForEntity(entityId, registry);
       if (deviceId && hiddenDevices.has(deviceId)) return;
@@ -478,8 +478,18 @@ export class DwainsDevicesCard extends LitElement {
     return parts.length ? parts.join(', ') : this._t('devices.all_good');
   }
 
-  private _showEnergyMenu(): boolean {
-    return true;
+  /** Energy is only listed when there is a power total to show. */
+  private _showEnergyMenu(summary: HousePowerUsageSummary = this._energySummary()): boolean {
+    return summary.sensorCount > 0;
+  }
+
+  /**
+   * New devices is only listed when there are new devices, or when the
+   * panel was switched on explicitly in the settings.
+   */
+  private _showNewDevicesMenu(newDevices: RecentDeviceSummary[] = this._newDevices()): boolean {
+    if (!shouldShowRecentDevicesPanel(this.config)) return false;
+    return newDevices.length > 0 || this.config?.settings?.show_recent_devices_panel === true;
   }
 
   private _energySummary(): HousePowerUsageSummary {
@@ -597,7 +607,7 @@ export class DwainsDevicesCard extends LitElement {
       .filter((entity: any) => {
         if (!entity.entity_id?.startsWith(`${PERSON_DOMAIN}.`)) return false;
         if (hiddenPersons.has(entity.entity_id)) return false;
-        return !this._hass.entities?.[entity.entity_id]?.hidden_by;
+        return isRegistryEntryVisible(this._hass.entities?.[entity.entity_id]);
       })
       .sort((a: any, b: any) => {
         const aName = a.attributes?.friendly_name || a.entity_id;
@@ -738,13 +748,9 @@ export class DwainsDevicesCard extends LitElement {
     if (!domain) return false;
 
     const currentData = data ?? this._buildData();
-    const canShowNewDevices = showNewDevicesMenu ?? (
-      shouldShowRecentDevicesPanel(this.config) &&
-      this._newDevices().length > 0
-    );
-    const canShowMaintenance = showMaintenanceMenu ?? (
-      this._maintenanceSummary(this._buildMaintenanceData()).totalCount > 0
-    );
+    const canShowNewDevices = showNewDevicesMenu ?? this._showNewDevicesMenu();
+    // Maintenance is always listed ("Everything looks good" when empty).
+    const canShowMaintenance = showMaintenanceMenu ?? true;
     const canShowEnergy = showEnergyMenu ?? this._showEnergyMenu();
 
     if (domain === DEVICES_OVERVIEW_KEY) {
@@ -817,14 +823,17 @@ export class DwainsDevicesCard extends LitElement {
     const data = this._buildData();
     const domains = this._sortedDomains(data);
     const newDevices = this._newDevices();
-    const hiddenCount = hiddenDeviceIds(this.config).size;
-    const showNewDevicesMenu = shouldShowRecentDevicesPanel(this.config) && (newDevices.length > 0 || hiddenCount > 0);
+    const showNewDevicesMenu = this._showNewDevicesMenu(newDevices);
     const maintenance = this._buildMaintenanceData();
-    const showMaintenanceMenu = this._maintenanceSummary(maintenance).totalCount > 0;
-    const showEnergyMenu = this._showEnergyMenu();
+    const showMaintenanceMenu = true;
+    const energySummary = this._energySummary();
+    const showEnergyMenu = this._showEnergyMenu(energySummary);
     this._applyPendingDomainSelection(data, showNewDevicesMenu, showMaintenanceMenu, showEnergyMenu);
+    const groups = this._deviceGroupCards(
+      data, domains, newDevices, showNewDevicesMenu, maintenance, energySummary, showEnergyMenu
+    );
 
-    if (domains.length === 0 && !showNewDevicesMenu && !showMaintenanceMenu && !showEnergyMenu) {
+    if (!groups.length) {
       return html`
         <div class="layout-container">
           ${this._renderMobileOverlay()}
@@ -847,9 +856,7 @@ export class DwainsDevicesCard extends LitElement {
         this._selectedDomain = DEVICES_OVERVIEW_KEY;
       }
     } else if (this._selectedDomain === MAINTENANCE_KEY) {
-      if (!showMaintenanceMenu) {
-        this._selectedDomain = DEVICES_OVERVIEW_KEY;
-      }
+      // Always listed.
     } else if (this._selectedDomain === ENERGY_KEY) {
       if (!showEnergyMenu) {
         this._selectedDomain = DEVICES_OVERVIEW_KEY;
@@ -861,7 +868,7 @@ export class DwainsDevicesCard extends LitElement {
     return html`
       <div class="layout-container">
         ${this._renderMobileOverlay()}
-        ${this._renderSidebar(data, domains, newDevices, showNewDevicesMenu, maintenance, showMaintenanceMenu, showEnergyMenu)}
+        ${this._renderSidebar(groups)}
         <div class="main-content">
           <div class="content-area">
             ${this._selectedDomain === NEW_DEVICES_KEY
@@ -869,9 +876,9 @@ export class DwainsDevicesCard extends LitElement {
               : this._selectedDomain === MAINTENANCE_KEY
                 ? this._renderMaintenanceView(maintenance)
               : this._selectedDomain === ENERGY_KEY
-                ? this._renderEnergyView()
+                ? this._renderEnergyView(energySummary)
               : this._selectedDomain === DEVICES_OVERVIEW_KEY
-                ? this._renderDevicesOverview(data, domains, newDevices, showNewDevicesMenu, maintenance, showMaintenanceMenu, showEnergyMenu)
+                ? this._renderDevicesOverview(groups)
               : this._renderDeviceView(data)}
           </div>
         </div>
@@ -889,20 +896,80 @@ export class DwainsDevicesCard extends LitElement {
     `;
   }
 
-  private _renderSidebar(
+  /**
+   * Every device group, in sidebar and overview order. The sidebar badge of
+   * the overview and the "N device groups" line both count this list.
+   */
+  private _deviceGroupCards(
     data: Map<string, Map<string, { area: AreaConfig; entities: EntityConfig[] }>>,
     domains: string[],
     newDevices: RecentDeviceSummary[],
     showNewDevicesMenu: boolean,
     maintenance: Map<string, MaintenanceBucket>,
-    showMaintenanceMenu: boolean,
+    energySummary: HousePowerUsageSummary,
     showEnergyMenu: boolean
-  ) {
+  ): DeviceGroupCard[] {
+    const cards: DeviceGroupCard[] = [];
+
+    if (showNewDevicesMenu) {
+      cards.push({
+        key: NEW_DEVICES_KEY,
+        icon: 'mdi:new-box',
+        title: this._t('devices.new'),
+        subtitle: this._tp('devices.new', newDevices.length),
+        color: 'var(--primary-color)',
+        className: 'new-devices',
+        badge: String(newDevices.length),
+      });
+    }
+
+    const maintenanceSummary = this._maintenanceSummary(maintenance);
+    cards.push({
+      key: MAINTENANCE_KEY,
+      icon: 'mdi:wrench',
+      title: this._t('devices.maintenance'),
+      subtitle: this._maintenanceSubtitle(maintenance),
+      color: this._typeColor(MAINTENANCE_KEY),
+      className: 'maintenance',
+      badge: maintenanceSummary.totalCount ? String(maintenanceSummary.totalCount) : undefined,
+      alertCount: maintenanceSummary.totalCount || undefined,
+    });
+
+    if (showEnergyMenu) {
+      cards.push({
+        key: ENERGY_KEY,
+        icon: 'mdi:flash',
+        title: this._t('devices.energy'),
+        subtitle: energySummary.formattedTotal,
+        color: this._typeColor(ENERGY_KEY),
+        className: 'energy',
+        badge: energySummary.formattedTotal,
+      });
+    }
+
+    domains.forEach((domain) => {
+      const byArea = data.get(domain);
+      if (!byArea) return;
+      const count = this._domainCount(byArea);
+      if (!count) return;
+      cards.push({
+        key: domain,
+        icon: this._typeIcon(domain),
+        title: this._typeName(domain),
+        subtitle: this._tp('common.entity', count),
+        color: this._typeColor(domain),
+        badge: String(count),
+      });
+    });
+
+    return cards;
+  }
+
+  private _renderSidebar(groups: DeviceGroupCard[]) {
     const classes = {
       sidebar: true,
       open: this._isMobile && this._mobileNavOpen,
     };
-    const energySummary = this._energySummary();
 
     return html`
       <nav class=${classMap(classes)}>
@@ -918,177 +985,50 @@ export class DwainsDevicesCard extends LitElement {
             </div>
             <div class="area-info">
               <div class="area-name">${this._t('navigation.overview')}</div>
-              <div class="device-menu-subtitle">${this._t('navigation.all_device_groups')}</div>
+              <div class="device-menu-subtitle">${this._tp('devices.group', groups.length)}</div>
             </div>
-            <span class="domain-count">${domains.length}</span>
+            <span class="domain-count">${groups.length}</span>
             <ha-icon class="device-menu-chevron" icon="mdi:chevron-right"></ha-icon>
           </button>
-          ${showNewDevicesMenu
-            ? html`
-                <button
-                  class="area-button new-devices ${this._selectedDomain === NEW_DEVICES_KEY ? 'selected' : ''}"
-                  @click=${() => this._selectDomain(NEW_DEVICES_KEY)}
-                >
-                  <div class="area-icon">
-                    <ha-icon icon="mdi:new-box"></ha-icon>
-                  </div>
-                  <div class="area-info">
-                    <div class="area-name">${this._t('devices.new')}</div>
-                    <div class="device-menu-subtitle">
-                      ${this._tp('devices.new', newDevices.length)}
-                    </div>
-                  </div>
-                  <span class="domain-count">${newDevices.length}</span>
-                  <ha-icon class="device-menu-chevron" icon="mdi:chevron-right"></ha-icon>
-                </button>
-              `
-            : nothing}
-          ${showMaintenanceMenu
-            ? html`
-                <button
-                  class="area-button maintenance ${this._selectedDomain === MAINTENANCE_KEY ? 'selected' : ''}"
-                  style=${`--domain-color: ${this._typeColor(MAINTENANCE_KEY)};`}
-                  @click=${() => this._selectDomain(MAINTENANCE_KEY)}
-                >
-                  <div class="area-icon">
-                    <ha-icon icon="mdi:wrench"></ha-icon>
-                  </div>
-                  <div class="area-info">
-                    <div class="area-name">${this._t('devices.maintenance')}</div>
-                    <div class="device-menu-subtitle">${this._maintenanceSubtitle(maintenance)}</div>
-                  </div>
-                  <span class="domain-count">${this._maintenanceSummary(maintenance).totalCount}</span>
-                  <ha-icon class="device-menu-chevron" icon="mdi:chevron-right"></ha-icon>
-                </button>
-              `
-            : nothing}
-          ${showEnergyMenu
-            ? html`
-                <button
-                  class="area-button energy ${this._selectedDomain === ENERGY_KEY ? 'selected' : ''}"
-                  style=${`--domain-color: ${this._typeColor(ENERGY_KEY)};`}
-                  @click=${() => this._selectDomain(ENERGY_KEY)}
-                >
-                  <div class="area-icon">
-                    <ha-icon icon="mdi:flash"></ha-icon>
-                  </div>
-                  <div class="area-info">
-                    <div class="area-name">${this._t('devices.energy')}</div>
-                    <div class="device-menu-subtitle">
-                      ${this._tp('devices.live_power_sensor', energySummary.sensorCount)}
-                    </div>
-                  </div>
-                  <span class="domain-count">${energySummary.sensorCount}</span>
-                  <ha-icon class="device-menu-chevron" icon="mdi:chevron-right"></ha-icon>
-                </button>
-              `
-            : nothing}
-          ${domains.map((domain) => {
-            const byArea = data.get(domain)!;
-            const count = this._domainCount(byArea);
-            const isSelected = this._selectedDomain === domain;
-            return html`
+          ${repeat(
+            groups,
+            (group) => group.key,
+            (group) => html`
               <button
-                class="area-button ${isSelected ? 'selected' : ''}"
-                style=${`--domain-color: ${this._typeColor(domain)};`}
-                @click=${() => this._selectDomain(domain)}
+                class="area-button ${group.className || ''} ${this._selectedDomain === group.key ? 'selected' : ''}"
+                style=${`--domain-color: ${group.color};`}
+                @click=${() => this._selectDomain(group.key)}
               >
                 <div class="area-icon">
-                  <ha-icon icon=${this._typeIcon(domain)}></ha-icon>
+                  <ha-icon icon=${group.icon}></ha-icon>
                 </div>
                 <div class="area-info">
-                  <div class="area-name">${this._typeName(domain)}</div>
-                  <div class="device-menu-subtitle">${this._tp('common.entity', count)}</div>
+                  <div class="area-name">${group.title}</div>
+                  <div class="device-menu-subtitle">${group.subtitle}</div>
                 </div>
-                <span class="domain-count">${count}</span>
+                ${group.badge ? html`<span class="domain-count">${group.badge}</span>` : nothing}
                 <ha-icon class="device-menu-chevron" icon="mdi:chevron-right"></ha-icon>
               </button>
-            `;
-          })}
+            `
+          )}
         </div>
       </nav>
     `;
   }
 
-  private _renderDevicesOverview(
-    data: Map<string, Map<string, { area: AreaConfig; entities: EntityConfig[] }>>,
-    domains: string[],
-    newDevices: RecentDeviceSummary[],
-    showNewDevicesMenu: boolean,
-    maintenance: Map<string, MaintenanceBucket>,
-    showMaintenanceMenu: boolean,
-    showEnergyMenu: boolean
-  ) {
-    const energySummary = this._energySummary();
-    const cards: Array<{
-      key: string;
-      icon: string;
-      title: string;
-      subtitle: string;
-      count: number;
-      color: string;
-    }> = [];
-
-    if (showNewDevicesMenu) {
-      cards.push({
-        key: NEW_DEVICES_KEY,
-        icon: 'mdi:new-box',
-        title: this._t('devices.new'),
-        subtitle: this._tp('devices.new', newDevices.length),
-        count: newDevices.length,
-        color: 'var(--primary-color)',
-      });
-    }
-
-    if (showMaintenanceMenu) {
-      const summary = this._maintenanceSummary(maintenance);
-      cards.push({
-        key: MAINTENANCE_KEY,
-        icon: 'mdi:wrench',
-        title: this._t('devices.maintenance'),
-        subtitle: this._maintenanceSubtitle(maintenance),
-        count: summary.totalCount,
-        color: this._typeColor(MAINTENANCE_KEY),
-      });
-    }
-
-    if (showEnergyMenu) {
-      cards.push({
-        key: ENERGY_KEY,
-        icon: 'mdi:flash',
-        title: this._t('devices.energy'),
-        subtitle: this._tp('devices.live_power_sensor', energySummary.sensorCount),
-        count: energySummary.sensorCount,
-        color: this._typeColor(ENERGY_KEY),
-      });
-    }
-
-    domains.forEach((domain) => {
-      const byArea = data.get(domain);
-      if (!byArea) return;
-      const count = this._domainCount(byArea);
-      cards.push({
-        key: domain,
-        icon: this._typeIcon(domain),
-        title: this._typeName(domain),
-        subtitle: this._tp('common.entity', count),
-        count,
-        color: this._typeColor(domain),
-      });
-    });
-
+  private _renderDevicesOverview(groups: DeviceGroupCard[]) {
     return html`
       <div class="device-view devices-overview-view">
         ${this._renderDevicePageHeader({
           icon: 'mdi:format-list-bulleted-type',
           title: this._t('devices.title'),
-          subtitle: this._tp('devices.group', cards.length),
+          subtitle: this._tp('devices.group', groups.length),
           color: this._typeColor(DEVICES_OVERVIEW_KEY),
         })}
 
         <div class="devices-overview-grid">
           ${repeat(
-            cards,
+            groups,
             (card) => card.key,
             (card) => html`
               <button
@@ -1099,7 +1039,7 @@ export class DwainsDevicesCard extends LitElement {
               >
                 <span class="overview-card-icon">
                   <ha-icon icon=${card.icon}></ha-icon>
-                  <span class="overview-card-count">${card.count}</span>
+                  ${card.alertCount ? html`<span class="overview-card-count">${card.alertCount}</span>` : nothing}
                 </span>
                 <span class="overview-card-copy">
                   <strong>${card.title}</strong>
@@ -1203,8 +1143,7 @@ export class DwainsDevicesCard extends LitElement {
     `;
   }
 
-  private _renderEnergyView() {
-    const summary = this._energySummary();
+  private _renderEnergyView(summary: HousePowerUsageSummary = this._energySummary()) {
     const topArea = summary.areas[0];
     const basisLabel = this._energyBasisLabel(summary);
     const wholeHouseStatisticsEntities = summary.basis === 'energy'
@@ -3187,13 +3126,14 @@ export class DwainsDevicesCard extends LitElement {
         padding: 2px 0;
       }
 
+      /* Compact page title on phones: the content matters more than the banner. */
       .device-page-header {
-        min-height: 132px;
-        margin: 0 -10px 18px;
-        padding: calc(14px + env(safe-area-inset-top, 0px)) 16px 18px;
+        min-height: 0;
+        margin: 0 -10px 12px;
+        padding: calc(10px + env(safe-area-inset-top, 0px)) 14px 12px;
         grid-template-columns: auto minmax(0, 1fr);
-        align-items: start;
-        gap: 12px;
+        align-items: center;
+        gap: 10px;
         border-width: 0 0 1px;
         border-radius: 0 0 8px 8px;
         background:
@@ -3216,13 +3156,13 @@ export class DwainsDevicesCard extends LitElement {
       }
 
       .device-header-back {
-        width: 40px;
-        height: 40px;
-        margin-top: 1px;
+        width: 36px;
+        height: 36px;
+        box-shadow: 0 8px 18px rgba(15, 23, 42, 0.16);
       }
 
       .device-header-back ha-icon {
-        --mdc-icon-size: 21px;
+        --mdc-icon-size: 20px;
       }
 
       .device-header-main {
@@ -3233,7 +3173,7 @@ export class DwainsDevicesCard extends LitElement {
       .device-page-header.has-back .device-header-main {
         align-items: flex-start;
         flex-direction: column;
-        gap: 7px;
+        gap: 0;
       }
 
       .device-page-header.has-back .device-header-icon {
@@ -3241,25 +3181,27 @@ export class DwainsDevicesCard extends LitElement {
       }
 
       .device-header-icon {
-        width: 44px;
-        height: 44px;
+        width: 36px;
+        height: 36px;
       }
 
       .device-header-icon ha-icon {
-        --mdc-icon-size: 24px;
+        --mdc-icon-size: 20px;
       }
 
       .device-title {
-        font-size: 26px;
+        font-size: 20px;
+        font-weight: 800;
       }
 
       .device-subtitle {
-        margin-top: 3px;
+        margin-top: 2px;
         font-size: 12px;
+        font-weight: 600;
       }
 
       .device-header-actions {
-        align-self: start;
+        align-self: center;
       }
 
       .device-page-header.has-actions .device-header-actions {
@@ -3317,7 +3259,13 @@ export class DwainsDevicesCard extends LitElement {
       }
 
       .energy-header-total {
+        min-width: 0;
+        padding: 6px 10px;
         justify-items: start;
+      }
+
+      .energy-header-total span {
+        font-size: 20px;
       }
 
       .energy-overview-grid,

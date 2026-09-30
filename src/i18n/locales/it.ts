@@ -71,7 +71,6 @@ export const it = {
   'navigation.current_page': 'Pagina corrente',
   'navigation.open_page': 'Apri pagina',
   'navigation.overview': 'Panoramica',
-  'navigation.all_device_groups': 'Tutti i gruppi di dispositivi',
 
   'favorites.title': 'Preferiti',
   'favorites.empty': 'Nessun preferito selezionato.',
