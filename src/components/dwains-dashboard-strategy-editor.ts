@@ -302,10 +302,12 @@ export class DwainsDashboardStrategyEditor extends LitElement {
     this._config = {
       type: config?.type || "custom:dwains-dashboard-next",
       areas_display: config?.areas_display || {},
+      floors_display: config?.floors_display || {},
       areas_options: config?.areas_options || {},
       blueprint_replacements: config?.blueprint_replacements || {},
       device_admission: config?.device_admission || {},
       favorites: config?.favorites || [],
+      pages: config?.pages || [],
       settings: config?.settings || {},
       // These will be populated from live data
       areas: [],
@@ -4277,10 +4279,12 @@ export class DwainsDashboardStrategyEditor extends LitElement {
     const cleanConfig = {
       type: "custom:dwains-dashboard-next",
       areas_display: config.areas_display || {},
+      floors_display: config.floors_display || {},
       areas_options: config.areas_options || {},
       blueprint_replacements: config.blueprint_replacements || {},
       device_admission: config.device_admission || {},
       favorites: config.favorites || [],
+      pages: config.pages || [],
       home_custom_cards: config.home_custom_cards || [],
       settings: config.settings || {}
     };
