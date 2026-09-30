@@ -28,7 +28,6 @@ export const layoutCardStyles = css`
     .mobile-entity-action,
     .mobile-cover-action,
     .mobile-entity-toggle,
-    .area-badge,
     .area-quick-control,
     .dd-edit-toggle,
     .unavailable-entities-icon,
@@ -2549,72 +2548,6 @@ export const layoutCardStyles = css`
       line-height: 1.2;
     }
 
-    /* Area Badges */
-    .area-badges {
-      display: flex;
-      gap: 12px;
-      flex-wrap: wrap;
-      margin-bottom: 24px;
-    }
-
-    .area-badge {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 8px 16px;
-      background: var(--card-background-color);
-      border: 1px solid var(--divider-color);
-      border-radius: 24px;
-      font-size: 14px;
-      cursor: pointer;
-      transition: all 0.2s ease;
-    }
-
-    .area-badge:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-    }
-
-    .area-badge ha-icon {
-      --mdc-icon-size: 20px;
-    }
-
-    .area-badge.light-toggle {
-      background: color-mix(in srgb, var(--warning-color) 10%, var(--card-background-color));
-      border-color: var(--warning-color);
-    }
-
-    .area-badge.light-toggle ha-icon {
-      color: var(--warning-color);
-    }
-
-    .area-badge.switch-toggle {
-      background: color-mix(in srgb, var(--info-color) 10%, var(--card-background-color));
-      border-color: var(--info-color);
-    }
-
-    .area-badge.switch-toggle ha-icon {
-      color: var(--info-color);
-    }
-
-    .area-badge.wattage {
-      background: color-mix(in srgb, var(--warning-color) 10%, var(--card-background-color));
-      border-color: var(--warning-color);
-    }
-
-    .area-badge.wattage ha-icon {
-      color: var(--warning-color);
-    }
-
-    .area-badge.energy {
-      background: color-mix(in srgb, var(--info-color) 10%, var(--card-background-color));
-      border-color: var(--info-color);
-    }
-
-    .area-badge.energy ha-icon {
-      color: var(--info-color);
-    }
-
     /* Entities Section */
     .entities-section {
       display: grid;
@@ -4836,128 +4769,6 @@ export const layoutCardStyles = css`
       }
     }
 
-    /* Area Badges Styling */
-    .area-badges {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      padding: 0px; /* 16px;*/
-    }
-
-    .area-badge {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 8px 12px;
-      border-radius: 8px;
-      font-size: 14px;
-      font-weight: 500;
-      transition: all 0.2s ease;
-      border: none;
-      cursor: default;
-      background: var(--card-background-color);
-      color: var(--primary-text-color);
-      border: 1px solid var(--divider-color);
-    }
-
-    .area-badge ha-icon {
-      --mdc-icon-size: 18px;
-    }
-
-    /* Domain-specific badge colors */
-    .area-badge.light {
-      background: color-mix(in srgb, var(--area-badge-color, #e1a129) 10%, var(--card-background-color));
-      color: var(--area-badge-color, #e1a129);
-      border-color: color-mix(in srgb, var(--area-badge-color, #e1a129) 20%, transparent);
-    }
-
-    .area-badge.switch {
-      background: color-mix(in srgb, var(--area-badge-color, #2f6fd6) 10%, var(--card-background-color));
-      color: var(--area-badge-color, #2f6fd6);
-      border-color: color-mix(in srgb, var(--area-badge-color, #2f6fd6) 20%, transparent);
-    }
-
-    .area-badge.climate {
-      background: color-mix(in srgb, var(--area-badge-color, #34a6d8) 10%, var(--card-background-color));
-      color: var(--area-badge-color, #34a6d8);
-      border-color: color-mix(in srgb, var(--area-badge-color, #34a6d8) 20%, transparent);
-    }
-
-    .area-badge.motion.active {
-      background: color-mix(in srgb, var(--area-badge-color, #df5b63) 10%, var(--card-background-color));
-      color: var(--area-badge-color, #df5b63);
-      border-color: color-mix(in srgb, var(--area-badge-color, #df5b63) 20%, transparent);
-    }
-
-    .area-badge.cover {
-      background: color-mix(in srgb, var(--area-badge-color, #1494aa) 10%, var(--card-background-color));
-      color: var(--area-badge-color, #1494aa);
-      border-color: color-mix(in srgb, var(--area-badge-color, #1494aa) 20%, transparent);
-    }
-
-    .area-badge.media_player {
-      background: color-mix(in srgb, var(--area-badge-color, #7c67c7) 10%, var(--card-background-color));
-      color: var(--area-badge-color, #7c67c7);
-      border-color: color-mix(in srgb, var(--area-badge-color, #7c67c7) 20%, transparent);
-    }
-
-    .area-badge.temperature {
-      background: color-mix(in srgb, var(--cyan-color) 10%, var(--card-background-color));
-      color: var(--cyan-color);
-      border-color: color-mix(in srgb, var(--cyan-color) 20%, transparent);
-    }
-
-    .area-badge.humidity {
-      background: color-mix(in srgb, var(--blue-color) 10%, var(--card-background-color));
-      color: var(--blue-color);
-      border-color: color-mix(in srgb, var(--blue-color) 20%, transparent);
-    }
-
-    .area-badge.wattage {
-      background: color-mix(in srgb, var(--yellow-color) 10%, var(--card-background-color));
-      color: var(--yellow-color);
-      border-color: color-mix(in srgb, var(--yellow-color) 20%, transparent);
-    }
-
-    .area-badge.energy {
-      background: color-mix(in srgb, var(--indigo-color) 10%, var(--card-background-color));
-      color: var(--indigo-color);
-      border-color: color-mix(in srgb, var(--indigo-color) 20%, transparent);
-    }
-
-    /* Toggle button badges */
-    .area-badge.light-toggle,
-    .area-badge.switch-toggle {
-      cursor: pointer;
-      background: var(--primary-color);
-      color: var(--text-primary-color);
-      border-color: var(--primary-color);
-    }
-
-    .area-badge.light-toggle:hover,
-    .area-badge.switch-toggle:hover {
-      background: color-mix(in srgb, var(--primary-color) 90%, black);
-      transform: translateY(-1px);
-      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-    }
-
-    /* Responsive adjustments */
-    @media (max-width: 768px) {
-      .area-badges {
-        padding: 12px;
-        gap: 6px;
-      }
-
-      .area-badge {
-        padding: 6px 10px;
-        font-size: 13px;
-      }
-
-      .area-badge ha-icon {
-        --mdc-icon-size: 16px;
-      }
-    }
-
     /* Header Expanded Content Styling */
     .global-header.expanded {
       border-bottom: 2px solid var(--primary-color);
@@ -6418,70 +6229,6 @@ export const layoutCardStyles = css`
       }
     }
 
-    /* Area status/action pills */
-    .area-badges {
-      gap: 8px;
-      align-items: center;
-      margin-bottom: 18px;
-    }
-
-    .area-badge {
-      min-height: 38px;
-      padding: 9px 15px;
-      border-radius: 999px;
-      font-size: 14px;
-      font-weight: 800;
-      line-height: 1;
-      box-shadow: none;
-    }
-
-    .area-badge ha-icon {
-      --mdc-icon-size: 17px;
-    }
-
-    .area-badge.cover {
-      background: color-mix(in srgb, var(--area-badge-color, #1494aa) 12%, var(--card-background-color));
-      border-color: color-mix(in srgb, var(--area-badge-color, #1494aa) 22%, transparent);
-      color: var(--area-badge-color, #1494aa);
-    }
-
-    .area-badge.cover ha-icon {
-      color: var(--area-badge-color, #1494aa);
-    }
-
-    .area-badge.light-toggle,
-    .area-badge.switch-toggle {
-      min-width: 132px;
-      justify-content: center;
-      cursor: pointer;
-      background: #089987;
-      border-color: #089987;
-      color: #ffffff;
-      box-shadow: 0 8px 20px rgba(8, 153, 135, 0.18);
-    }
-
-    .area-badge.light-toggle ha-icon {
-      color: #ffc400;
-    }
-
-    .area-badge.switch-toggle ha-icon {
-      color: #1f86d9;
-    }
-
-    .area-badge.light-toggle:hover,
-    .area-badge.switch-toggle:hover {
-      background: #078b7b;
-      border-color: #078b7b;
-      transform: translateY(-1px);
-      box-shadow: 0 10px 24px rgba(8, 153, 135, 0.24);
-    }
-
-    .area-badge.light-toggle:active,
-    .area-badge.switch-toggle:active {
-      transform: translateY(0);
-      box-shadow: 0 5px 14px rgba(8, 153, 135, 0.18);
-    }
-
     /* Room header */
     .area-header {
       position: relative;
@@ -7008,16 +6755,6 @@ export const layoutCardStyles = css`
         inset 0 0 0 1px var(--area-header-picture-control-border);
       backdrop-filter: blur(14px);
       -webkit-backdrop-filter: blur(14px);
-    }
-
-    .area-header .area-badges {
-      display: none;
-    }
-
-    .area-header.has-picture .area-badge:not(.light-toggle):not(.switch-toggle) {
-      background: var(--area-header-picture-control-bg);
-      border-color: var(--area-header-picture-control-border);
-      color: var(--area-header-picture-text-color, #ffffff);
     }
 
     @media (min-width: 769px) {
@@ -7877,29 +7614,6 @@ export const layoutCardStyles = css`
 
       .area-header-actions {
         display: none;
-      }
-
-      .area-header .area-badges {
-        position: relative;
-        z-index: 3;
-        width: 100%;
-        display: none;
-      }
-
-      .area-header .area-badge {
-        min-height: 34px;
-        flex: 0 0 auto;
-        padding: 0 12px;
-        border-radius: 999px;
-        font-size: 12px;
-        font-weight: 850;
-        box-shadow: none;
-      }
-
-      .area-header .area-badge.light-toggle,
-      .area-header .area-badge.switch-toggle {
-        min-width: 128px;
-        justify-content: center;
       }
 
       .area-header.has-picture {
@@ -8815,8 +8529,7 @@ export const layoutCardStyles = css`
       .area-content-area .area-header.is-stuck .area-mobile-quick-controls,
       .area-content-area .area-header.is-stuck.has-metrics .area-mobile-quick-controls,
       .area-content-area .area-header.is-stuck.has-quick-controls .area-mobile-quick-controls,
-      .area-content-area .area-header.is-stuck .area-header-metrics,
-      .area-content-area .area-header.is-stuck .area-badges {
+      .area-content-area .area-header.is-stuck .area-header-metrics {
         display: none;
       }
 

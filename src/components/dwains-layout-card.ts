@@ -3088,7 +3088,7 @@ export class DwainsLayoutCard extends LitElement {
       areaData.humidity,
       areaData.wattage
     ].filter(Boolean).join(' • ');
-    const meta = sensorSummary || (deviceCount === 1 ? '1 device' : `${deviceCount} devices`);
+    const meta = sensorSummary || this._tp('common.device', deviceCount);
     const badges: Array<{ className: string; icon: string; count: number; color: string }> = [];
     const pictureContrastClass = hasPicture ? this._getPictureContrastClass(area.picture) : '';
 
@@ -3565,7 +3565,6 @@ export class DwainsLayoutCard extends LitElement {
             </div>
           </div>
           ${this._renderAreaHeaderMetrics(areaData)}
-          ${this._renderAreaBadges(area, visibleAreaEntities, areaData)}
         </div>
 
         ${this._renderCustomCardSlot(area.area_id, 'top', this._t('layout.custom_cards_top'))}
@@ -4185,183 +4184,6 @@ export class DwainsLayoutCard extends LitElement {
       console.error('❌ Saving area options failed:', e);
       this._showToast(this._t('layout.save_card_failed', { error: String(e) }));
     }
-  }
-
-  private _renderAreaBadges(area: AreaConfig, entities: EntityConfig[], areaData: AreaData) {
-    const badges: TemplateResult[] = [];
-
-    // Domain count badges (first)
-
-    // Lights count badge
-    if (areaData.domains.light && areaData.domains.light.on > 0) {
-      badges.push(html`
-        <div class="area-badge light" style=${this._domainBadgeStyle('light')}>
-          <ha-icon icon=${getDomainIcon('light')}></ha-icon>
-          <span>${areaData.domains.light.on} on</span>
-        </div>
-      `);
-    }
-
-    // Switches count badge
-    if (areaData.domains.switch && areaData.domains.switch.on > 0) {
-      badges.push(html`
-        <div class="area-badge switch" style=${this._domainBadgeStyle('switch')}>
-          <ha-icon icon=${getDomainIcon('switch')}></ha-icon>
-          <span>${areaData.domains.switch.on} on</span>
-        </div>
-      `);
-    }
-
-    // Climate count badge
-    if (areaData.domains.climate && areaData.domains.climate.on > 0) {
-      badges.push(html`
-        <div class="area-badge climate" style=${this._domainBadgeStyle('climate')}>
-          <ha-icon icon=${getDomainIcon('climate')}></ha-icon>
-                            <span>${areaData.domains.climate.on} active</span>
-        </div>
-      `);
-    }
-
-    // Motion sensors count badge
-    const motionEntities = entities.filter(e =>
-      e.entity_id.startsWith('binary_sensor.') &&
-      this.hass?.states[e.entity_id]?.attributes?.device_class === 'motion' &&
-      this.hass?.states[e.entity_id]?.state === 'on'
-    );
-
-    if (motionEntities.length > 0) {
-      badges.push(html`
-        <div class="area-badge motion active" style=${this._domainBadgeStyle('binary_sensor', 'motion')}>
-          <ha-icon icon=${getDeviceClassIcon('binary_sensor', 'motion')}></ha-icon>
-                            <span>${motionEntities.length} active</span>
-        </div>
-      `);
-    }
-
-    // Covers count badge
-    if (areaData.domains.cover && areaData.domains.cover.on > 0) {
-      badges.push(html`
-        <div class="area-badge cover" style=${this._domainBadgeStyle('cover')}>
-          <ha-icon icon=${getDomainIcon('cover')}></ha-icon>
-          <span>${areaData.domains.cover.on} open</span>
-        </div>
-      `);
-    }
-
-    // Media players count badge
-    if (areaData.domains.media_player && areaData.domains.media_player.on > 0) {
-      badges.push(html`
-        <div class="area-badge media_player" style=${this._domainBadgeStyle('media_player')}>
-          <ha-icon icon=${getDomainIcon('media_player')}></ha-icon>
-                            <span>${areaData.domains.media_player.on} active</span>
-        </div>
-      `);
-    }
-
-    // Toggle buttons section
-
-    // Light toggle
-    const lights = entities.filter(e => e.entity_id.startsWith('light.'));
-    if (lights.length > 0) {
-      const allOff = this._areAllEntitiesOff(lights, 'light');
-      badges.push(html`
-        <button
-          class="area-badge light-toggle"
-          @click=${() => this._toggleAreaLights(area.area_id)}
-        >
-          <ha-icon icon=${allOff ? 'mdi:lightbulb-on' : 'mdi:lightbulb-off'}></ha-icon>
-                            <span>${allOff ? this._t('action.all_lights_on') : this._t('action.all_lights_off')}</span>
-        </button>
-      `);
-    }
-
-    // Switch toggle
-    const switches = entities.filter(e => e.entity_id.startsWith('switch.'));
-    const fans = entities.filter(e => e.entity_id.startsWith('fan.'));
-    const climates = entities.filter(e => e.entity_id.startsWith('climate.'));
-    if (switches.length > 0) {
-      const allOff = this._areAllEntitiesOff(switches, 'switch');
-      badges.push(html`
-        <button
-          class="area-badge switch-toggle"
-          @click=${() => this._toggleAreaSwitches(area.area_id)}
-        >
-          <ha-icon icon=${allOff ? 'mdi:toggle-switch' : 'mdi:toggle-switch-off'}></ha-icon>
-          <span>${allOff ? this._t('action.all_switches_on') : this._t('action.all_switches_off')}</span>
-        </button>
-      `);
-    }
-
-    if (fans.length > 0) {
-      const allOff = this._areAllEntitiesOff(fans, 'fan');
-      badges.push(html`
-        <button
-          class="area-badge fan-toggle"
-          @click=${() => this._toggleAreaFans(area.area_id)}
-        >
-          <ha-icon icon=${allOff ? 'mdi:fan' : 'mdi:fan-off'}></ha-icon>
-          <span>${allOff ? this._t('action.all_fans_on') : this._t('action.all_fans_off')}</span>
-        </button>
-      `);
-    }
-
-    if (climates.length > 0) {
-      badges.push(html`
-        <button
-          class="area-badge climate-toggle"
-          @click=${() => this._openAreaClimateControls(area.area_id, climates)}
-        >
-          <ha-icon icon=${getDomainIcon('climate')}></ha-icon>
-          <span>${this._t('action.open_climate_controls')}</span>
-        </button>
-      `);
-    }
-
-    // Wattage badge
-    if (areaData.wattage) {
-      badges.push(html`
-        <div class="area-badge wattage">
-          <ha-icon icon="mdi:flash"></ha-icon>
-          <span>${areaData.wattage}</span>
-        </div>
-      `);
-    }
-
-    // Energy badge
-    if (areaData.totalEnergy) {
-      badges.push(html`
-        <div class="area-badge energy">
-          <ha-icon icon="mdi:lightning-bolt"></ha-icon>
-          <span>${areaData.totalEnergy}</span>
-        </div>
-      `);
-    }
-
-    // Temperature badge
-    if (areaData.temperature) {
-      badges.push(html`
-        <div class="area-badge temperature">
-          <ha-icon icon="mdi:thermometer"></ha-icon>
-          <span>${areaData.temperature}</span>
-        </div>
-      `);
-    }
-
-    // Humidity badge
-    if (areaData.humidity) {
-      badges.push(html`
-        <div class="area-badge humidity">
-          <ha-icon icon="mdi:water-percent"></ha-icon>
-          <span>${areaData.humidity}</span>
-        </div>
-      `);
-    }
-
-    return badges.length > 0 ? html`
-      <div class="area-badges">
-        ${badges}
-      </div>
-    ` : nothing;
   }
 
   private _renderAreaMobileQuickControls(areaId: string, entities: EntityConfig[]) {
