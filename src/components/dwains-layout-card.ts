@@ -33,6 +33,7 @@ import './utils/dd-tile-host';
 import { fireEvent } from './utils/fire-event';
 import { closeConfirmDialog, showConfirmDialog } from './utils/confirm-dialog';
 import { ddLocale, ddLocalize, ddLocalizePlural } from '../utils/localize';
+import { getCollator, getRelativeTimeFormat } from '../utils/intl-cache';
 import {
   masterActionConfirmationEnabled,
   normalizeMasterActionConfirmationDomain,
@@ -1503,7 +1504,7 @@ export class DwainsLayoutCard extends LitElement {
       );
     }
     const floorNameIndex = new Map(configuredFloors.map((floor, index) => [floor.name, index]));
-    const floorCollator = new Intl.Collator(ddLocale(this.hass), { numeric: true, sensitivity: 'base' });
+    const floorCollator = getCollator(ddLocale(this.hass), { numeric: true, sensitivity: 'base' });
     const sortedFloors = Object.entries(groupedAreas).sort(([a], [b]) => {
       if (a === 'no_floor') return 1;
       if (b === 'no_floor') return -1;
@@ -2090,7 +2091,7 @@ export class DwainsLayoutCard extends LitElement {
       .sort((left, right) => {
         const leftName = this.hass.states[left]?.attributes?.friendly_name || this.hass.entities?.[left]?.name || left;
         const rightName = this.hass.states[right]?.attributes?.friendly_name || this.hass.entities?.[right]?.name || right;
-        return String(leftName).localeCompare(String(rightName), this.hass.language);
+        return getCollator(this.hass.language).compare(String(leftName), String(rightName));
       });
   }
 
@@ -4729,6 +4730,8 @@ export class DwainsLayoutCard extends LitElement {
 
   private _sortAreaEntities(areaId: string, entities: EntityConfig[]): EntityConfig[] {
     const areaOptions = this.config?.areas_options?.[areaId];
+    // Same order as `a.localeCompare(b, locale)`.
+    const nameCollator = getCollator(ddLocale(this.hass));
     const ungrouped = areaOptions?.entity_layout === 'ungrouped';
     const ungroupedOrder = new Map((areaOptions?.entity_order || []).map((entityId, index) => [entityId, index]));
 
@@ -4765,7 +4768,7 @@ export class DwainsLayoutCard extends LitElement {
 
       const nameA = this.hass.states[a.entity_id]?.attributes?.friendly_name || a.entity_id;
       const nameB = this.hass.states[b.entity_id]?.attributes?.friendly_name || b.entity_id;
-      return nameA.localeCompare(nameB, ddLocale(this.hass));
+      return nameCollator.compare(nameA, nameB);
     });
   }
 
@@ -5669,7 +5672,7 @@ export class DwainsLayoutCard extends LitElement {
 
     try {
       const language = (this.hass as any)?.locale?.language || navigator.language || undefined;
-      return new Intl.RelativeTimeFormat(language, { numeric: 'auto' }).format(value, unit);
+      return getRelativeTimeFormat(language, { numeric: 'auto' }).format(value, unit);
     } catch {
       if (absSeconds < 60) return 'just now';
       const count = Math.abs(value);

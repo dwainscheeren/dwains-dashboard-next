@@ -1,5 +1,6 @@
 import type { HomeAssistant } from '../types/home-assistant';
 import type { AreasDisplay, AreaSortMode, EntitiesDisplay } from '../types/strategy';
+import { getCollator } from './intl-cache';
 
 // Group types as Home Assistant uses them
 export const AREA_STRATEGY_GROUPS = [
@@ -292,7 +293,7 @@ export function sortAreas(
     return [...orderedAreas, ...remainingAreas];
   }
 
-  const collator = new Intl.Collator(locale, {
+  const collator = getCollator(locale, {
     numeric: true,
     sensitivity: 'base',
   });
