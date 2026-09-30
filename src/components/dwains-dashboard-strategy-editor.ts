@@ -35,6 +35,7 @@ import {
   type AreaStrategyGroup
 } from "../utils/area-entities";
 import { countReplacementRules } from "../utils/blueprint-replacements";
+import { persistableConfig } from "../utils/dashboard-config";
 import { getDeviceClassName, getDomainName } from "../utils/domain-names";
 import { getDeviceClassIcon, getDomainColor, getDomainIcon } from "../utils/icons";
 import { ddLocale, ddLocalize, ddLocalizePlural } from "../utils/localize";
@@ -123,17 +124,6 @@ function restoreSettingsPage(): SettingsPageKey {
 function rememberSettingsPage(page: SettingsPageKey): void {
   rememberedSettingsPage = page;
   rememberedSettingsPageAt = Date.now();
-}
-
-// Registry data is loaded live by the editor and must never be written back.
-const LIVE_DATA_KEYS = ["areas", "devices", "entities", "floors"] as const;
-
-// Keep every stored dashboard option, including keys this editor does not
-// manage itself (blueprint pages, Home custom cards, future options).
-function persistableConfig(config: any): Record<string, any> {
-  const result: Record<string, any> = { ...(config || {}) };
-  LIVE_DATA_KEYS.forEach((key) => delete result[key]);
-  return result;
 }
 
 const SETTINGS_ICON_PATHS: Record<string, string> = {
