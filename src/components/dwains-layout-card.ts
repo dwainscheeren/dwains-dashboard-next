@@ -4,12 +4,16 @@ import { classMap } from 'lit/directives/class-map.js';
 import { repeat } from 'lit/directives/repeat.js';
 import { ifDefined } from 'lit/directives/if-defined.js';
 import { styleMap } from 'lit/directives/style-map.js';
+import memoizeOne from 'memoize-one';
 
-import type { HomeAssistant } from '../types/home-assistant';
+import type { HassEntity, HomeAssistant } from '../types/home-assistant';
 import type { DwainsDashboardConfig, AreaConfig, EntityConfig, AreaData, AreaCustomCard, EntitiesDisplay, HomeCustomCard, HomeInformationCardKey, HomeSectionKey, MasterActionConfirmationDomain } from '../types/strategy';
-import { getAreaData, clearAreaDataCache, clearAreaDataCacheForArea } from '../utils/area';
+import { getAreaData, clearAreaDataCache } from '../utils/area';
+import { AreaEntityResolver } from '../utils/area-entity-resolver';
+import { getAreaConfigMap, getHiddenPersonIdSet, resolveStatusEntityAreaId } from '../utils/entity-lookups';
+import { getDomainStates } from '../utils/state-index';
 import { getAreaIcon, getDeviceClassIcon, getDomainColor, getDomainIcon } from '../utils/icons';
-import { getStatusDomains, getTotalWattage, type DomainCount as StatusDomainCount } from '../utils/header-status-domains';
+import { getStatusDomains, type DomainCount as StatusDomainCount } from '../utils/header-status-domains';
 import { getDeviceClassName, getDomainName } from '../utils/domain-names';
 import { filterHiddenDeviceEntities } from '../utils/device-admission';
 import { findReplacementAssignment, resolveEntityCardConfig } from '../utils/blueprint-replacements';
@@ -61,11 +65,6 @@ const MOBILE_INITIAL_ENTITY_GROUPS = 4;
 const MOBILE_INITIAL_ENTITY_CARDS = 12;
 const UNGROUPED_AREA_EDIT_GROUP = '__ungrouped__';
 const ICON_ARROW_LEFT = 'M20,11V13H8L13.5,18.5L12.08,19.92L4.16,12L12.08,4.08L13.5,5.5L8,11H20Z';
-
-interface CachedAreaData {
-  data: AreaData;
-  timestamp: number;
-}
 
 interface PersistentNotification {
   notification_id: string;
@@ -198,12 +197,10 @@ export class DwainsLayoutCard extends LitElement {
   @state() private _settingsSavePending = false;
   @state() private _settingsSaveError = '';
 
-  // Performance optimizations
-  private _areaEntitiesCache = new Map<string, { entities: EntityConfig[], timestamp: number }>();
-  private _areaDataCache = new Map<string, CachedAreaData>();
-  private _domainCountsCache = new Map<string, DomainCount[]>();
-
-  private _CACHE_DURATION = 5000; // 5 seconds
+  // Performance: Home Assistant sets `hass` on every state change of any
+  // entity. Derived data is cached on the identity of its inputs, so it is
+  // computed at most once per hass object and config.
+  private _areaResolver = new AreaEntityResolver();
   private _timeInterval?: number;
   private _resizeObserver?: ResizeObserver;
   private _persistentNotificationsUnsub?: () => void;
@@ -477,12 +474,6 @@ export class DwainsLayoutCard extends LitElement {
       if (!this._canManageDashboard() && this._editMode) {
         this._editMode = false;
         this._rememberAreaEditMode(null);
-      }
-
-      const oldHass = changedProps.get('hass') as HomeAssistant | undefined;
-
-      if (oldHass && this._shouldUpdateEntities(oldHass, this.hass)) {
-        this._invalidateChangedAreaCaches(oldHass, this.hass);
       }
     }
   }
@@ -1479,9 +1470,15 @@ export class DwainsLayoutCard extends LitElement {
   private _getVisibleSortedAreas(): AreaConfig[] {
     if (!this.config?.areas) return [];
 
-    // Use the sortAreas helper from the area-entities utils
-    return sortAreas(this.config.areas, this.config.areas_display, ddLocale(this.hass));
+    // Use the sortAreas helper from the area-entities utils. The result is shared, do not mutate it.
+    return this._visibleSortedAreas(this.config.areas, this.config.areas_display, ddLocale(this.hass));
   }
+
+  private _visibleSortedAreas = memoizeOne((
+    areas: AreaConfig[],
+    areasDisplay: DwainsDashboardConfig['areas_display'],
+    locale: string
+  ): AreaConfig[] => sortAreas(areas, areasDisplay, locale));
 
   private _renderAreaButtons() {
     if (!this.config?.areas) return nothing;
@@ -1863,12 +1860,8 @@ export class DwainsLayoutCard extends LitElement {
   }
 
   private _entityAreaName(entityId: string): string | undefined {
-    const entityReg = this.config?.entities?.find(e => e.entity_id === entityId);
-    const deviceReg = entityReg?.device_id
-      ? this.config?.devices?.find(d => d.device_id === entityReg.device_id)
-      : null;
-    const areaId = entityReg?.area_id || deviceReg?.area_id || this.hass?.entities?.[entityId]?.area_id;
-    return this.config?.areas?.find(a => a.area_id === areaId)?.name;
+    const areaId = resolveStatusEntityAreaId(this.hass, this.config, entityId);
+    return areaId ? getAreaConfigMap(this.config).get(areaId)?.name : undefined;
   }
 
   private _renderHomeView() {
@@ -2076,24 +2069,36 @@ export class DwainsLayoutCard extends LitElement {
   }
 
   private _getHomeTodoEntities(): string[] {
-    return Object.keys(this.hass?.states || {})
+    if (!this.hass) return [];
+    return this._homeTodoEntities(this.hass.states, this.hass.entities, this.hass.language);
+  }
+
+  private _homeTodoEntities = memoizeOne((
+    states: HomeAssistant['states'],
+    registry: HomeAssistant['entities'],
+    language: string
+  ): string[] => {
+    // Same order as `a.localeCompare(b, language)`.
+    const collator = getCollator(language);
+    return getDomainStates(states, 'todo')
+      .map(state => state.entity_id)
       .filter(entityId => entityId.startsWith('todo.'))
       .filter(entityId => {
-        const state = this.hass.states[entityId];
-        const registry = this.hass.entities?.[entityId] as any;
+        const state = states[entityId];
+        const entry = registry?.[entityId] as any;
         if (!state) return false;
         return !['unavailable', 'unknown'].includes(String(state.state).toLowerCase()) &&
-          !registry?.hidden_by &&
-          !registry?.disabled_by &&
-          registry?.entity_category !== 'diagnostic' &&
-          registry?.entity_category !== 'config';
+          !entry?.hidden_by &&
+          !entry?.disabled_by &&
+          entry?.entity_category !== 'diagnostic' &&
+          entry?.entity_category !== 'config';
       })
       .sort((left, right) => {
-        const leftName = this.hass.states[left]?.attributes?.friendly_name || this.hass.entities?.[left]?.name || left;
-        const rightName = this.hass.states[right]?.attributes?.friendly_name || this.hass.entities?.[right]?.name || right;
-        return getCollator(this.hass.language).compare(String(leftName), String(rightName));
+        const leftName = states[left]?.attributes?.friendly_name || registry?.[left]?.name || left;
+        const rightName = states[right]?.attributes?.friendly_name || registry?.[right]?.name || right;
+        return collator.compare(String(leftName), String(rightName));
       });
-  }
+  });
 
   private _getHomeSummaryCards(): HomeSummaryCard[] {
     const cards: HomeSummaryCard[] = [];
@@ -2673,15 +2678,19 @@ export class DwainsLayoutCard extends LitElement {
 
   private _getVisiblePersonEntities(): any[] {
     if (!this.hass || !this.config) return [];
-
-    const hiddenPersons = new Set(this.config.settings?.hidden_persons || []);
-    return Object.values(this.hass.states).filter(
-      (entity: any) =>
-        entity.entity_id.startsWith('person.') &&
-        !hiddenPersons.has(entity.entity_id) &&
-        !this.hass.entities?.[entity.entity_id]?.hidden_by
-    );
+    return this._visiblePersonEntities(this.hass.states, this.hass.entities, getHiddenPersonIdSet(this.config));
   }
+
+  private _visiblePersonEntities = memoizeOne((
+    states: HomeAssistant['states'],
+    registry: HomeAssistant['entities'],
+    hiddenPersons: ReadonlySet<string>
+  ): HassEntity[] => getDomainStates(states, 'person').filter(
+    entity =>
+      entity.entity_id.startsWith('person.') &&
+      !hiddenPersons.has(entity.entity_id) &&
+      !registry?.[entity.entity_id]?.hidden_by
+  ));
 
   private _formatPersonState(person: any): string {
     if (person.state === 'home') return this._t('person.home');
@@ -2777,7 +2786,7 @@ export class DwainsLayoutCard extends LitElement {
   }
 
   private _getHousePowerUsage(): HousePowerUsage {
-    const powerUsage = buildHousePowerUsage(this.hass, this.config);
+    const powerUsage = this._housePowerUsage(this.hass, this.config);
     const rooms = powerUsage.areas.slice(0, 4).map(area => ({
       areaId: area.areaId,
       name: area.name,
@@ -5718,7 +5727,7 @@ export class DwainsLayoutCard extends LitElement {
     }
 
     // Fallback to first visible weather entity
-    return Object.values(this.hass.states).find(state =>
+    return getDomainStates(this.hass.states, 'weather').find(state =>
       state.entity_id.startsWith('weather.') &&
       !this.hass.entities?.[state.entity_id]?.hidden_by
     );
@@ -5739,18 +5748,16 @@ export class DwainsLayoutCard extends LitElement {
   }
 
   private _getStatusDomains(): DomainCount[] {
-    // Check cache first
-    const cacheKey = 'status_domains';
-    const cached = this._domainCountsCache.get(cacheKey);
-    if (cached && cached.length > 0 && (cached[0] as any).timestamp && Date.now() - (cached[0] as any).timestamp < this._CACHE_DURATION) {
-      return cached;
-    }
+    return this._statusDomains(this.hass, this.config);
+  }
 
-    // Use the new comprehensive status domains calculation
-    const result = getStatusDomains(this.hass, this.config);
+  // Computed once per hass object and config.
+  private _statusDomains = memoizeOne((hass: HomeAssistant, config: DwainsDashboardConfig): DomainCount[] => {
+    const result = getStatusDomains(hass, config);
 
-    // Add wattage badge if available
-    const totalWattage = getTotalWattage(this.hass, this.config);
+    // Add wattage badge if available (same as getTotalWattage()).
+    const powerUsage = this._housePowerUsage(hass, config);
+    const totalWattage = powerUsage.sensorCount ? powerUsage.formattedTotal : undefined;
     if (totalWattage) {
       result.unshift({
         domain: 'wattage',
@@ -5761,33 +5768,31 @@ export class DwainsLayoutCard extends LitElement {
       });
     }
 
-    // Add timestamp for cache
-    const timestamp = Date.now();
-    result.forEach((item: any) => item.timestamp = timestamp);
-
-    // Cache the result
-    if (result.length > 0) {
-    this._domainCountsCache.set(cacheKey, result);
-    }
-
     return result;
-  }
+  });
 
-  // Note: getTotalWattage is now handled by the header-status-domains utility
+  private _housePowerUsage = memoizeOne(
+    (hass: HomeAssistant, config: DwainsDashboardConfig) => buildHousePowerUsage(hass, config)
+  );
 
   private _getHiddenStatusCount(): string {
     // TODO: Calculate hidden status cards count
     return '';
   }
 
-  private _getAreaDeviceCount(areaId: string, entities: EntityConfig[] = []): number {
-    const deviceIds = new Set<string>();
-
-    this.config?.devices?.forEach(device => {
-      if (device.area_id === areaId) {
-        deviceIds.add(device.device_id);
-      }
+  private _areaDeviceIds = memoizeOne((devices: DwainsDashboardConfig['devices']) => {
+    const byArea = new Map<string, string[]>();
+    devices?.forEach(device => {
+      if (!device.area_id) return;
+      const ids = byArea.get(device.area_id) || [];
+      ids.push(device.device_id);
+      byArea.set(device.area_id, ids);
     });
+    return byArea;
+  });
+
+  private _getAreaDeviceCount(areaId: string, entities: EntityConfig[] = []): number {
+    const deviceIds = new Set<string>(this._areaDeviceIds(this.config?.devices).get(areaId));
 
     entities.forEach(entity => {
       if (entity.device_id) {
@@ -5799,114 +5804,11 @@ export class DwainsLayoutCard extends LitElement {
   }
 
   private _getAreaEntities(areaId: string): EntityConfig[] {
-    // Check cache first
-    const cached = this._areaEntitiesCache.get(areaId);
-    if (cached && Date.now() - cached.timestamp < this._CACHE_DURATION) {
-      return cached.entities;
-    }
-
-    const entities: EntityConfig[] = [];
-    const processedEntities = new Set<string>();
-
-    // Get entities from config
-    if (this.config?.entities) {
-      const areaDevices = new Set<string>();
-      if (this.config.devices) {
-        this.config.devices.forEach(device => {
-          if (device.area_id === areaId) {
-            areaDevices.add(device.device_id);
-          }
-        });
-      }
-
-      this.config.entities.forEach(entity => {
-        if (entity.area_id === areaId ||
-            (entity.device_id && areaDevices.has(entity.device_id))) {
-          const registry = this.hass.entities?.[entity.entity_id];
-          if (!this.hass.states[entity.entity_id] ||
-              registry?.hidden_by ||
-              (registry as any)?.disabled_by ||
-              registry?.entity_category === 'diagnostic' ||
-              registry?.entity_category === 'config') {
-            return;
-          }
-          entities.push(entity);
-          processedEntities.add(entity.entity_id);
-        }
-      });
-    }
-
-    // Add entities from hass that aren't in config
-    Object.values(this.hass.states).forEach(state => {
-      if (!processedEntities.has(state.entity_id) &&
-          state.attributes?.area_id === areaId) {
-        const registry = this.hass.entities?.[state.entity_id];
-        if (registry?.hidden_by ||
-            (registry as any)?.disabled_by ||
-            registry?.entity_category === 'diagnostic' ||
-            registry?.entity_category === 'config') {
-          return;
-        }
-        entities.push({
-          entity_id: state.entity_id,
-          area_id: areaId,
-          hidden: false
-        });
-      }
-    });
-
-    // Cache the result
-    this._areaEntitiesCache.set(areaId, {
-      entities,
-      timestamp: Date.now()
-    });
-
-    return entities;
+    return this._areaResolver.areaEntities(areaId, this.hass, this.config);
   }
 
   private _getFilteredAreaEntities(areaId: string): EntityConfig[] {
-    const entities = this._getAreaEntities(areaId);
-
-    let filteredEntities = entities;
-
-    // Always respect HA entity registry visibility and categories
-    filteredEntities = filteredEntities.filter(entity => {
-      const registry = this.hass.entities?.[entity.entity_id];
-      return Boolean(this.hass.states[entity.entity_id]) &&
-        !(registry?.hidden_by ||
-          (registry as any)?.disabled_by ||
-          registry?.entity_category === 'diagnostic' ||
-          registry?.entity_category === 'config');
-    });
-
-    // Filter hidden entities if configured
-    if (this.config?.areas_options) {
-      const areaOptions = this.config.areas_options[areaId];
-      if (areaOptions?.groups_options) {
-        // Get all hidden entity IDs for this area (same logic as old version)
-        const hiddenEntityIds = new Set<string>();
-        for (const groupOptions of Object.values(areaOptions.groups_options)) {
-          if (groupOptions.hidden) {
-            groupOptions.hidden.forEach(entityId => hiddenEntityIds.add(entityId));
-          }
-        }
-
-    // Filter out hidden entities
-        filteredEntities = filteredEntities.filter(entity => !hiddenEntityIds.has(entity.entity_id));
-      }
-    }
-
-    // Filter unavailable/unknown entities by default unless explicitly disabled.
-    if (this.config?.settings?.hide_unavailable_entities !== false) {
-      filteredEntities = filteredEntities.filter(entity => {
-        const state = this.hass.states[entity.entity_id];
-        return state && state.state !== 'unavailable' && state.state !== 'unknown';
-      });
-    }
-
-    filteredEntities = filterHiddenDeviceEntities(this.hass, this.config, filteredEntities);
-
-    return filteredEntities;
+    return this._areaResolver.filteredAreaEntities(areaId, this.hass, this.config);
   }
 
   private _getEditableAreaEntities(areaId: string): EntityConfig[] {
@@ -5991,22 +5893,8 @@ export class DwainsLayoutCard extends LitElement {
   }
 
   private _getCachedAreaData(area: AreaConfig): AreaData {
-    // Check cache first
-    const cached = this._areaDataCache.get(area.area_id);
-    if (cached && Date.now() - cached.timestamp < this._CACHE_DURATION) {
-      return cached.data;
-    }
-
-    const entities = this._getFilteredAreaEntities(area.area_id);
-    const data = getAreaData(area, this.hass, entities, this.config);
-
-    // Cache the result
-    this._areaDataCache.set(area.area_id, {
-      data,
-      timestamp: Date.now()
-    });
-
-    return data;
+    // getAreaData() reuses its result while the area's entities and their states are unchanged.
+    return getAreaData(area, this.hass, this._getFilteredAreaEntities(area.area_id), this.config);
   }
 
   private _getPictureContrastClass(picture?: string | null): string {
@@ -6362,11 +6250,16 @@ export class DwainsLayoutCard extends LitElement {
   }
 
   private _getUpdateEntityCount(): number {
-    return Object.values(this.hass?.states || {}).filter((entity: any) =>
-      entity.entity_id?.startsWith('update.') &&
-      entity.state === 'on'
-    ).length;
+    if (!this.hass?.states) return 0;
+    return this._updateEntityCount(this.hass.states);
   }
+
+  private _updateEntityCount = memoizeOne((states: HomeAssistant['states']): number =>
+    getDomainStates(states, 'update').filter(entity =>
+      entity.entity_id.startsWith('update.') &&
+      entity.state === 'on'
+    ).length
+  );
 
   private _hasUpdateEntityChanges(oldHass: HomeAssistant, newHass: HomeAssistant): boolean {
     const updateEntityIds = new Set([
@@ -6569,16 +6462,19 @@ export class DwainsLayoutCard extends LitElement {
   }
 
   private _getWelcomeUserPicture(userName: string): string | undefined {
+    if (!this.hass?.states) return undefined;
+    return this._welcomeUserPicture(this.hass.states, userName);
+  }
+
+  private _welcomeUserPicture = memoizeOne((states: HomeAssistant['states'], userName: string): string | undefined => {
     const normalizedUserName = userName.trim().toLowerCase();
-    const personEntities = Object.values(this.hass?.states || {}).filter(
-      (entity: any) => entity.entity_id?.startsWith('person.')
-    );
+    const personEntities = getDomainStates(states, 'person').filter(entity => entity.entity_id.startsWith('person.'));
     const matchingPerson = personEntities.find((entity: any) =>
       String(entity.attributes?.friendly_name || '').trim().toLowerCase() === normalizedUserName
     );
     const fallbackPerson = personEntities.find((entity: any) => entity.attributes?.entity_picture);
     return (matchingPerson || fallbackPerson)?.attributes?.entity_picture;
-  }
+  });
 
   private _openDashboardSettings = () => {
     if (!this._canManageDashboard()) return;
@@ -6812,23 +6708,6 @@ export class DwainsLayoutCard extends LitElement {
     this._toggleAreaLights(areaId);
   }
 
-  private _shouldUpdateEntities(oldHass: HomeAssistant, newHass: HomeAssistant): boolean {
-    // Check if any entity states changed that would require updates
-    const relevantDomains = ['light', 'switch', 'climate', 'media_player', 'camera', 'cover', 'lock', 'binary_sensor', 'person', 'sensor', 'fan'];
-
-    return Object.keys(newHass.states).some(entityId => {
-      const domain = entityId.split('.')[0];
-      if (!domain || !relevantDomains.includes(domain)) return false;
-
-      const oldState = oldHass.states[entityId];
-      const newState = newHass.states[entityId];
-
-      // Check if state changed (not just timestamp)
-      return oldState?.state !== newState?.state ||
-             oldState?.attributes !== newState?.attributes;
-    });
-  }
-
   private _updateEntityCards(_oldHass: HomeAssistant, newHass: HomeAssistant): void {
     if (!this.shadowRoot) return;
 
@@ -6844,39 +6723,9 @@ export class DwainsLayoutCard extends LitElement {
   }
 
   private _clearEntityCardsCache(): void {
-    this._areaDataCache.clear();
-    // Also clear domain counts cache to prevent stale data
-    this._domainCountsCache.clear();
+    this._areaResolver.clear();
     // Clear the external area data cache in utils/area.ts
     clearAreaDataCache();
-  }
-
-  private _invalidateChangedAreaCaches(oldHass: HomeAssistant, newHass: HomeAssistant): void {
-    const changedAreaIds = new Set<string>();
-    let hasChangedEntity = false;
-
-    for (const entity of this.config?.entities || []) {
-      const entityId = entity.entity_id;
-      const oldState = oldHass.states[entityId];
-      const newState = newHass.states[entityId];
-
-      if (oldState === newState) continue;
-      if (oldState?.state === newState?.state && oldState?.attributes === newState?.attributes) continue;
-
-      hasChangedEntity = true;
-      if (entity.area_id) {
-        changedAreaIds.add(entity.area_id);
-      }
-    }
-
-    if (hasChangedEntity) {
-      this._domainCountsCache.clear();
-    }
-
-    changedAreaIds.forEach(areaId => {
-      this._areaDataCache.delete(areaId);
-      clearAreaDataCacheForArea(areaId);
-    });
   }
 
   private _showUnavailableEntitiesModal(areaId: string) {

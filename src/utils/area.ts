@@ -2,9 +2,27 @@ import type { HomeAssistant, HassEntity } from '../types/home-assistant';
 import type { AreaConfig, AreaData, AlertInfo, DomainCounts, EntityConfig } from '../types/strategy';
 import { formatEntityStateWithUnit, formatValueWithUnit } from './unit-format';
 
-// Cache for area data to improve performance
-const areaDataCache = new Map<string, { data: AreaData; timestamp: number }>();
-const CACHE_DURATION = 5000; // 5 seconds
+// Area data is cached per area and reused as long as every input is the same
+// object as before: the area, its entity list, the state object of each of
+// those entities, the area's temperature and humidity sensors and the parts of
+// hass and the config the result depends on. Home Assistant replaces a state
+// object whenever that entity changes, so this is exact without a time limit.
+interface AreaDataCacheEntry {
+  area: AreaConfig;
+  areaEntities: EntityConfig[];
+  entityStates: Array<HassEntity | undefined>;
+  areaRegistry: unknown;
+  temperatureState: HassEntity | undefined;
+  humidityState: HassEntity | undefined;
+  formatEntityState: unknown;
+  registry: unknown;
+  areasOptions: unknown;
+  /** Last states object the entry was checked against (states objects are never changed in place). */
+  checkedStates: HomeAssistant['states'];
+  data: AreaData;
+}
+
+const areaDataCache = new Map<string, AreaDataCacheEntry>();
 
 // Export function to clear the cache from external components
 export const clearAreaDataCache = (): void => {
@@ -12,12 +30,40 @@ export const clearAreaDataCache = (): void => {
 };
 
 export const clearAreaDataCacheForArea = (areaId: string): void => {
-  const prefix = `${areaId}-`;
-  for (const key of areaDataCache.keys()) {
-    if (key.startsWith(prefix)) {
-      areaDataCache.delete(key);
-    }
+  areaDataCache.delete(areaId);
+};
+
+const cachedAreaData = (
+  area: AreaConfig,
+  hass: HomeAssistant,
+  areaEntities: EntityConfig[],
+  config: any
+): AreaData | undefined => {
+  const cached = areaDataCache.get(area.area_id);
+  if (!cached) return undefined;
+
+  const areaRegistry = hass.areas?.[area.area_id] as any;
+  if (
+    cached.area !== area ||
+    cached.areaEntities !== areaEntities ||
+    cached.areaRegistry !== areaRegistry ||
+    cached.formatEntityState !== hass.formatEntityState ||
+    cached.registry !== hass.entities ||
+    cached.areasOptions !== config?.areas_options ||
+    cached.temperatureState !== (areaRegistry?.temperature_entity_id ? hass.states[areaRegistry.temperature_entity_id] : undefined) ||
+    cached.humidityState !== (areaRegistry?.humidity_entity_id ? hass.states[areaRegistry.humidity_entity_id] : undefined)
+  ) {
+    return undefined;
   }
+
+  if (cached.checkedStates === hass.states) return cached.data;
+  const states = cached.entityStates;
+  if (states.length !== areaEntities.length) return undefined;
+  for (let index = 0; index < areaEntities.length; index++) {
+    if (states[index] !== hass.states[areaEntities[index]!.entity_id]) return undefined;
+  }
+  cached.checkedStates = hass.states;
+  return cached.data;
 };
 
 // Helper function to check if entity is hidden
@@ -29,17 +75,9 @@ const isEntityHidden = (entityId: string, domain: string, areaId: string, config
 };
 
 export const getAreaData = (area: AreaConfig, hass: HomeAssistant, areaEntities: EntityConfig[], config?: any): AreaData => {
-  // Create cache key that includes every entity state, so a change of any
-  // entity in the area (not only the first few) invalidates the cached data.
-  const entityStatesHash = areaEntities
-    .map(entity => `${entity.entity_id}:${hass.states[entity.entity_id]?.state}`)
-    .join('|');
-  const cacheKey = `${area.area_id}-${areaEntities.length}-${entityStatesHash}`;
+  const cached = cachedAreaData(area, hass, areaEntities, config);
+  if (cached) return cached;
 
-  const cached = areaDataCache.get(cacheKey);
-  if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
-    return cached.data;
-  }
   // Get temperature, humidity, wattage and energy from area configuration
   let temperature: string | undefined;
   let humidity: string | undefined;
@@ -225,7 +263,19 @@ export const getAreaData = (area: AreaConfig, hass: HomeAssistant, areaEntities:
   };
 
   // Cache the result
-  areaDataCache.set(cacheKey, { data: areaData, timestamp: Date.now() });
+  areaDataCache.set(area.area_id, {
+    area,
+    areaEntities,
+    entityStates: areaEntities.map(entity => hass.states[entity.entity_id]),
+    areaRegistry,
+    temperatureState: temperatureEntityId ? hass.states[temperatureEntityId] : undefined,
+    humidityState: humidityEntityId ? hass.states[humidityEntityId] : undefined,
+    formatEntityState: hass.formatEntityState,
+    registry: hass.entities,
+    areasOptions: config?.areas_options,
+    checkedStates: hass.states,
+    data: areaData,
+  });
 
   return areaData;
 };
