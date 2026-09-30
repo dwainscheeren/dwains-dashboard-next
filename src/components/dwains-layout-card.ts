@@ -2252,7 +2252,14 @@ export class DwainsLayoutCard extends LitElement {
       });
   });
 
+  /**
+   * Repairs, updates and discovered devices all open /config pages that only
+   * administrators can use. Other users do not see them, and they do not count
+   * towards the "items need attention" line in the greeting either.
+   */
   private _getHomeSummaryCards(): HomeSummaryCard[] {
+    if (!this.hass?.user?.is_admin) return [];
+
     const cards: HomeSummaryCard[] = [];
     const updateCount = this._getUpdateEntityCount();
 
@@ -6293,7 +6300,8 @@ export class DwainsLayoutCard extends LitElement {
   }
 
   private async _loadHomeAssistantSummaries(): Promise<void> {
-    if (!this.hass) return;
+    // These endpoints are admin only; skip the failing calls for other users.
+    if (!this.hass?.user?.is_admin) return;
 
     const [repairsIssueCount, discoveredDeviceCount] = await Promise.all([
       this._fetchRepairsIssueCount(),
