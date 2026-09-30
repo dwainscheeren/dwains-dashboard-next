@@ -13101,22 +13101,13 @@ export class DwainsLayoutCard extends LitElement {
     const currentIndex = cards.findIndex(entry => entry.id === cardId);
     if (currentIndex < 0) return;
 
-    const currentCard = cards[currentIndex];
-    if (!currentCard) return;
-    const currentPlacement = currentCard.placement || 'bottom';
-    const currentPlacementIndex = cards
-      .slice(0, currentIndex)
-      .filter(entry => entry.placement === currentPlacement)
-      .length;
     const [card] = cards.splice(currentIndex, 1);
     if (!card) return;
-    let nextPlacementIndex = placementIndex;
-    if (currentPlacement === placement && currentPlacementIndex < placementIndex) {
-      nextPlacementIndex = Math.max(0, placementIndex - 1);
-    }
 
+    // Dropping a card on another card takes that card's position, in both
+    // directions. Dropping on the end of a section clamps to the last slot.
     card.placement = placement;
-    const insertAt = this._insertIndexForPlacement(cards, placement, nextPlacementIndex);
+    const insertAt = this._insertIndexForPlacement(cards, placement, placementIndex);
     cards.splice(insertAt, 0, card);
     void this._saveAreaCustomCards(areaId, cards);
   }
