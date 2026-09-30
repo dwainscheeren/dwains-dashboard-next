@@ -8,8 +8,10 @@
     "build": "rm -rf dist/chunks && rollup -c",
     "watch": "rm -rf dist/chunks && rollup -c -w",
     "clean": "rm -rf dist",
-    "type-check": "tsc --noEmit",
+    "type-check": "tsc --noEmit && tsc --noEmit -p tests",
     "i18n:check": "node scripts/check-translations.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "build:release": "npm run clean && npm run build",
     "screenshots": "node scripts/screenshot-dashboard.mjs",
     "screenshots:install": "playwright install chromium",
@@ -34,7 +36,8 @@
     "@types/node": "^20.10.5",
     "rollup": "^4.9.1",
     "tslib": "^2.6.2",
-    "typescript": "^5.3.3"
+    "typescript": "^5.3.3",
+    "vitest": "^4.1.11"
   },
   "dependencies": {
     "@mdi/js": "^7.4.47",
