@@ -11,6 +11,7 @@ import type { DwainsDashboardConfig, AreaConfig, EntityConfig, AreaData, AreaCus
 import { getAreaData, clearAreaDataCache } from '../utils/area';
 import { AreaEntityResolver } from '../utils/area-entity-resolver';
 import { ManagedSubscription } from '../utils/managed-subscription';
+import { updateStoredDashboardStrategy } from '../utils/dashboard-config-store';
 import { isHiddenAsUnavailable, splitHiddenUnavailableEntities } from '../utils/entity-availability';
 import { getAreaConfigMap, getHiddenPersonIdSet, resolveStatusEntityAreaId } from '../utils/entity-lookups';
 import { getDomainStates } from '../utils/state-index';
@@ -4024,26 +4025,21 @@ export class DwainsLayoutCard extends LitElement {
     this.requestUpdate();
 
     try {
-      const urlPath = this._getDashboardUrlPath();
-      const base = urlPath ? { url_path: urlPath } : {};
-      const lovelaceConfig: any = await this.hass.callWS({ type: 'lovelace/config', ...base });
-      if (lovelaceConfig && lovelaceConfig.strategy) {
-        const strat = lovelaceConfig.strategy;
+      // Queued behind other dashboard saves and applied to the latest stored config.
+      await updateStoredDashboardStrategy(this.hass, this._getDashboardUrlPath(), (strat, lovelaceConfig) => {
+        if (!strat) {
+          console.warn('⚠️ No dashboard strategy found; area options were not saved', lovelaceConfig);
+          return null;
+        }
         const stratOptions = strat.areas_options || {};
-        const newConfig = {
-          ...lovelaceConfig,
-          strategy: {
-            ...strat,
-            areas_options: {
-              ...stratOptions,
-              [areaId]: { ...(stratOptions[areaId] || {}), ...patch },
-            },
+        return {
+          ...strat,
+          areas_options: {
+            ...stratOptions,
+            [areaId]: { ...(stratOptions[areaId] || {}), ...patch },
           },
         };
-        await this.hass.callWS({ type: 'lovelace/config/save', ...base, config: newConfig });
-      } else {
-        console.warn('⚠️ No dashboard strategy found; area options were not saved', lovelaceConfig);
-      }
+      });
     } catch (e) {
       console.error('❌ Saving area options failed:', e);
       this._showToast(this._t('layout.save_card_failed', { error: String(e) }));
@@ -6458,31 +6454,27 @@ export class DwainsLayoutCard extends LitElement {
 
     this._settingsSavePending = true;
     this._settingsSaveError = '';
+    // Save the settings as they were when Save was pressed.
+    const pendingConfig = this._pendingSettingsConfig;
 
     try {
-      const urlPath = this._getDashboardUrlPath();
-      const base = urlPath ? { url_path: urlPath } : {};
-      const lovelaceConfig: any = await this.hass.callWS({ type: 'lovelace/config', ...base });
-      const strategy = lovelaceConfig?.strategy || {};
-      const nextStrategy = {
-        ...strategy,
-        ...this._pendingSettingsConfig,
-      };
-      const nextConfig = {
-        ...lovelaceConfig,
-        strategy: nextStrategy,
-      };
-
-      await this.hass.callWS({ type: 'lovelace/config/save', ...base, config: nextConfig });
+      // Queued behind other dashboard saves and applied to the latest stored config.
+      await updateStoredDashboardStrategy(this.hass, this._getDashboardUrlPath(), (strategy) => ({
+        ...(strategy || {}),
+        ...pendingConfig,
+      }));
 
       this.config = {
         ...this.config,
-        ...this._pendingSettingsConfig,
+        ...pendingConfig,
       };
-      this._pendingSettingsConfig = undefined;
-      this._settingsDirty = false;
       this._settingsSaveError = '';
-      this._settingsEditorInitialized = false;
+      // Keep edits made while the save was running.
+      if (this._pendingSettingsConfig === pendingConfig) {
+        this._pendingSettingsConfig = undefined;
+        this._settingsDirty = false;
+        this._settingsEditorInitialized = false;
+      }
       this.requestUpdate();
     } catch (err) {
       console.error('Failed to save Dwains Dashboard settings:', err);

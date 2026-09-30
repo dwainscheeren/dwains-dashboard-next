@@ -5,13 +5,14 @@ import { repeat } from 'lit/directives/repeat.js';
 import type {
   DwainsDashboardConfig,
   AreaConfig,
-  DeviceAdmission,
   EntityConfig,
 } from '../types/strategy';
 import { ddLocale, ddLocalize, ddLocalizePlural } from '../utils/localize';
 import { sortAreas } from '../utils/area-entities';
 import { isHiddenAsUnavailable } from '../utils/entity-availability';
 import { isConfigEntityInArea } from '../utils/entity-lookups';
+import { updateStoredDashboardStrategy } from '../utils/dashboard-config-store';
+import { isNonAdminUser } from '../utils/security';
 import { getDomainIcon, getDeviceClassIcon, getDomainColor } from '../utils/icons';
 import { getDomainName, getDeviceClassName } from '../utils/domain-names';
 import { resolveEntityCardConfig } from '../utils/blueprint-replacements';
@@ -40,6 +41,8 @@ const DEVICES_OVERVIEW_KEY = '__overview__';
 const LOW_BATTERY_THRESHOLD = 20;
 const PERSON_DOMAIN = 'person';
 const PERSON_AREA_KEY = '__people__';
+// Delay before recording first seen devices, so a burst of renders saves once.
+const DEVICE_TRACKING_DELAY_MS = 500;
 
 interface MaintenanceItem {
   entityId: string;
@@ -84,6 +87,7 @@ export class DwainsDevicesCard extends LitElement {
   @state() private _mobileNavOpen = false;
   private _pendingDomainSelection: string | null = null;
 
+  private _deviceTrackingTimer?: number;
   private _resizeHandler = () => this._checkMobile();
   private _locationHandler = () => this._handleLocationChanged();
 
@@ -175,6 +179,10 @@ export class DwainsDevicesCard extends LitElement {
     window.removeEventListener('dwains-dashboard-next-select-device-domain', this._handleSelectDeviceDomain as EventListener);
     window.removeEventListener('location-changed', this._locationHandler);
     window.removeEventListener('popstate', this._locationHandler);
+    if (this._deviceTrackingTimer !== undefined) {
+      window.clearTimeout(this._deviceTrackingTimer);
+      this._deviceTrackingTimer = undefined;
+    }
   }
 
   private _checkMobile() {
@@ -673,6 +681,7 @@ export class DwainsDevicesCard extends LitElement {
     if (changedProps.has('_selectedDomain')) {
       this._syncBottomNavDeviceContext();
     }
+    this._scheduleDeviceTracking();
   }
 
   private _syncThemeAttribute(force = false): void {
@@ -786,7 +795,6 @@ export class DwainsDevicesCard extends LitElement {
 
     const data = this._buildData();
     const domains = this._sortedDomains(data);
-    this._ensureDeviceTracking();
     const newDevices = this._newDevices();
     const hiddenCount = hiddenDeviceIds(this.config).size;
     const showNewDevicesMenu = shouldShowRecentDevicesPanel(this.config) && (newDevices.length > 0 || hiddenCount > 0);
@@ -1549,14 +1557,33 @@ export class DwainsDevicesCard extends LitElement {
     return buildRecentDeviceSummaries(this._hass, this.config, limit);
   }
 
+  /**
+   * Users that can not save the dashboard are skipped: Home Assistant only
+   * lets administrators save a dashboard config.
+   */
+  private _canTrackDevices(): boolean {
+    return Boolean(this._hass && this.config && !isNonAdminUser(this._hass));
+  }
+
+  /** Records first seen devices after rendering, at most once per burst of renders. */
+  private _scheduleDeviceTracking(): void {
+    if (this._deviceTrackingTimer !== undefined || !this._canTrackDevices()) return;
+    this._deviceTrackingTimer = window.setTimeout(() => {
+      this._deviceTrackingTimer = undefined;
+      this._ensureDeviceTracking();
+    }, DEVICE_TRACKING_DELAY_MS);
+  }
+
   private _ensureDeviceTracking(): void {
+    if (!this._canTrackDevices()) return;
     const nextAdmission = ensureDeviceFirstSeenTracking(this._hass, this.config);
     if (!nextAdmission) return;
     this.config = {
       ...this.config,
       device_admission: nextAdmission,
     };
-    void this._saveDeviceAdmission(nextAdmission, true);
+    this.requestUpdate();
+    void this._saveDeviceFirstSeen();
   }
 
   private _renderRecentDevice(summary: RecentDeviceSummary) {
@@ -1599,36 +1626,24 @@ export class DwainsDevicesCard extends LitElement {
     return relative.format(-Math.floor(hours / 24), 'day');
   }
 
-  private async _saveDeviceAdmission(nextAdmission: DeviceAdmission, silent = false): Promise<void> {
-    this.config = {
-      ...this.config,
-      device_admission: nextAdmission,
-    };
-    this.requestUpdate();
+  private async _saveDeviceFirstSeen(): Promise<void> {
+    const hass = this._hass;
+    const config = this.config;
+    if (!config) return;
 
     try {
-      const urlPath = this._getDashboardUrlPath();
-      const base = urlPath ? { url_path: urlPath } : {};
-      const lovelaceConfig: any = await this._hass.callWS({ type: 'lovelace/config', ...base });
-      const strat = lovelaceConfig?.strategy || {};
-      await this._hass.callWS({
-        type: 'lovelace/config/save',
-        ...base,
-        config: {
-          ...lovelaceConfig,
-          strategy: {
-            ...strat,
-            device_admission: nextAdmission,
-          },
-        },
+      // Queued behind other dashboard saves. The tracking is applied to the
+      // latest stored admission, so hidden devices changed meanwhile are kept.
+      await updateStoredDashboardStrategy(hass, this._getDashboardUrlPath(), (strategy) => {
+        const stored = strategy || {};
+        const nextAdmission = ensureDeviceFirstSeenTracking(hass, {
+          ...config,
+          device_admission: stored.device_admission,
+        });
+        return nextAdmission ? { ...stored, device_admission: nextAdmission } : null;
       });
     } catch (e) {
       console.error('❌ Device visibility save failed:', e);
-      if (!silent) {
-        fireEvent(this, 'hass-notification', {
-          message: this._t('devices.save_visibility_failed', { error: String(e) }),
-        });
-      }
     }
   }
 

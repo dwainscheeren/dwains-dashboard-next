@@ -3,6 +3,7 @@ import { customElement, state } from 'lit/decorators.js';
 import type { BlueprintPage, DwainsDashboardSettings } from '../types/strategy';
 import { ddLocalize } from '../utils/localize';
 import { restrictNonAdminDashboardSettings } from '../utils/security';
+import { updateStoredDashboardStrategy } from '../utils/dashboard-config-store';
 import { showBlueprintDialog } from './utils/show-blueprint-dialog';
 import { ensureBottomNav } from './dwains-bottom-nav';
 import { fireEvent } from './utils/fire-event';
@@ -74,17 +75,16 @@ export class DwainsPageCard extends LitElement {
   ): Promise<boolean> {
     if (!this._canManageDashboard()) return false;
     try {
-      const seg = this._dashSegment();
-      const base = seg ? { url_path: seg } : {};
-      const cfg: any = await this._hass.callWS({ type: 'lovelace/config', ...base });
-      if (!cfg || !cfg.strategy) {
-        console.warn('⚠️ Geen strategy in lovelace config — opslaan overgeslagen', cfg);
-        return false;
-      }
-      const pages = fn([...((cfg.strategy.pages as BlueprintPage[]) || [])]);
-      const newConfig = { ...cfg, strategy: { ...cfg.strategy, pages } };
-      await this._hass.callWS({ type: 'lovelace/config/save', ...base, config: newConfig });
-      return true;
+      // Queued behind other dashboard saves and applied to the latest stored config.
+      const saved = await updateStoredDashboardStrategy(this._hass, this._dashSegment(), (strategy, cfg) => {
+        if (!strategy) {
+          console.warn('⚠️ Geen strategy in lovelace config — opslaan overgeslagen', cfg);
+          return null;
+        }
+        const pages = fn([...((strategy.pages as BlueprintPage[]) || [])]);
+        return { ...strategy, pages };
+      });
+      return saved !== null;
     } catch (e) {
       console.error('❌ Opslaan pagina mislukt:', e);
       fireEvent(this, 'hass-notification', {
