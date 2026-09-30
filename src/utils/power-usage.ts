@@ -1,7 +1,15 @@
 import type { DwainsDashboardConfig, EntityConfig } from '../types/strategy';
 import type { HassEntity, HomeAssistant } from '../types/home-assistant';
 import { isEntityFromHiddenDevice } from './device-admission';
+import {
+  getAreaConfigMap,
+  getAreaHiddenEntityIdSet,
+  getDeviceConfigMap,
+  getEntityConfigMap,
+  getHiddenAreaIdSet,
+} from './entity-lookups';
 import { getAreaIcon } from './icons';
+import { getDomainStates } from './state-index';
 
 export interface PowerEntitySummary {
   entityId: string;
@@ -45,7 +53,7 @@ export function buildHousePowerUsage(
 ): HousePowerUsageSummary {
   const entities = getLivePowerEntities(hass, config);
   const areas = new Map<string, PowerAreaSummary>();
-  const areasById = new Map((config?.areas || []).map((area) => [area.area_id, area]));
+  const areasById = getAreaConfigMap(config);
 
   entities.forEach((entity) => {
     let area = areas.get(entity.areaId);
@@ -102,17 +110,16 @@ export function getLivePowerEntities(
 ): PowerEntitySummary[] {
   if (!hass?.states) return [];
 
-  const configEntities = new Map(
-    (config?.entities || []).map((entity) => [entity.entity_id, entity])
-  );
-  const areasById = new Map((config?.areas || []).map((area) => [area.area_id, area]));
+  const configEntities = getEntityConfigMap(config);
+  const areasById = getAreaConfigMap(config);
 
-  return Object.values(hass.states)
+  // Only sensors can report live power (see getLivePowerValueWatts).
+  return getDomainStates(hass.states, 'sensor')
     .map((state) => {
-      const entityId = state.entity_id;
-      const configEntity = configEntities.get(entityId);
       const watts = getLivePowerValueWatts(state);
       if (watts === null) return undefined;
+      const entityId = state.entity_id;
+      const configEntity = configEntities.get(entityId);
       if (!isVisiblePowerEntity(hass, config, entityId, configEntity)) return undefined;
 
       const areaId = resolvePowerEntityAreaId(hass, config, entityId, configEntity);
@@ -176,16 +183,9 @@ function isVisiblePowerEntity(
   const areaId = resolvePowerEntityAreaId(hass, config, entityId, entityConfig);
   if (!areaId) return false;
 
-  const hiddenAreas = config?.areas_display?.hidden || [];
-  if (hiddenAreas.includes(areaId)) return false;
-  if (!config?.areas?.some((area) => area.area_id === areaId)) return false;
-
-  const areaOptions = config?.areas_options?.[areaId];
-  if (areaOptions?.groups_options) {
-    for (const groupOptions of Object.values(areaOptions.groups_options)) {
-      if (groupOptions.hidden?.includes(entityId)) return false;
-    }
-  }
+  if (getHiddenAreaIdSet(config).has(areaId)) return false;
+  if (!getAreaConfigMap(config).has(areaId)) return false;
+  if (getAreaHiddenEntityIdSet(config, areaId).has(entityId)) return false;
 
   return true;
 }
@@ -203,7 +203,7 @@ function resolvePowerEntityAreaId(
 
   const deviceId = entityConfig?.device_id || registry?.device_id;
   if (deviceId) {
-    const configDevice = config?.devices?.find((device) => device.device_id === deviceId);
+    const configDevice = getDeviceConfigMap(config).get(deviceId);
     if (configDevice?.area_id) return configDevice.area_id;
 
     const hassDevice = hass.devices?.[deviceId];

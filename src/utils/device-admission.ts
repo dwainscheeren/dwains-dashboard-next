@@ -5,6 +5,7 @@ import type {
   EntityConfig,
 } from '../types/strategy';
 import type { HomeAssistant } from '../types/home-assistant';
+import { getHiddenDeviceIdSet } from './entity-lookups';
 
 export interface RecentDeviceSummary {
   device: DeviceConfig;
@@ -44,8 +45,10 @@ export function isEntityFromHiddenDevice(
   config: DwainsDashboardConfig | undefined,
   entity: EntityConfig | string
 ): boolean {
+  const hidden = getHiddenDeviceIdSet(config);
+  if (!hidden.size) return false;
   const deviceId = entityDeviceId(hass, entity);
-  return !!deviceId && hiddenDeviceIds(config).has(deviceId);
+  return !!deviceId && hidden.has(deviceId);
 }
 
 export function filterHiddenDeviceEntities(
@@ -53,7 +56,7 @@ export function filterHiddenDeviceEntities(
   config: DwainsDashboardConfig | undefined,
   entities: EntityConfig[]
 ): EntityConfig[] {
-  const hidden = hiddenDeviceIds(config);
+  const hidden = getHiddenDeviceIdSet(config);
   if (!hidden.size) return entities;
   return entities.filter((entity) => {
     const deviceId = entityDeviceId(hass, entity);

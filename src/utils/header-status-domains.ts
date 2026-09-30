@@ -1,9 +1,18 @@
-import type { HomeAssistant } from '../types/home-assistant';
+import type { HassEntity, HomeAssistant } from '../types/home-assistant';
 import { getDeviceClassName, getDomainName, prettifyDomain } from './domain-names';
 import { ddLocalize } from './localize';
 import { isEntityFromHiddenDevice } from './device-admission';
+import {
+  getAreaConfigMap,
+  getAreaHiddenEntityIdSet,
+  getEntityConfigMap,
+  getHiddenAreaIdSet,
+  getHiddenPersonIdSet,
+  resolveStatusEntityAreaId,
+} from './entity-lookups';
 import { getDeviceClassIcon, getDomainIcon } from './icons';
 import { buildHousePowerUsage } from './power-usage';
+import { getStateIndex } from './state-index';
 
 export interface DomainCount {
   domain: string;
@@ -53,73 +62,111 @@ const BINARY_SENSOR_CONFIG: Record<string, { icon: string }> = {
   vibration: { icon: getDeviceClassIcon('binary_sensor', 'vibration') }
 };
 
+const STATUS_DOMAINS: ReadonlySet<string> = new Set(Object.keys(DOMAIN_CONFIG));
+const STATUS_BINARY_SENSOR_CLASSES: ReadonlySet<string> = new Set(Object.keys(BINARY_SENSOR_CONFIG));
+
+function entityDomain(entityId: string): string {
+  const dot = entityId.indexOf('.');
+  return dot === -1 ? entityId : entityId.slice(0, dot);
+}
+
+/**
+ * Only these entities can end up in a status card, the rest is skipped. The
+ * list is grouped per domain; the counts do not depend on the order between
+ * domains and the order within a domain is kept.
+ */
+function statusCandidates(states: HomeAssistant['states']): HassEntity[] {
+  const index = getStateIndex(states);
+  const candidates: HassEntity[] = [];
+  STATUS_DOMAINS.forEach((domain) => {
+    index.byDomain.get(domain)?.forEach((state) => candidates.push(state));
+  });
+  index.byDomain.get('binary_sensor')?.forEach((state) => {
+    if (STATUS_BINARY_SENSOR_CLASSES.has(state.attributes?.device_class)) candidates.push(state);
+  });
+  return candidates;
+}
+
+// Everything in the status filter apart from the state itself depends only on
+// the entity registry and the dashboard config, so the answer is kept per
+// entity until either of them is replaced.
+const NO_REGISTRY = {};
+const visibilityCache = new WeakMap<object, WeakMap<object, Map<string, boolean>>>();
+
+function statusVisibilityCache(hass: HomeAssistant, config: object): Map<string, boolean> {
+  const registryKey = (hass.entities as object | undefined) || NO_REGISTRY;
+  let byConfig = visibilityCache.get(registryKey);
+  if (!byConfig) {
+    byConfig = new WeakMap();
+    visibilityCache.set(registryKey, byConfig);
+  }
+  let cache = byConfig.get(config);
+  if (!cache) {
+    cache = new Map();
+    byConfig.set(config, cache);
+  }
+  return cache;
+}
+
+function isStatusEntityVisible(hass: HomeAssistant, config: any, entityId: string): boolean {
+  // Respect HA entity registry visibility
+  const registry = hass.entities?.[entityId];
+  if (registry?.hidden_by) return false;
+
+  const entityReg = getEntityConfigMap(config).get(entityId);
+  if (isEntityFromHiddenDevice(hass, config, entityReg || entityId)) {
+    return false;
+  }
+
+  // Find the area of this entity (EXACT same logic as dialog)
+  const entityAreaId = resolveStatusEntityAreaId(hass, config, entityId, entityReg);
+
+  // Skip entities without area
+  if (!entityAreaId) {
+    return false;
+  }
+
+  if (!getAreaConfigMap(config).has(entityAreaId)) {
+    return false;
+  }
+
+  // Skip entities from hidden areas
+  if (getHiddenAreaIdSet(config).has(entityAreaId)) {
+    return false;
+  }
+
+  // Check if entity is hidden in area configuration (same logic as area view)
+  if (getAreaHiddenEntityIdSet(config, entityAreaId).has(entityId)) {
+    return false;
+  }
+
+  // Check if person is hidden in settings
+  if (getHiddenPersonIdSet(config).has(entityId) && entityDomain(entityId) === 'person') {
+    return false;
+  }
+
+  return true;
+}
+
 export function getStatusDomains(hass: HomeAssistant, config: any): DomainCount[] {
   if (!hass?.states) return [];
 
-  const configuredAreaIds = new Set((config?.areas || []).map((area: any) => area.area_id).filter(Boolean));
+  // If config is not loaded yet, don't show any entities until it is.
+  const configLoaded = Boolean(config?.entities && config?.devices);
+  const visibility = configLoaded ? statusVisibilityCache(hass, config) : undefined;
 
   // Use EXACTLY the same filtering logic as the working dialog
-  const allEntities = Object.values(hass.states).filter((entityState) => {
-    // If config is not loaded yet, skip filtering
-    if (!config?.entities || !config?.devices) {
-      return false; // Don't show any entities until config is loaded
-    }
+  const allEntities = !visibility ? [] : statusCandidates(hass.states).filter((entityState) => {
+    // Check state availability
+    if ((entityState as any).state === 'unavailable') return false;
 
     const entityId = (entityState as any).entity_id;
-
-    // Respect HA entity registry visibility
-    const registry = hass.entities?.[entityId];
-    if (registry?.hidden_by) return false;
-
-    // Check state availability
-    if (!entityState || (entityState as any).state === 'unavailable') return false;
-
-    const entityReg = config.entities?.find((e: any) => e.entity_id === entityId);
-    if (isEntityFromHiddenDevice(hass, config, entityReg || entityId)) {
-      return false;
+    let visible = visibility.get(entityId);
+    if (visible === undefined) {
+      visible = isStatusEntityVisible(hass, config, entityId);
+      visibility.set(entityId, visible);
     }
-
-    // Find the area of this entity (EXACT same logic as dialog)
-    const deviceReg = entityReg && entityReg.device_id ?
-      config.devices?.find((d: any) => d.device_id === entityReg.device_id) : null;
-    const entityAreaId = entityReg?.area_id || deviceReg?.area_id || hass?.entities?.[entityId]?.area_id;
-
-    // Skip entities without area
-    if (!entityAreaId) {
-      return false;
-    }
-
-    if (!configuredAreaIds.has(entityAreaId)) {
-      return false;
-    }
-
-    // Skip entities from hidden areas
-    const hiddenAreas = config.areas_display?.hidden || [];
-    if (hiddenAreas.includes(entityAreaId)) {
-      return false;
-    }
-
-    // Check if entity is hidden in area configuration (same logic as area view)
-    const areaOptions = config.areas_options?.[entityAreaId];
-    if (areaOptions?.groups_options) {
-      // Check all groups for hidden entities
-      for (const groupOptions of Object.values(areaOptions.groups_options)) {
-        if ((groupOptions as any).hidden?.includes(entityId)) {
-          return false;
-        }
-      }
-    }
-
-    // Check if person is hidden in settings
-    const domain = entityId.split('.')[0];
-    if (domain === 'person') {
-      const hiddenPersons = config.settings?.hidden_persons || [];
-      if (hiddenPersons.includes(entityId)) {
-        return false;
-      }
-    }
-
-    return true;
+    return visible;
   });
 
   // Count entities per domain (incl. de 'aan'-entiteit-ids)
@@ -144,7 +191,7 @@ export function getStatusDomains(hass: HomeAssistant, config: any): DomainCount[
   // Count all entities
   allEntities.forEach(entityState => {
     const entityId = (entityState as any).entity_id;
-    const domain = entityId?.split('.')[0];
+    const domain = entityId ? entityDomain(entityId) : undefined;
     if (!domain) return;
 
     // Skip unavailable entities
