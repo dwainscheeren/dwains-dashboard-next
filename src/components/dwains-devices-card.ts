@@ -27,7 +27,14 @@ import {
 } from '../utils/device-admission';
 import { ensureBottomNav } from './dwains-bottom-nav';
 import { fireEvent } from './utils/fire-event';
-import { buildHousePowerUsage, type PowerAreaSummary, type PowerEntitySummary } from '../utils/power-usage';
+import {
+  buildHousePowerUsage,
+  formatPowerWatts,
+  type HousePowerUsageSummary,
+  type PowerAreaSummary,
+  type PowerEntitySummary,
+} from '../utils/power-usage';
+import { subscribeEnergyPowerConfig } from '../utils/energy-prefs';
 import { syncHassDarkThemeAttribute } from '../utils/theme';
 import { formatValueWithUnit } from '../utils/unit-format';
 import { TRANSLATIONS_LOADED_EVENT } from '../i18n';
@@ -90,6 +97,7 @@ export class DwainsDevicesCard extends LitElement {
   private _deviceTrackingTimer?: number;
   private _resizeHandler = () => this._checkMobile();
   private _locationHandler = () => this._handleLocationChanged();
+  private _energyConfigUnsub?: () => void;
 
   // hass-setter zoals dwains-dashboard-next-page-card: werk child dwains-dashboard-next-card-host-elementen bij
   // i.p.v. een volledige re-render te forceren.
@@ -163,6 +171,8 @@ export class DwainsDevicesCard extends LitElement {
     window.addEventListener('dwains-dashboard-next-select-device-domain', this._handleSelectDeviceDomain as EventListener);
     window.addEventListener('location-changed', this._locationHandler);
     window.addEventListener('popstate', this._locationHandler);
+    // The house power total switches to the energy settings once they are loaded.
+    this._energyConfigUnsub = subscribeEnergyPowerConfig(() => this.requestUpdate());
     this._handleLocationChanged();
     this._syncBottomNavDeviceContext();
   }
@@ -183,6 +193,8 @@ export class DwainsDevicesCard extends LitElement {
       window.clearTimeout(this._deviceTrackingTimer);
       this._deviceTrackingTimer = undefined;
     }
+    this._energyConfigUnsub?.();
+    this._energyConfigUnsub = undefined;
   }
 
   private _checkMobile() {
@@ -470,8 +482,17 @@ export class DwainsDevicesCard extends LitElement {
     return true;
   }
 
-  private _energySummary() {
+  private _energySummary(): HousePowerUsageSummary {
     return buildHousePowerUsage(this._hass, this.config);
+  }
+
+  /** Short line that says where the house total comes from. */
+  private _energyBasisLabel(summary: HousePowerUsageSummary): string {
+    if (summary.basis === 'energy') {
+      const names = [...new Set(summary.sources.map((source) => source.name))];
+      return this._t('devices.power_based_on', { sensors: names.join(', ') });
+    }
+    return this._tp('devices.live_power_sensor', summary.sensorCount);
   }
 
   private _maintenanceKind(entityId: string, state: any): MaintenanceItem['kind'] | undefined {
@@ -1185,10 +1206,10 @@ export class DwainsDevicesCard extends LitElement {
   private _renderEnergyView() {
     const summary = this._energySummary();
     const topArea = summary.areas[0];
-    const wholeHouseStatisticsEntities = this._energyStatisticsEntities(
-      summary.areas.flatMap((area) => area.entities),
-      8
-    );
+    const basisLabel = this._energyBasisLabel(summary);
+    const wholeHouseStatisticsEntities = summary.basis === 'energy'
+      ? this._energySourceStatisticsEntities(summary)
+      : this._energyStatisticsEntities(summary.areas.flatMap((area) => area.entities), 8);
 
     return html`
       <div class="device-view energy-view">
@@ -1199,9 +1220,11 @@ export class DwainsDevicesCard extends LitElement {
           color: this._typeColor(ENERGY_KEY),
           back: true,
           actions: html`
-            <div class="energy-header-total">
+            <div class="energy-header-total" title=${basisLabel}>
               <span>${summary.formattedTotal}</span>
-              <small>${this._tp('devices.live_power_sensor', summary.sensorCount)}</small>
+              <small>${summary.basis === 'energy'
+                ? this._t('devices.whole_house')
+                : this._tp('devices.live_power_sensor', summary.sensorCount)}</small>
             </div>
           `,
         })}
@@ -1216,7 +1239,10 @@ export class DwainsDevicesCard extends LitElement {
                     </span>
                     <div>
                       <h2>${this._t('devices.whole_house')}</h2>
-                      <p>${this._tp('devices.live_power_sensor', summary.sensorCount)}</p>
+                      <p>${basisLabel}</p>
+                      ${summary.basis === 'energy' && summary.roomSensorCount
+                        ? html`<p>${this._t('devices.power_measured_in_rooms', { value: formatPowerWatts(summary.roomTotalWatts) })}</p>`
+                        : nothing}
                     </div>
                     <strong>${summary.formattedTotal}</strong>
                   </div>
@@ -1353,6 +1379,18 @@ export class DwainsDevicesCard extends LitElement {
       .sort((a, b) => b.watts - a.watts)
       .slice(0, limit)
       .map((entity) => ({ entity: entity.entityId, name: entity.name }));
+  }
+
+  private _energySourceStatisticsEntities(summary: HousePowerUsageSummary): Array<{ entity: string; name: string }> {
+    const seen = new Set<string>();
+    return summary.sources
+      .filter((source) => {
+        if (seen.has(source.entityId)) return false;
+        seen.add(source.entityId);
+        const stateClass = String(this._hass?.states?.[source.entityId]?.attributes?.state_class || '');
+        return ['measurement', 'total', 'total_increasing'].includes(stateClass);
+      })
+      .map((source) => ({ entity: source.entityId, name: source.name }));
   }
 
   private _renderEnergyStatisticsGraph(
@@ -2548,6 +2586,7 @@ export class DwainsDevicesCard extends LitElement {
 
     .energy-overview-head p {
       margin: 4px 0 0;
+      overflow-wrap: anywhere;
     }
 
     .energy-overview-head strong {

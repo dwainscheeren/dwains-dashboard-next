@@ -340,6 +340,8 @@ export const nl = {
   'devices.power_entity.other': '{count} machtsentiteiten',
   'devices.whole_house': 'Hele huis',
   'devices.whole_house_history': 'Geschiedenis van de hele huismacht',
+  'devices.power_based_on': 'Gebaseerd op {sensors}',
+  'devices.power_measured_in_rooms': '{value} gemeten in gebieden',
   'devices.top_area': 'Bovenste gebied',
   'devices.total_now': 'Totaal nu',
   'devices.no_power_title': 'Geen live-stroomsensoren gevonden',

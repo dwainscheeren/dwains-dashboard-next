@@ -340,6 +340,8 @@ export const de = {
   'devices.power_entity.other': '{count} Leistungssensoren',
   'devices.whole_house': 'Gesamtes Haus',
   'devices.whole_house_history': 'Verlauf des Stromverbrauchs im gesamten Haus',
+  'devices.power_based_on': 'Basierend auf {sensors}',
+  'devices.power_measured_in_rooms': '{value} in Bereichen gemessen',
   'devices.top_area': 'Raum mit höchstem Verbrauch',
   'devices.total_now': 'Aktuell gesamt',
   'devices.no_power_title': 'Keine aktiven Leistungssensoren gefunden',

@@ -355,6 +355,8 @@ export const ru = {
   'devices.power_entity.other': '{count} сущностей мощности',
   'devices.whole_house': 'Весь дом',
   'devices.whole_house_history': 'История потребления всего дома',
+  'devices.power_based_on': 'На основе: {sensors}',
+  'devices.power_measured_in_rooms': '{value} измерено в областях',
   'devices.top_area': 'Лидирующая область',
   'devices.total_now': 'Всего сейчас',
   'devices.no_power_title': 'Датчики текущей мощности не найдены',

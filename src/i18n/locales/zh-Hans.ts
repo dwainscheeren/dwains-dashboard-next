@@ -340,6 +340,8 @@ export const zhHans = {
   'devices.power_entity.other': '{count} 个电力实体',
   'devices.whole_house': '整个住家',
   'devices.whole_house_history': '整个住家用电历史',
+  'devices.power_based_on': '基于 {sensors}',
+  'devices.power_measured_in_rooms': '各区域测得 {value}',
   'devices.top_area': '用电最高区域',
   'devices.total_now': '目前总计',
   'devices.no_power_title': '找不到即时电力传感器',

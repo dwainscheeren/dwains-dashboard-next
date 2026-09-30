@@ -12,9 +12,14 @@ import type {
 import { ddLang, ddLocalize } from '../utils/localize';
 import { loadTranslations } from '../i18n';
 import { restrictNonAdminDashboardSettings } from '../utils/security';
+import { getEnergyPowerConfig } from '../utils/energy-prefs';
 
 export class DwainsDashboardStrategy implements LovelaceStrategy {
   async generate(config: LovelaceStrategyConfig, hass: HomeAssistant): Promise<LovelaceConfig> {
+    // Start loading the energy settings (house power total) in the
+    // background, so they are usually known before the first render.
+    getEnergyPowerConfig(hass);
+
     await loadTranslations(ddLang(hass));
 
     // Fetch data from Home Assistant

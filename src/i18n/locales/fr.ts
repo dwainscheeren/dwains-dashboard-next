@@ -340,6 +340,8 @@ export const fr = {
   'devices.power_entity.other': 'Entités électriques {count}',
   'devices.whole_house': 'Maison entière',
   'devices.whole_house_history': 'Historique de l\'alimentation électrique de toute la maison',
+  'devices.power_based_on': 'Basé sur {sensors}',
+  'devices.power_measured_in_rooms': '{value} mesurés dans les zones',
   'devices.top_area': 'Zone supérieure',
   'devices.total_now': 'Total maintenant',
   'devices.no_power_title': 'Aucun capteur de puissance sous tension trouvé',

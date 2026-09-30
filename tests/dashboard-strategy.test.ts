@@ -3,6 +3,7 @@ import { DwainsDashboardStrategy } from '../src/strategies/dashboard-strategy';
 import { DwainsViewStrategy } from '../src/strategies/view-strategy';
 import type { DwainsDashboardConfig, LovelaceCardConfig, LovelaceViewConfig } from '../src/types/strategy';
 import { mockHass } from './helpers';
+import { resetEnergyPowerConfigCache } from '../src/utils/energy-prefs';
 
 // Keys that are not stored by the user: registry data is loaded live on every
 // render and the rest are legacy fields the strategy does not own.
@@ -154,7 +155,8 @@ describe('dashboard settings pass-through', () => {
 });
 
 describe('DwainsDashboardStrategy', () => {
-  it('loads the area, device, entity and floor registries', async () => {
+  it('loads the registries and starts loading the energy settings', async () => {
+    resetEnergyPowerConfigCache();
     const hass = mockHass();
     await new DwainsDashboardStrategy().generate(storedConfig(), hass);
     const types = vi.mocked(hass.callWS).mock.calls.map(([msg]) => msg.type).sort();
@@ -163,6 +165,7 @@ describe('DwainsDashboardStrategy', () => {
       'config/device_registry/list',
       'config/entity_registry/list',
       'config/floor_registry/list',
+      'energy/get_prefs',
     ]);
   });
 

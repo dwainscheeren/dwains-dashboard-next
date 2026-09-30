@@ -355,6 +355,8 @@ export const ptBR = {
   'devices.power_entity.other': '{count} entidades de potência',
   'devices.whole_house': 'Casa inteira',
   'devices.whole_house_history': 'Histórico de consumo da casa inteira',
+  'devices.power_based_on': 'Com base em {sensors}',
+  'devices.power_measured_in_rooms': '{value} medidos nas áreas',
   'devices.top_area': 'Área com maior consumo',
   'devices.total_now': 'Total agora',
   'devices.no_power_title': 'Nenhum sensor de potência em tempo real encontrado',

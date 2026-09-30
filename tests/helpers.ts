@@ -35,6 +35,8 @@ export interface MockHassOptions {
   language?: string;
   isAdmin?: boolean;
   floorsFail?: boolean;
+  /** Answer for `energy/get_prefs`; without it the call fails like it does when energy is not set up. */
+  energyPrefs?: unknown;
 }
 
 /** A minimal hass object whose callWS answers the registry list calls. */
@@ -50,6 +52,9 @@ export function mockHass(options: MockHassOptions = {}): HomeAssistant {
       case 'config/floor_registry/list':
         if (options.floorsFail) throw new Error('unknown command');
         return structuredClone(FLOOR_REGISTRY);
+      case 'energy/get_prefs':
+        if (options.energyPrefs === undefined) throw new Error('No prefs');
+        return structuredClone(options.energyPrefs);
       default:
         throw new Error(`Unexpected WS call ${msg.type}`);
     }

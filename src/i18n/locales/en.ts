@@ -353,6 +353,8 @@ export const en = {
   'devices.power_entity.other': '{count} power entities',
   'devices.whole_house': 'Whole house',
   'devices.whole_house_history': 'Whole house power history',
+  'devices.power_based_on': 'Based on {sensors}',
+  'devices.power_measured_in_rooms': '{value} measured in areas',
   'devices.top_area': 'Top area',
   'devices.total_now': 'Total now',
   'devices.no_power_title': 'No live power sensors found',

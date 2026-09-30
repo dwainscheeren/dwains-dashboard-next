@@ -340,6 +340,8 @@ export const zhHant = {
   'devices.power_entity.other': '{count} 個電力實體',
   'devices.whole_house': '整個住家',
   'devices.whole_house_history': '整個住家用電歷史',
+  'devices.power_based_on': '依據 {sensors}',
+  'devices.power_measured_in_rooms': '各區域測得 {value}',
   'devices.top_area': '用電最高區域',
   'devices.total_now': '目前總計',
   'devices.no_power_title': '找不到即時電力感測器',

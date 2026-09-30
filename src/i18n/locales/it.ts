@@ -355,6 +355,8 @@ export const it = {
   'devices.power_entity.other': '{count} entità di potenza',
   'devices.whole_house': 'Intera casa',
   'devices.whole_house_history': 'Storico consumo intera casa',
+  'devices.power_based_on': 'Basato su {sensors}',
+  'devices.power_measured_in_rooms': '{value} misurati nelle stanze',
   'devices.top_area': 'Stanza con maggior consumo',
   'devices.total_now': 'Totale attuale',
   'devices.no_power_title': 'Nessun sensore di potenza in tempo reale trovato',
