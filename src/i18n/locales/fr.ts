@@ -58,6 +58,8 @@ export const fr = {
   'sidebar.collapse': 'Barre latérale de la zone de réduction',
   'sidebar.resize': 'Redimensionner la barre latérale de la zone',
   'sidebar.resize_drag': 'Faites glisser pour redimensionner la barre latérale de la zone',
+  'sidebar.turn_off_area_lights.one': 'Éteindre {count} lumière dans {area}',
+  'sidebar.turn_off_area_lights.other': 'Éteindre {count} lumières dans {area}',
   'navigation.menu': 'Menu',
   'navigation.pages': 'Pages',
   'navigation.profile_settings': 'Paramètres du profil',

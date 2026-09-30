@@ -58,6 +58,8 @@ export const zhHans = {
   'sidebar.collapse': '收合区域侧边栏',
   'sidebar.resize': '调整区域侧边栏宽度',
   'sidebar.resize_drag': '拖曳以调整区域侧边栏宽度',
+  'sidebar.turn_off_area_lights.one': '关闭 {area} 中的 {count} 盏灯',
+  'sidebar.turn_off_area_lights.other': '关闭 {area} 中的 {count} 盏灯',
   'navigation.menu': '菜单',
   'navigation.pages': '页面',
   'navigation.profile_settings': '个人设置',

@@ -46,16 +46,11 @@ export const layoutCardStyles = css`
     .weather-compact:focus-visible,
     .welcome-weather:focus-visible,
     .welcome-alarm:focus-visible,
-    .area-button:focus-visible,
     .area-light-toggle:focus-visible,
     .mobile-area-card:focus-visible,
     .mobile-entity-card:focus-visible {
       outline: 2px solid var(--primary-color);
       outline-offset: 2px;
-    }
-
-    .area-button.selected:focus-visible {
-      outline-color: var(--primary-text-color);
     }
 
     .dd-static-icon {
@@ -617,6 +612,83 @@ export const layoutCardStyles = css`
 
     .area-button.has-picture:hover .area-background {
       opacity: 0.8;
+    }
+
+    /* Sidebar items are a container with a full-size select button. Other
+       controls in the item (light toggle, notification shortcut) are siblings
+       of that button and are never nested inside it. */
+    .area-button-action {
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      border: 0;
+      border-radius: inherit;
+      background: transparent;
+      color: inherit;
+      cursor: pointer;
+    }
+
+    .area-button-action:focus-visible {
+      outline: 2px solid var(--primary-color);
+      outline-offset: -3px;
+    }
+
+    @supports selector(:has(*)) {
+      .area-button-action:focus-visible {
+        outline: none;
+      }
+
+      .area-button:has(> .area-button-action:focus-visible) {
+        outline: 2px solid var(--primary-color);
+        outline-offset: 2px;
+      }
+
+      .area-button.selected:has(> .area-button-action:focus-visible) {
+        outline-color: var(--primary-text-color);
+      }
+    }
+
+    /* Clicks on the item content fall through to the select button. */
+    .area-button > :not(.area-button-action),
+    .area-button::before,
+    .area-button::after {
+      pointer-events: none;
+    }
+
+    .area-button .area-light-toggle,
+    .area-button .home-notification-shortcut {
+      pointer-events: auto;
+    }
+
+    /* Area items used to be native buttons; keep the typography they had. */
+    .area-button:not(.home-button) {
+      font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+      line-height: normal;
+    }
+
+    .area-light-toggle {
+      position: relative;
+      margin: 0;
+      font-family: inherit;
+      line-height: inherit;
+    }
+
+    @media (pointer: coarse) {
+      /* At least a 44px hit area around the small light badge on touch. */
+      .area-light-toggle::after {
+        content: "";
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 100%;
+        min-width: 44px;
+        height: 44px;
+        transform: translate(-50%, -50%);
+      }
     }
 
     /* Area content structure */

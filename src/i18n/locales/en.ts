@@ -57,6 +57,8 @@ export const en = {
   'sidebar.collapse': 'Collapse area sidebar',
   'sidebar.resize': 'Resize area sidebar',
   'sidebar.resize_drag': 'Drag to resize area sidebar',
+  'sidebar.turn_off_area_lights.one': 'Turn off {count} light in {area}',
+  'sidebar.turn_off_area_lights.other': 'Turn off {count} lights in {area}',
 
   'navigation.menu': 'Menu',
   'navigation.pages': 'Pages',

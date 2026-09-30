@@ -58,6 +58,8 @@ export const nl = {
   'sidebar.collapse': 'Zijbalk van het gebied samenvouwen',
   'sidebar.resize': 'Breedte van de gebiedzijbalk aanpassen',
   'sidebar.resize_drag': 'Sleep om de breedte van de gebiedzijbalk aan te passen',
+  'sidebar.turn_off_area_lights.one': 'Zet {count} lamp in {area} uit',
+  'sidebar.turn_off_area_lights.other': 'Zet {count} lampen in {area} uit',
   'navigation.menu': 'Menu',
   'navigation.pages': 'Pagina\'s',
   'navigation.profile_settings': 'Profielinstellingen',

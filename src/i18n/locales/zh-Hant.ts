@@ -58,6 +58,8 @@ export const zhHant = {
   'sidebar.collapse': '收合區域側邊欄',
   'sidebar.resize': '調整區域側邊欄寬度',
   'sidebar.resize_drag': '拖曳以調整區域側邊欄寬度',
+  'sidebar.turn_off_area_lights.one': '關閉 {area} 中的 {count} 盞燈',
+  'sidebar.turn_off_area_lights.other': '關閉 {area} 中的 {count} 盞燈',
   'navigation.menu': '選單',
   'navigation.pages': '頁面',
   'navigation.profile_settings': '個人設定',

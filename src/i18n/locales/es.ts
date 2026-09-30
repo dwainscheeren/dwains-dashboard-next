@@ -58,6 +58,8 @@ export const es = {
   'sidebar.collapse': 'Contraer barra lateral del área',
   'sidebar.resize': 'Cambiar el ancho de la barra lateral de áreas',
   'sidebar.resize_drag': 'Arrastra para cambiar el ancho de la barra lateral de áreas',
+  'sidebar.turn_off_area_lights.one': 'Apagar {count} luz en {area}',
+  'sidebar.turn_off_area_lights.other': 'Apagar {count} luces en {area}',
   'navigation.menu': 'Menú',
   'navigation.pages': 'paginas',
   'navigation.profile_settings': 'Configuración de perfil',

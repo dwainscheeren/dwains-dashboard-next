@@ -154,8 +154,8 @@ export class DwainsLayoutCard extends LitElement {
   private _t = (key: string, vars?: Record<string, string | number>) =>
     ddLocalize(this.hass, key, vars);
 
-  private _tp = (key: string, count: number) =>
-    ddLocalizePlural(this.hass, key, count);
+  private _tp = (key: string, count: number, vars?: Record<string, string | number>) =>
+    ddLocalizePlural(this.hass, key, count, vars);
 
   @state() private _selectedArea: string | null = null;
   @state() private _selectedView: DwainsSelectedView | null = null;
@@ -1405,11 +1405,13 @@ export class DwainsLayoutCard extends LitElement {
         <div class="area-list">
           <div
             class="area-button home-button ${this._selectedView === 'home' ? 'selected' : ''} ${hasNotifications ? 'has-notifications' : ''}"
-            role="button"
-            tabindex="0"
-            @click=${() => this._selectView('home')}
-            @keydown=${this._handleHomeNavigationKeydown}
           >
+            <button
+              class="area-button-action"
+              type="button"
+              aria-label=${this._t('sidebar.home')}
+              @click=${() => this._selectView('home')}
+            ></button>
             <div class="area-icon">
               <ha-icon icon="mdi:home"></ha-icon>
             </div>
@@ -1535,16 +1537,31 @@ export class DwainsLayoutCard extends LitElement {
   }
 
   private _renderAreaButton(area: any) {
-        const areaData = this._getCachedAreaData(area);
-        const isSelected = this._selectedArea === area.area_id;
+    const areaData = this._getCachedAreaData(area);
+    const isSelected = this._selectedArea === area.area_id;
     const hasPicture = area.picture ? true : false;
     const pictureContrastClass = hasPicture ? this._getPictureContrastClass(area.picture) : '';
 
+    const sensorsText = [
+      areaData.temperature,
+      areaData.humidity,
+      areaData.wattage
+    ].filter(Boolean).join(' • ');
+    const lightsOn = areaData.domains.light?.on || 0;
+    const lightToggleLabel = this._tp('sidebar.turn_off_area_lights', lightsOn, { area: area.name });
+
+    // The area item is a container with a full-size select button and, as a
+    // sibling, the light toggle; buttons are never nested.
         return html`
-          <button
+          <div
             class="area-button ${isSelected ? 'selected' : ''} ${hasPicture ? 'has-picture' : ''} ${pictureContrastClass}"
-            @click=${() => this._selectArea(area.area_id)}
           >
+            <button
+              class="area-button-action"
+              type="button"
+              aria-label=${sensorsText ? `${area.name}, ${sensorsText}` : area.name}
+              @click=${() => this._selectArea(area.area_id)}
+            ></button>
             ${hasPicture ? html`
               <div class="area-background" style="background-image: url('${area.picture}');"></div>
             ` : nothing}
@@ -1553,14 +1570,8 @@ export class DwainsLayoutCard extends LitElement {
               <!-- Top section: Name and sensors -->
               <div class="area-top-section">
               <div class="area-name">${area.name}</div>
-              ${areaData.temperature || areaData.humidity || areaData.wattage ? html`
-                <div class="area-sensors">
-                  ${[
-                    areaData.temperature,
-                    areaData.humidity,
-                    areaData.wattage
-                  ].filter(Boolean).join(' • ')}
-                </div>
+              ${sensorsText ? html`
+                <div class="area-sensors">${sensorsText}</div>
               ` : nothing}
             </div>
 
@@ -1573,13 +1584,18 @@ export class DwainsLayoutCard extends LitElement {
 
                 <!-- Right: Info badges -->
                 <div class="area-info-badges">
-                  ${areaData.domains.light && areaData.domains.light.on > 0 ? html`
-                    <span class="info-badge light clickable"
-                          style=${this._domainBadgeStyle('light')}
-                          @click=${(e: Event) => this._handleLightToggle(e, area.area_id)}>
+                  ${lightsOn > 0 ? html`
+                    <button
+                      class="info-badge light clickable area-light-toggle"
+                      type="button"
+                      style=${this._domainBadgeStyle('light')}
+                      title=${lightToggleLabel}
+                      aria-label=${lightToggleLabel}
+                      @click=${(e: Event) => this._handleLightToggle(e, area.area_id)}
+                    >
                       <ha-icon icon=${getDomainIcon('light')}></ha-icon>
-                      <span class="badge-count">${areaData.domains.light.on}</span>
-                    </span>
+                      <span class="badge-count">${lightsOn}</span>
+                    </button>
                   ` : nothing}
 
                   ${areaData.domains.switch && areaData.domains.switch.on > 0 ? html`
@@ -1634,7 +1650,7 @@ export class DwainsLayoutCard extends LitElement {
               </div>
             </div>
             <ha-icon class="area-menu-chevron" icon="mdi:chevron-right"></ha-icon>
-          </button>
+          </div>
         `;
   }
 
@@ -6116,10 +6132,6 @@ export class DwainsLayoutCard extends LitElement {
     this._updateUrlArea(areaId);
     this._syncBottomNavAreaContext();
   }
-
-  private _handleHomeNavigationKeydown = (event: KeyboardEvent) => {
-    this._handleActivationKeydown(event, () => this._selectView('home'));
-  };
 
   private _toggleHeader() {
     this._headerExpanded = !this._headerExpanded;

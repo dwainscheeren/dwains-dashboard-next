@@ -59,6 +59,8 @@ export const it = {
   'sidebar.collapse': 'Comprimi barra laterale delle stanze',
   'sidebar.resize': 'Ridimensiona barra laterale delle stanze',
   'sidebar.resize_drag': 'Trascina per ridimensionare la barra laterale delle stanze',
+  'sidebar.turn_off_area_lights.one': 'Spegni {count} luce in {area}',
+  'sidebar.turn_off_area_lights.other': 'Spegni {count} luci in {area}',
 
   'navigation.menu': 'Menu',
   'navigation.pages': 'Pagine',

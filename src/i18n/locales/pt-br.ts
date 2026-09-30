@@ -59,6 +59,8 @@ export const ptBR = {
   'sidebar.collapse': 'Recolher barra lateral de áreas',
   'sidebar.resize': 'Redimensionar barra lateral de áreas',
   'sidebar.resize_drag': 'Arraste para redimensionar a barra lateral de áreas',
+  'sidebar.turn_off_area_lights.one': 'Desligar {count} luz em {area}',
+  'sidebar.turn_off_area_lights.other': 'Desligar {count} luzes em {area}',
 
   'navigation.menu': 'Menu',
   'navigation.pages': 'Páginas',

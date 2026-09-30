@@ -59,6 +59,8 @@ export const ru = {
   'sidebar.collapse': 'Свернуть боковую панель областей',
   'sidebar.resize': 'Изменить размер боковой панели областей',
   'sidebar.resize_drag': 'Перетащите, чтобы изменить размер боковой панели областей',
+  'sidebar.turn_off_area_lights.one': 'Выключить {count} светильник в зоне {area}',
+  'sidebar.turn_off_area_lights.other': 'Выключить светильники в зоне {area} ({count})',
 
   'navigation.menu': 'Меню',
   'navigation.pages': 'Страницы',

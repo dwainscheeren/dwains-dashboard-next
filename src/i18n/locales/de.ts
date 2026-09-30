@@ -58,6 +58,8 @@ export const de = {
   'sidebar.collapse': 'Raumleiste einklappen',
   'sidebar.resize': 'Breite der Raumleiste ändern',
   'sidebar.resize_drag': 'Ziehen, um die Breite der Raumleiste zu ändern',
+  'sidebar.turn_off_area_lights.one': '{count} Licht in {area} ausschalten',
+  'sidebar.turn_off_area_lights.other': '{count} Lichter in {area} ausschalten',
   'navigation.menu': 'Menü',
   'navigation.pages': 'Seiten',
   'navigation.profile_settings': 'Profileinstellungen',
