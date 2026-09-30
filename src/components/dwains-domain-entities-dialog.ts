@@ -9,6 +9,7 @@ import { getDomainName } from '../utils/domain-names';
 import { getDeviceClassIcon, getDomainColor, getDomainIcon } from '../utils/icons';
 import { ddLocalize, ddLocalizePlural } from '../utils/localize';
 import { fireEvent } from './utils/fire-event';
+import { showConfirmDialog } from './utils/confirm-dialog';
 import { formatEntityStateWithUnit, formatValueWithUnit } from '../utils/unit-format';
 import './utils/dd-card-host';
 
@@ -1234,10 +1235,17 @@ export class DwainsDomainEntitiesDialog extends LitElement {
   private async _runBulkDomainAction(entityIds: string[], action: BulkDomainAction, label: string): Promise<void> {
     const domain = this._params?.domain || '';
     const count = entityIds.length;
-    const confirmed = window.confirm(this._t('action.confirm_bulk', {
-      action: label,
-      entities: this._tp('common.entity', count),
-    }));
+    const confirmed = await showConfirmDialog(this, {
+      hass: this.hass,
+      title: this._t('action.confirm_bulk', {
+        action: label,
+        entities: this._tp('common.entity', count),
+      }),
+      confirmLabel: label,
+      destructive: action === 'turn_off' || action === 'close_cover' || action === 'unlock',
+      // Render inside the modal so the confirmation stays reachable.
+      container: this.renderRoot.querySelector('ha-dialog') || undefined,
+    });
 
     if (!confirmed) return;
 

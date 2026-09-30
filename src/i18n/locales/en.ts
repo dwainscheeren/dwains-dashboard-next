@@ -93,7 +93,9 @@ export const en = {
   'layout.page_settings': 'Settings / fill in again',
   'layout.delete_page': 'Delete page',
   'layout.delete_page_confirm': 'Delete page "{name}"?',
+  'layout.delete_page_message': 'This page and its card will be removed from the dashboard. This cannot be undone.',
   'layout.delete_card_confirm': 'Delete this card?',
+  'layout.delete_card_message': 'The card will be removed from this dashboard. This cannot be undone.',
   'layout.save_page_failed': 'Could not save the page (see console):\n{error}',
   'layout.save_card_failed': 'Could not save the card (see console):\n{error}',
   'layout.swipe_cards': 'Swipe cards',
@@ -479,6 +481,8 @@ export const en = {
   'settings.visible_in_dd': 'Visible in DD',
   'settings.hidden_in_dd': 'Hidden in DD',
   'settings.discard_confirm': 'Discard unsaved dashboard settings?',
+  'settings.discard_message': 'Changes you made to the dashboard settings will be lost.',
+  'settings.discard': 'Discard',
 
   'settings.show_suggested_favorites': 'Show suggested favorites from Home Assistant',
   'settings.suggested_favorites_description': 'Adds frequently used entities suggested by Home Assistant next to your pinned favorites.',

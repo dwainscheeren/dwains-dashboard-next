@@ -4283,65 +4283,6 @@ export const layoutCardStyles = css`
     }
 
 
-    /* Confirmation Dialog */
-    .confirmation-dialog {
-      position: fixed;
-      inset: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 16px;
-      background: rgba(0, 0, 0, 0.48);
-      backdrop-filter: blur(2px);
-      z-index: 1100;
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity 0.18s ease;
-    }
-
-    .confirmation-dialog.show {
-      opacity: 1;
-      pointer-events: auto;
-    }
-
-    .confirmation-content {
-      box-sizing: border-box;
-      background: var(--card-background-color);
-      color: var(--primary-text-color);
-      border: 1px solid var(--divider-color);
-      border-radius: 8px;
-      padding: 20px;
-      width: min(420px, calc(100vw - 32px));
-      box-shadow: 0 24px 64px rgba(0, 0, 0, 0.28);
-      outline: none;
-      transform: scale(0.96);
-      transition: transform 0.18s cubic-bezier(0.22, 1, 0.36, 1);
-    }
-
-    .confirmation-dialog.show .confirmation-content {
-      transform: scale(1);
-    }
-
-    .confirmation-title {
-      font-size: 18px;
-      font-weight: 700;
-      line-height: 1.25;
-      margin-bottom: 8px;
-    }
-
-    .confirmation-message {
-      margin-bottom: 20px;
-      color: var(--secondary-text-color);
-      font-size: 14px;
-      line-height: 1.5;
-    }
-
-    .confirmation-actions {
-      display: flex;
-      gap: 12px;
-      justify-content: flex-end;
-    }
-
     .notifications-overlay {
       position: fixed;
       inset: 0;
@@ -4569,37 +4510,6 @@ export const layoutCardStyles = css`
       .notifications-panel.open {
         transform: translate3d(-50%, 0, 0);
       }
-    }
-
-    .confirmation-button {
-      min-height: 40px;
-      padding: 9px 16px;
-      border-radius: 8px;
-      border: none;
-      cursor: pointer;
-      font-size: 14px;
-      font-weight: 650;
-      transition: transform 0.16s ease, box-shadow 0.16s ease;
-    }
-
-    .confirmation-button.cancel {
-      background: var(--secondary-background-color);
-      color: var(--primary-text-color);
-    }
-
-    .confirmation-button.confirm {
-      background: var(--primary-color);
-      color: var(--text-primary-color);
-    }
-
-    .confirmation-button.confirm.destructive {
-      background: var(--error-color, #db4437);
-      color: #fff;
-    }
-
-    .confirmation-button:hover {
-      transform: translateY(-1px);
-      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
     }
 
     /* Area Badges Styling */

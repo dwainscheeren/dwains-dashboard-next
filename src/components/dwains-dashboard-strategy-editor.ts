@@ -54,6 +54,7 @@ import {
 } from "../utils/master-action-confirmations";
 import { showCardEditorDialog } from "./utils/show-card-editor-dialog";
 import { fireEvent } from "./utils/fire-event";
+import { showConfirmDialog } from "./utils/confirm-dialog";
 
 // We'll create our own entity picker since ha-entity-picker is external
 type SettingsPageKey =
@@ -2185,8 +2186,15 @@ export class DwainsDashboardStrategyEditor extends LitElement {
     });
   }
 
-  private _deleteHomeCustomCard(id: string): void {
-    if (!confirm(this._t('layout.delete_card_confirm'))) return;
+  private async _deleteHomeCustomCard(id: string): Promise<void> {
+    const confirmed = await showConfirmDialog(this, {
+      hass: this.hass,
+      title: this._t('layout.delete_card_confirm'),
+      message: this._t('layout.delete_card_message'),
+      confirmLabel: this._t('common.delete'),
+      destructive: true,
+    });
+    if (!confirmed) return;
     this._updateHomeCustomCards(this._getHomeCustomCards().filter(card => card.id !== id));
   }
 

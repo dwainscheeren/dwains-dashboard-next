@@ -31,6 +31,7 @@ import { ensureBottomNav } from './dwains-bottom-nav';
 import './utils/dd-card-host';
 import './utils/dd-tile-host';
 import { fireEvent } from './utils/fire-event';
+import { closeConfirmDialog, showConfirmDialog } from './utils/confirm-dialog';
 import { ddLocale, ddLocalize, ddLocalizePlural } from '../utils/localize';
 import {
   masterActionConfirmationEnabled,
@@ -145,13 +146,6 @@ interface OptimisticEntityState {
   expiresAt: number;
 }
 
-interface ConfirmationDialogState {
-  title: string;
-  message: string;
-  confirmLabel: string;
-  destructive: boolean;
-}
-
 @customElement('dwains-dashboard-next-layout-card')
 export class DwainsLayoutCard extends LitElement {
   @property({ attribute: false }) public hass!: HomeAssistant;
@@ -202,7 +196,6 @@ export class DwainsLayoutCard extends LitElement {
   @state() private _settingsDirty = false;
   @state() private _settingsSavePending = false;
   @state() private _settingsSaveError = '';
-  @state() private _confirmationDialog: ConfirmationDialogState | null = null;
 
   // Performance optimizations
   private _areaEntitiesCache = new Map<string, { entities: EntityConfig[], timestamp: number }>();
@@ -230,7 +223,6 @@ export class DwainsLayoutCard extends LitElement {
   private _progressiveRenderCancel?: () => void;
   private _pendingSettingsConfig?: Partial<DwainsDashboardConfig>;
   private _settingsEditorInitialized = false;
-  private _confirmationResolve?: (confirmed: boolean) => void;
 
   // Debounce timers
   private _updateDebounceTimer?: number;
@@ -534,9 +526,7 @@ export class DwainsLayoutCard extends LitElement {
       this._progressiveRenderCancel();
       this._progressiveRenderCancel = undefined;
     }
-    this._confirmationResolve?.(false);
-    this._confirmationResolve = undefined;
-    this._confirmationDialog = null;
+    closeConfirmDialog(this);
   }
 
   private _setupEventListeners() {
@@ -1244,7 +1234,6 @@ export class DwainsLayoutCard extends LitElement {
           </div>
         </div>
       </div>
-      ${this._renderConfirmationDialog()}
       ${this._renderNotificationsPanel()}
     `;
   }
@@ -3757,9 +3746,14 @@ export class DwainsLayoutCard extends LitElement {
     });
   }
 
-  private _deleteCard(areaId: string, cardId: string) {
+  private async _deleteCard(areaId: string, cardId: string) {
     if (!this._canManageDashboard()) return;
-    if (!confirm(this._t('layout.delete_card_confirm'))) return;
+    const confirmed = await this._showConfirmation(
+      this._t('layout.delete_card_confirm'),
+      this._t('layout.delete_card_message'),
+      { confirmLabel: this._t('common.delete'), destructive: true }
+    );
+    if (!confirmed) return;
     const cards = this._getPersistableAreaCustomCards(areaId).filter(entry => entry.id !== cardId);
     void this._saveAreaCustomCards(areaId, cards);
   }
@@ -5629,49 +5623,6 @@ export class DwainsLayoutCard extends LitElement {
     return Number.isFinite(parsed) ? parsed : null;
   }
 
-  private _renderConfirmationDialog() {
-    const dialog = this._confirmationDialog;
-    if (!dialog) return nothing;
-
-    return html`
-      <div
-        class="confirmation-dialog show"
-        role="presentation"
-        @click=${() => this._resolveConfirmation(false)}
-      >
-        <div
-          class="confirmation-content"
-          role="alertdialog"
-          aria-modal="true"
-          aria-labelledby="dd-confirmation-title"
-          aria-describedby="dd-confirmation-message"
-          tabindex="0"
-          @click=${(event: Event) => event.stopPropagation()}
-          @keydown=${this._handleConfirmationKeydown}
-        >
-          <div id="dd-confirmation-title" class="confirmation-title">${dialog.title}</div>
-          <div id="dd-confirmation-message" class="confirmation-message">${dialog.message}</div>
-          <div class="confirmation-actions">
-            <button
-              class="confirmation-button cancel"
-              type="button"
-              @click=${() => this._resolveConfirmation(false)}
-            >
-              ${this._t('common.cancel')}
-            </button>
-            <button
-              class=${`confirmation-button confirm ${dialog.destructive ? 'destructive' : ''}`}
-              type="button"
-              @click=${() => this._resolveConfirmation(true)}
-            >
-              ${dialog.confirmLabel}
-            </button>
-          </div>
-        </div>
-      </div>
-    `;
-  }
-
   // Helper Methods
 
   private _getWeatherEntity() {
@@ -6073,9 +6024,20 @@ export class DwainsLayoutCard extends LitElement {
   }
 
   // Event Handlers
-  private _confirmDiscardSettings(): boolean {
+  // True when the settings page can be left right away. With unsaved settings
+  // the user is asked first and retry() runs once they choose to discard them.
+  private _canLeaveSettings(retry: () => void): boolean {
     if (this._selectedView !== 'settings' || !this._settingsDirty) return true;
-    return window.confirm('Discard unsaved dashboard settings?');
+    void this._showConfirmation(
+      this._t('settings.discard_confirm'),
+      this._t('settings.discard_message'),
+      { confirmLabel: this._t('settings.discard'), destructive: true }
+    ).then((confirmed) => {
+      if (!confirmed) return;
+      this._clearSettingsEditState();
+      retry();
+    });
+    return false;
   }
 
   private _clearSettingsEditState(): void {
@@ -6087,7 +6049,7 @@ export class DwainsLayoutCard extends LitElement {
   }
 
   private _selectView(view: DwainsSelectedView) {
-    if (view !== 'settings' && !this._confirmDiscardSettings()) return;
+    if (view !== 'settings' && !this._canLeaveSettings(() => this._selectView(view))) return;
     this._resetAreaHeaderScrollState(view === 'area');
     this._selectedView = view;
     if (view === 'home') {
@@ -6112,7 +6074,7 @@ export class DwainsLayoutCard extends LitElement {
   }
 
   private _selectArea(areaId: string) {
-    if (!this._confirmDiscardSettings()) return;
+    if (!this._canLeaveSettings(() => this._selectArea(areaId))) return;
     this._resetAreaHeaderScrollState(true);
     this._selectedArea = areaId;
     this._selectedView = 'area';
@@ -6154,7 +6116,7 @@ export class DwainsLayoutCard extends LitElement {
 
   private _openMobileAreaSwitcher = () => {
     if (!this._isMobile) return;
-    if (!this._confirmDiscardSettings()) return;
+    if (!this._canLeaveSettings(() => this._openMobileAreaSwitcher())) return;
     this._selectedView = 'home';
     this._selectedArea = null;
     this._resetAreaHeaderScrollState(false);
@@ -6428,7 +6390,7 @@ export class DwainsLayoutCard extends LitElement {
   };
 
   private _closeSettingsPage = (): void => {
-    if (!this._confirmDiscardSettings()) return;
+    if (!this._canLeaveSettings(this._closeSettingsPage)) return;
     this._clearSettingsEditState();
     this._selectView('home');
   };
@@ -6514,7 +6476,7 @@ export class DwainsLayoutCard extends LitElement {
         </div>
         <div class="settings-page-bottom-actions">
           <button type="button" class="settings-secondary" @click=${this._closeSettingsPage}>
-            Back
+            ${this._t('common.back')}
           </button>
           <button
             type="button"
@@ -6981,40 +6943,17 @@ export class DwainsLayoutCard extends LitElement {
     }
   }
 
-  private _resolveConfirmation(confirmed: boolean): void {
-    const resolve = this._confirmationResolve;
-    this._confirmationResolve = undefined;
-    this._confirmationDialog = null;
-    resolve?.(confirmed);
-  }
-
-  private _handleConfirmationKeydown = (event: KeyboardEvent): void => {
-    if (event.key !== 'Escape') return;
-    event.preventDefault();
-    this._resolveConfirmation(false);
-  };
-
   private _showConfirmation(
     title: string,
     message: string,
     options: { confirmLabel?: string; destructive?: boolean } = {}
   ): Promise<boolean> {
-    if (this._confirmationResolve) {
-      this._resolveConfirmation(false);
-    }
-
-    return new Promise(resolve => {
-      this._confirmationResolve = resolve;
-      this._confirmationDialog = {
-        title,
-        message,
-        confirmLabel: options.confirmLabel || title,
-        destructive: options.destructive === true,
-      };
-
-      void this.updateComplete.then(() => {
-        this.shadowRoot?.querySelector<HTMLElement>('.confirmation-content')?.focus();
-      });
+    return showConfirmDialog(this, {
+      hass: this.hass,
+      title,
+      message,
+      confirmLabel: options.confirmLabel,
+      destructive: options.destructive,
     });
   }
 

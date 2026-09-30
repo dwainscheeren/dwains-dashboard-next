@@ -95,7 +95,9 @@ export const it = {
   'layout.page_settings': 'Impostazioni / riconfigura',
   'layout.delete_page': 'Elimina pagina',
   'layout.delete_page_confirm': 'Eliminare la pagina "{name}"?',
+  'layout.delete_page_message': 'Questa pagina e la sua scheda verranno rimosse dalla dashboard. L\'operazione non può essere annullata.',
   'layout.delete_card_confirm': 'Eliminare questa scheda?',
+  'layout.delete_card_message': 'La scheda verrà rimossa da questa dashboard. L\'operazione non può essere annullata.',
   'layout.save_page_failed': 'Impossibile salvare la pagina (vedi console):\\n{error}',
   'layout.save_card_failed': 'Impossibile salvare la scheda (vedi console):\\n{error}',
   'layout.swipe_cards': 'Schede scorrevoli',
@@ -481,6 +483,8 @@ export const it = {
   'settings.visible_in_dd': 'Visibile in DD',
   'settings.hidden_in_dd': 'Nascosto in DD',
   'settings.discard_confirm': 'Scartare le modifiche non salvate della dashboard?',
+  'settings.discard_message': 'Le modifiche alle impostazioni della dashboard andranno perse.',
+  'settings.discard': 'Scarta',
 
   'settings.show_suggested_favorites': 'Mostra i preferiti suggeriti da Home Assistant',
   'settings.suggested_favorites_description': 'Aggiunge le entità usate di frequente suggerite da Home Assistant accanto ai preferiti fissati.',

@@ -95,7 +95,9 @@ export const ru = {
   'layout.page_settings': 'Настройки / заполнить заново',
   'layout.delete_page': 'Удалить страницу',
   'layout.delete_page_confirm': 'Удалить страницу «{name}»?',
+  'layout.delete_page_message': 'Эта страница и её карточка будут удалены с панели. Это действие нельзя отменить.',
   'layout.delete_card_confirm': 'Удалить эту карточку?',
+  'layout.delete_card_message': 'Карточка будет удалена с этой панели. Это действие нельзя отменить.',
   'layout.save_page_failed': 'Не удалось сохранить страницу (см. консоль):\n{error}',
   'layout.save_card_failed': 'Не удалось сохранить карточку (см. консоль):\n{error}',
   'layout.swipe_cards': 'Прокручивать карточки',
@@ -481,6 +483,8 @@ export const ru = {
   'settings.visible_in_dd': 'Видимо в DD',
   'settings.hidden_in_dd': 'Скрыто в DD',
   'settings.discard_confirm': 'Отменить несохранённые настройки панели?',
+  'settings.discard_message': 'Изменения настроек панели будут потеряны.',
+  'settings.discard': 'Не сохранять',
 
   'settings.show_suggested_favorites': 'Показывать рекомендуемые избранные Home Assistant',
   'settings.suggested_favorites_description': 'Добавляет часто используемые сущности, рекомендованные Home Assistant, рядом с закреплёнными избранными.',

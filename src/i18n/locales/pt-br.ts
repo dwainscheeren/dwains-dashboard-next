@@ -95,7 +95,9 @@ export const ptBR = {
   'layout.page_settings': 'Configurações / preencher novamente',
   'layout.delete_page': 'Excluir página',
   'layout.delete_page_confirm': 'Excluir a página "{name}"?',
+  'layout.delete_page_message': 'Esta página e o cartão dela serão removidos do painel. Esta ação não pode ser desfeita.',
   'layout.delete_card_confirm': 'Excluir este cartão?',
+  'layout.delete_card_message': 'O cartão será removido deste painel. Esta ação não pode ser desfeita.',
   'layout.save_page_failed': 'Não foi possível salvar a página (veja o console):\n{error}',
   'layout.save_card_failed': 'Não foi possível salvar o cartão (veja o console):\n{error}',
   'layout.swipe_cards': 'Deslizar cartões',
@@ -481,6 +483,8 @@ export const ptBR = {
   'settings.visible_in_dd': 'Visível no DD',
   'settings.hidden_in_dd': 'Oculto no DD',
   'settings.discard_confirm': 'Descartar as configurações do painel não salvas?',
+  'settings.discard_message': 'As alterações nas configurações do painel serão perdidas.',
+  'settings.discard': 'Descartar',
 
   'settings.show_suggested_favorites': 'Mostrar favoritos sugeridos pelo Home Assistant',
   'settings.suggested_favorites_description': 'Adiciona entidades usadas com frequência, sugeridas pelo Home Assistant, ao lado dos seus favoritos fixados.',

@@ -6,6 +6,7 @@ import { restrictNonAdminDashboardSettings } from '../utils/security';
 import { showBlueprintDialog } from './utils/show-blueprint-dialog';
 import { ensureBottomNav } from './dwains-bottom-nav';
 import { fireEvent } from './utils/fire-event';
+import { showConfirmDialog } from './utils/confirm-dialog';
 import './utils/dd-card-host';
 
 /**
@@ -130,7 +131,14 @@ export class DwainsPageCard extends LitElement {
     if (!this._canManageDashboard()) return;
     if (!this._page) return;
     const page = this._page;
-    if (!confirm(this._t('layout.delete_page_confirm', { name: page.name }))) return;
+    const confirmed = await showConfirmDialog(this, {
+      hass: this._hass,
+      title: this._t('layout.delete_page_confirm', { name: page.name }),
+      message: this._t('layout.delete_page_message'),
+      confirmLabel: this._t('common.delete'),
+      destructive: true,
+    });
+    if (!confirmed) return;
     const ok = await this._mutatePages((pages) => pages.filter((p) => p.id !== page.id));
     if (ok) this._go('home');
   };
