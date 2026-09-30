@@ -32,6 +32,7 @@ export class DwainsViewStrategy implements LovelaceViewStrategy {
           floors_display: config.floors_display,
           areas_options: config.areas_options,
           favorites: config.favorites || [],
+          home_custom_cards: config.home_custom_cards || [],
           pages: config.pages || [],
           blueprint_replacements: config.blueprint_replacements || {},
           device_admission: config.device_admission || {}

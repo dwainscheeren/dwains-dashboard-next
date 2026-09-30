@@ -125,6 +125,17 @@ function rememberSettingsPage(page: SettingsPageKey): void {
   rememberedSettingsPageAt = Date.now();
 }
 
+// Registry data is loaded live by the editor and must never be written back.
+const LIVE_DATA_KEYS = ["areas", "devices", "entities", "floors"] as const;
+
+// Keep every stored dashboard option, including keys this editor does not
+// manage itself (blueprint pages, Home custom cards, future options).
+function persistableConfig(config: any): Record<string, any> {
+  const result: Record<string, any> = { ...(config || {}) };
+  LIVE_DATA_KEYS.forEach((key) => delete result[key]);
+  return result;
+}
+
 const SETTINGS_ICON_PATHS: Record<string, string> = {
   "mdi:card-account-details-star-outline": mdiCardAccountDetailsStarOutline,
   "mdi:chevron-right": mdiChevronRight,
@@ -300,6 +311,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
   public async setConfig(config: any): Promise<void> {
     // Only store the user configuration, not live data
     this._config = {
+      ...persistableConfig(config),
       type: config?.type || "custom:dwains-dashboard-next",
       areas_display: config?.areas_display || {},
       floors_display: config?.floors_display || {},
@@ -308,6 +320,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
       device_admission: config?.device_admission || {},
       favorites: config?.favorites || [],
       pages: config?.pages || [],
+      home_custom_cards: config?.home_custom_cards || [],
       settings: config?.settings || {},
       // These will be populated from live data
       areas: [],
@@ -4276,18 +4289,20 @@ export class DwainsDashboardStrategyEditor extends LitElement {
       ...config
     };
 
-    // Only save essential configuration, not live data
+    // Save the complete user configuration, but never the live registry data.
+    const merged = this._config;
     const cleanConfig = {
+      ...persistableConfig(merged),
       type: "custom:dwains-dashboard-next",
-      areas_display: config.areas_display || {},
-      floors_display: config.floors_display || {},
-      areas_options: config.areas_options || {},
-      blueprint_replacements: config.blueprint_replacements || {},
-      device_admission: config.device_admission || {},
-      favorites: config.favorites || [],
-      pages: config.pages || [],
-      home_custom_cards: config.home_custom_cards || [],
-      settings: config.settings || {}
+      areas_display: merged.areas_display || {},
+      floors_display: merged.floors_display || {},
+      areas_options: merged.areas_options || {},
+      blueprint_replacements: merged.blueprint_replacements || {},
+      device_admission: merged.device_admission || {},
+      favorites: merged.favorites || [],
+      pages: merged.pages || [],
+      home_custom_cards: merged.home_custom_cards || [],
+      settings: merged.settings || {}
     };
 
     const event = new CustomEvent("config-changed", {
