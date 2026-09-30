@@ -45,26 +45,21 @@ export const getAreaData = (area: AreaConfig, hass: HomeAssistant, areaEntities:
   let wattage: string | undefined;
   let totalEnergy: string | undefined;
 
-  // Check if area has specific temperature/humidity entities assigned
-  const areaRegistry = hass.areas[area.area_id];
-  if (areaRegistry) {
-    if ('temperature_entity_id' in areaRegistry) {
-      const tempEntityId = (areaRegistry as any).temperature_entity_id;
-      if (tempEntityId && hass.states[tempEntityId]) {
-        const tempState = hass.states[tempEntityId];
-        if (tempState.state !== 'unavailable' && tempState.state !== 'unknown') {
-          temperature = formatEntityStateWithUnit(hass, tempState);
-        }
-      }
+  // Use the temperature and humidity sensors assigned to the area in Home Assistant.
+  const areaRegistry = hass.areas[area.area_id] as any;
+  const temperatureEntityId = areaRegistry?.temperature_entity_id;
+  const humidityEntityId = areaRegistry?.humidity_entity_id;
+
+  if (temperatureEntityId) {
+    const state = hass.states[temperatureEntityId];
+    if (state && state.state !== 'unavailable' && state.state !== 'unknown') {
+      temperature = formatEntityStateWithUnit(hass, state);
     }
-    if ('humidity_entity_id' in areaRegistry) {
-      const humidityEntityId = (areaRegistry as any).humidity_entity_id;
-      if (humidityEntityId && hass.states[humidityEntityId]) {
-        const humState = hass.states[humidityEntityId];
-        if (humState.state !== 'unavailable' && humState.state !== 'unknown') {
-          humidity = formatEntityStateWithUnit(hass, humState);
-        }
-      }
+  }
+  if (humidityEntityId) {
+    const state = hass.states[humidityEntityId];
+    if (state && state.state !== 'unavailable' && state.state !== 'unknown') {
+      humidity = formatEntityStateWithUnit(hass, state);
     }
   }
 

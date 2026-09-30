@@ -64,6 +64,8 @@ export interface DwainsDashboardSettings {
   home_sections_order?: HomeSectionKey[];
   home_sections_hidden?: HomeSectionKey[];
   home_information_cards_hidden?: HomeInformationCardKey[];
+  /** Areas excluded from the House information climate average. */
+  home_climate_excluded_areas?: string[];
   home_camera_order?: string[];
   home_cameras_hidden?: string[];
   hidden_device_types?: string[];

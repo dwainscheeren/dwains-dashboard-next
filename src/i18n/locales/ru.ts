@@ -657,4 +657,9 @@ export const ru = {
   'device_class.running': 'Работа',
   'device_class.update': 'Обновления',
   'device_class.door_lock': 'Замки',
+  'settings.home_climate_areas_title': "Помещения в расчёте климата",
+  'settings.home_climate_areas_description': "Выберите, какие помещения Home Assistant учитываются в средней температуре и влажности в информации о доме.",
+  'settings.home_climate_area_included': "Учитывается в среднем по дому",
+  'settings.home_climate_area_excluded': "Не учитывается в среднем по дому",
+
 } as const satisfies TranslationDictionary;

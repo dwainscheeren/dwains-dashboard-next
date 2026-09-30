@@ -12055,47 +12055,32 @@ export class DwainsLayoutCard extends LitElement {
   }
 
   private _getHouseClimateSummary(): HouseClimateSummary {
-    const values: Record<HouseClimateMetric['kind'], Array<{ value: number; unit: string; entityId: string }>> = {
-      temperature: [],
-      humidity: [],
-    };
-
+    const values: Record<HouseClimateMetric['kind'], Array<{ value: number; unit: string; entityIds: string[] }>> = { temperature: [], humidity: [] };
+    const excludedAreas = new Set(this.config?.settings?.home_climate_excluded_areas || []);
     this._getVisibleSortedAreas().forEach(area => {
-      this._getFilteredAreaEntities(area.area_id).forEach(entity => {
-        const state = this.hass?.states?.[entity.entity_id];
-        if (!state || !state.entity_id?.startsWith('sensor.')) return;
-
-        const deviceClass = String(state.attributes?.device_class || '').toLowerCase();
-        if (deviceClass !== 'temperature' && deviceClass !== 'humidity') return;
-
+      if (excludedAreas.has(area.area_id)) return;
+      const areaRegistry = this.hass?.areas?.[area.area_id] as any;
+      (['temperature', 'humidity'] as const).forEach(kind => {
+        const entityId = kind === 'temperature' ? areaRegistry?.temperature_entity_id : areaRegistry?.humidity_entity_id;
+        if (!entityId) return;
+        const state = this.hass?.states?.[entityId];
+        if (!state || state.state === 'unavailable' || state.state === 'unknown') return;
         const value = Number.parseFloat(state.state);
         if (!Number.isFinite(value)) return;
-
-        values[deviceClass].push({
-          value,
-          unit: String(state.attributes?.unit_of_measurement || (deviceClass === 'temperature'
-            ? this.hass?.config?.unit_system?.temperature || '°C'
-            : '%')),
-          entityId: entity.entity_id,
-        });
+        values[kind].push({ value, unit: String(state.attributes?.unit_of_measurement || (kind === 'temperature' ? this.hass?.config?.unit_system?.temperature || '°C' : '%')), entityIds: [entityId] });
       });
     });
-
     const metrics: HouseClimateMetric[] = [];
     const temperature = this._houseClimateMetric('temperature', values.temperature);
     const humidity = this._houseClimateMetric('humidity', values.humidity);
     if (temperature) metrics.push(temperature);
     if (humidity) metrics.push(humidity);
-
-    return {
-      sensorCount: values.temperature.length + values.humidity.length,
-      metrics,
-    };
+    return { sensorCount: values.temperature.length + values.humidity.length, metrics };
   }
 
   private _houseClimateMetric(
     kind: HouseClimateMetric['kind'],
-    values: Array<{ value: number; unit: string; entityId: string }>
+    values: Array<{ value: number; unit: string; entityIds: string[] }>
   ): HouseClimateMetric | undefined {
     if (!values.length) return undefined;
 
@@ -12113,7 +12098,7 @@ export class DwainsLayoutCard extends LitElement {
       count: values.length,
       icon: kind === 'temperature' ? getDeviceClassIcon('sensor', 'temperature') : getDeviceClassIcon('sensor', 'humidity'),
       color: kind === 'temperature' ? getDomainColor('sensor', 'temperature') : getDomainColor('sensor', 'humidity'),
-      entityIds: values.map(item => item.entityId),
+      entityIds: [...new Set(values.flatMap(item => item.entityIds))],
     };
   }
 

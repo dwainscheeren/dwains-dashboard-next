@@ -634,4 +634,9 @@ export const es = {
   'device_class.running': 'Activo',
   'device_class.update': 'Actualizaciones',
   'device_class.door_lock': 'Cabellos',
+  'settings.home_climate_areas_title': "Áreas incluidas en el clima interior",
+  'settings.home_climate_areas_description': "Elige qué áreas de Home Assistant se incluyen en la temperatura y la humedad medias de la información de la casa.",
+  'settings.home_climate_area_included': "Incluida en la media de la casa",
+  'settings.home_climate_area_excluded': "Excluida de la media de la casa",
+
 } as const satisfies TranslationDictionary;

@@ -634,4 +634,9 @@ export const nl = {
   'device_class.running': 'Actief',
   'device_class.update': 'Updates',
   'device_class.door_lock': 'Sloten',
+  'settings.home_climate_areas_title': "Ruimtes in het binnenklimaat",
+  'settings.home_climate_areas_description': "Kies welke Home Assistant-ruimtes meetellen voor de gemiddelde temperatuur en luchtvochtigheid in Woninginformatie.",
+  'settings.home_climate_area_included': "Telt mee in het huisgemiddelde",
+  'settings.home_climate_area_excluded': "Telt niet mee in het huisgemiddelde",
+
 } as const satisfies TranslationDictionary;

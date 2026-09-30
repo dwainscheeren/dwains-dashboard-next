@@ -251,6 +251,9 @@ export class DwainsDashboardStrategyEditor extends LitElement {
   @state()
   private _settingsPage: SettingsPageKey = restoreSettingsPage();
 
+  @state()
+  private _homeSettingsDetail: 'overview' | 'house_information' | 'climate' | 'cameras' | 'custom_cards' | 'favorites' = 'overview';
+
   // Dashboard-eigenschappen (naam + sidebar-icoon)
   @state() private _dashboardId?: string;
   @state() private _dashboardTitle = '';
@@ -711,20 +714,53 @@ export class DwainsDashboardStrategyEditor extends LitElement {
     this._showAlarmPicker = false;
   }
 
+  private _homeSettingsDetailHeader(): { title: string; description: string; backLabel: string } | undefined {
+    if (this._homeSettingsDetail === 'overview') return undefined;
+
+    if (this._homeSettingsDetail === 'climate') {
+      return {
+        title: this._t('home.indoor_climate'),
+        description: this._t('settings.home_climate_areas_description'),
+        backLabel: this._t('home_section.devices.label'),
+      };
+    }
+
+    const section: HomeSectionKey = this._homeSettingsDetail === 'house_information'
+      ? 'devices'
+      : this._homeSettingsDetail;
+    const meta = HOME_SECTION_META[section];
+    return {
+      title: this._t(meta.labelKey),
+      description: this._t(meta.descriptionKey),
+      backLabel: this._t('settings.home_page'),
+    };
+  }
+
+  private _backFromHomeSettingsDetail = (): void => {
+    this._homeSettingsDetail = this._homeSettingsDetail === 'climate' ? 'house_information' : 'overview';
+    this._closeInlinePickers();
+  };
+
   private _renderSettingsDetailPage(page: SettingsPageKey) {
     const item = this._settingsOverviewItems().find((candidate) => candidate.page === page);
     if (!item) return this._renderSettingsOverview();
 
+    const homeDetail = page === 'home' ? this._homeSettingsDetailHeader() : undefined;
+    const title = homeDetail?.title || item.title;
+    const description = homeDetail?.description || item.description;
+    const backLabel = homeDetail?.backLabel || this._t('settings.all_settings');
+    const backAction = homeDetail ? this._backFromHomeSettingsDetail : this._backToSettingsOverview;
+
     return html`
       <div class="editor-container">
         <div class="settings-detail-toolbar">
-          <button class="settings-back-button" type="button" @click=${this._backToSettingsOverview}>
+          <button class="settings-back-button" type="button" @click=${backAction}>
             <ha-icon icon="mdi:arrow-left"></ha-icon>
-            <span>${this._t('settings.all_settings')}</span>
+            <span>${backLabel}</span>
           </button>
           <div class="settings-detail-title">
-            <span>${item.title}</span>
-            <small>${item.description}</small>
+            <span>${title}</span>
+            <small>${description}</small>
           </div>
         </div>
         <div class="settings-detail-content">
@@ -739,10 +775,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
       case "dashboard":
         return this._renderDashboardSettingsPanel();
       case "home":
-        return html`
-          ${this._renderHomeLayoutSettingsPanel()}
-          ${this._renderFavoritesSettingsPanel()}
-        `;
+        return this._renderHomeLayoutSettingsPanel();
       case "header":
         return html`
           ${this._renderTimeSettingsPanel()}
@@ -892,17 +925,69 @@ export class DwainsDashboardStrategyEditor extends LitElement {
     );
   }
 
+  private _homeSectionDetail(section: HomeSectionKey): typeof this._homeSettingsDetail | undefined {
+    if (section === 'devices') return 'house_information';
+    if (section === 'cameras') return 'cameras';
+    if (section === 'custom_cards') return 'custom_cards';
+    if (section === 'favorites') return 'favorites';
+    return undefined;
+  }
+
+  private _openHomeSectionDetail(section: HomeSectionKey): void {
+    const detail = this._homeSectionDetail(section);
+    if (!detail) return;
+    this._homeSettingsDetail = detail;
+    this._closeInlinePickers();
+  }
+
   private _renderHomeLayoutSettingsPanel() {
+    if (this._homeSettingsDetail === 'climate') {
+      return this._renderSettingsPanel(
+        "mdi:home-thermometer-outline",
+        this._t('home.indoor_climate'),
+        this._t('settings.home_climate_areas_description'),
+        this._renderHomeClimateAreaSettings()
+      );
+    }
+
+    if (this._homeSettingsDetail === 'house_information') {
+      return this._renderSettingsPanel(
+        "mdi:home-edit-outline",
+        this._t('settings.house_information_cards'),
+        this._t('settings.house_information_cards_description'),
+        this._renderHomeInformationCardSettings()
+      );
+    }
+
+    if (this._homeSettingsDetail === 'cameras') {
+      const meta = HOME_SECTION_META.cameras;
+      return this._renderSettingsPanel(
+        meta.icon,
+        this._t(meta.labelKey),
+        this._t(meta.descriptionKey),
+        this._renderHomeCameraSettings()
+      );
+    }
+
+    if (this._homeSettingsDetail === 'custom_cards') {
+      const meta = HOME_SECTION_META.custom_cards;
+      return this._renderSettingsPanel(
+        meta.icon,
+        this._t(meta.labelKey),
+        this._t(meta.descriptionKey),
+        this._renderHomeCustomCardsSettings()
+      );
+    }
+
+    if (this._homeSettingsDetail === 'favorites') {
+      return this._renderFavoritesSettingsPanel();
+    }
+
     return this._renderSettingsPanel(
       "mdi:home-edit-outline",
       this._t('settings.home_layout'),
       this._t('settings.home_layout_description'),
-      html`
-        ${this._renderHomeSectionOrder()}
-        ${this._renderHomeCustomCardsSettings()}
-        ${this._renderHomeCameraSettings()}
-        ${this._renderHomeInformationCardSettings()}
-      `
+      this._renderHomeSectionOrder()
     );
   }
 
@@ -1547,6 +1632,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
           </section>
         ` : nothing}
 
+
         <section class="area-entity-layout-settings">
           <div class="area-entity-layout-copy">
             <strong>${this._t('settings.area_entity_layout_title')}</strong>
@@ -1969,19 +2055,21 @@ export class DwainsDashboardStrategyEditor extends LitElement {
                 this._draggedHomeSection &&
                 this._draggedHomeSection !== section;
 
+              const detail = this._homeSectionDetail(section);
               return html`
                 <div
-                  class="home-section-item ${enabled ? '' : 'disabled'} ${isDragging ? 'dragging' : ''} ${isDragOver ? 'drag-over' : ''}"
+                  class="home-section-item ${enabled ? '' : 'disabled'} ${detail ? 'has-detail' : ''} ${isDragging ? 'dragging' : ''} ${isDragOver ? 'drag-over' : ''}"
                   draggable="true"
                   data-section=${section}
                   data-index=${index}
+                  @click=${() => detail && this._openHomeSectionDetail(section)}
                   @dragstart=${(e: DragEvent) => this._handleHomeSectionDragStart(e, section)}
                   @dragend=${this._handleHomeSectionDragEnd}
                   @dragover=${(e: DragEvent) => this._handleHomeSectionDragOver(e, index)}
                   @dragleave=${this._handleHomeSectionDragLeave}
                   @drop=${(e: DragEvent) => this._handleHomeSectionDrop(e, index)}
                 >
-                  <div class="home-section-handle">
+                  <div class="home-section-handle" @click=${(event: Event) => event.stopPropagation()}>
                     <ha-svg-icon .path=${mdiDrag}></ha-svg-icon>
                   </div>
                   <div class="home-section-icon">
@@ -1991,7 +2079,8 @@ export class DwainsDashboardStrategyEditor extends LitElement {
                     <div class="home-section-title">${this._t(meta.labelKey)}</div>
                     <div class="home-section-description">${this._t(meta.descriptionKey)}</div>
                   </div>
-                  <div class="home-section-actions">
+                  ${detail ? html`<ha-svg-icon class="home-section-detail-chevron" .path=${mdiChevronRight}></ha-svg-icon>` : nothing}
+                  <div class="home-section-actions" @click=${(event: Event) => event.stopPropagation()}>
                     <button
                       class="home-section-toggle ${enabled ? 'enabled' : ''}"
                       type="button"
@@ -2165,12 +2254,48 @@ export class DwainsDashboardStrategyEditor extends LitElement {
     `;
   }
 
+  private _getExcludedHomeClimateAreas(): Set<string> {
+    return new Set(this._config?.settings?.home_climate_excluded_areas || []);
+  }
+
+  private _toggleHomeClimateArea(areaId: string, included: boolean): void {
+    if (!this._config) return;
+    const excluded = this._getExcludedHomeClimateAreas();
+    if (included) excluded.delete(areaId); else excluded.add(areaId);
+    this._fireConfigChanged({
+      ...this._config,
+      settings: { ...this._config.settings, home_climate_excluded_areas: [...excluded] },
+    });
+  }
+
+  private _renderHomeClimateAreaSettings() {
+    if (!this._config || !this.hass) return nothing;
+    const excluded = this._getExcludedHomeClimateAreas();
+    const hiddenAreas = new Set(this._config.areas_display?.hidden || []);
+    const areas = sortAreas(this._config.areas || [], { ...this._config.areas_display, hidden: [] }, ddLocale(this.hass))
+      .filter(area => !hiddenAreas.has(area.area_id));
+    return html`
+      <div class="home-info-card-section home-climate-area-settings">
+        <div class="home-info-card-header"><div><h4>${this._t('settings.home_climate_areas_title')}</h4><p>${this._t('settings.home_climate_areas_description')}</p></div></div>
+        <div class="home-info-card-list">
+          ${areas.map(area => { const included = !excluded.has(area.area_id); return html`
+            <div class="home-info-card-item ${included ? 'enabled' : 'disabled'}">
+              <div class="home-section-icon"><ha-icon icon=${area.icon || 'mdi:floor-plan'}></ha-icon></div>
+              <div class="home-section-copy"><div class="home-section-title">${area.name}</div></div>
+              <ha-switch .checked=${included} @change=${(event: Event) => this._toggleHomeClimateArea(area.area_id, (event.target as any).checked)}></ha-switch>
+            </div>
+          `; })}
+        </div>
+      </div>
+    `;
+  }
+
   private _renderHomeInformationCardSettings() {
     const hiddenCards = this._getHiddenHomeInformationCards();
     const visibleCount = DEFAULT_HOME_INFORMATION_CARDS.filter(card => !hiddenCards.has(card)).length;
 
     return html`
-      <div class="home-info-card-section">
+      <div class="home-info-card-section home-information-card-settings">
         <div class="home-info-card-header">
           <div>
             <h4>${this._t('settings.house_information_cards')}</h4>
@@ -2182,20 +2307,31 @@ export class DwainsDashboardStrategyEditor extends LitElement {
           ${DEFAULT_HOME_INFORMATION_CARDS.map(card => {
             const meta = HOME_INFORMATION_CARD_META[card];
             const enabled = !hiddenCards.has(card);
+            const clickable = card === 'climate';
 
             return html`
-              <div class="home-info-card-item ${enabled ? 'enabled' : 'disabled'}">
-                <div class="home-section-icon">
-                  <ha-icon icon=${meta.icon}></ha-icon>
-                </div>
+              <div
+                class="home-info-card-item ${enabled ? 'enabled' : 'disabled'} ${clickable ? 'has-detail' : ''}"
+                @click=${() => { if (clickable) this._homeSettingsDetail = 'climate'; }}
+              >
+                <div class="home-section-icon"><ha-icon icon=${meta.icon}></ha-icon></div>
                 <div class="home-section-copy">
                   <div class="home-section-title">${this._t(meta.labelKey)}</div>
                   <div class="home-section-description">${this._t(meta.descriptionKey)}</div>
                 </div>
-                <ha-switch
-                  .checked=${enabled}
-                  @change=${() => this._toggleHomeInformationCardEnabled(card)}
-                ></ha-switch>
+                <div class="home-info-card-actions" @click=${(event: Event) => event.stopPropagation()}>
+                  ${clickable ? html`<ha-svg-icon class="home-section-detail-chevron" .path=${mdiChevronRight}></ha-svg-icon>` : nothing}
+                  <button
+                    class="home-section-toggle ${enabled ? 'enabled' : ''}"
+                    type="button"
+                    title=${enabled ? this._t('settings.hide_section') : this._t('settings.show_section')}
+                    aria-label=${enabled ? this._t('settings.hide_section') : this._t('settings.show_section')}
+                    aria-pressed=${enabled ? 'true' : 'false'}
+                    @click=${() => this._toggleHomeInformationCardEnabled(card)}
+                  >
+                    <ha-icon icon=${enabled ? 'mdi:eye-outline' : 'mdi:eye-off-outline'}></ha-icon>
+                  </button>
+                </div>
               </div>
             `;
           })}
@@ -4756,9 +4892,42 @@ export class DwainsDashboardStrategyEditor extends LitElement {
         grid-template-columns: 42px minmax(0, 1fr) auto;
       }
 
+      .home-section-item.has-detail,
+      .home-info-card-item.has-detail {
+        cursor: pointer;
+      }
+
+      .home-section-item.has-detail:hover,
+      .home-info-card-item.has-detail:hover {
+        border-color: color-mix(in srgb, var(--primary-color) 48%, var(--divider-color));
+        background: color-mix(in srgb, var(--primary-color) 4%, var(--card-background-color));
+      }
+
+      .home-section-detail-chevron {
+        width: 20px;
+        height: 20px;
+        flex: 0 0 auto;
+        color: var(--secondary-text-color);
+      }
+
+      .home-section-item > .home-section-detail-chevron {
+        margin-left: -2px;
+      }
+
+      .home-info-card-actions {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+      }
+
       .home-info-card-section {
         display: grid;
         gap: 10px;
+      }
+
+      .home-information-card-settings,
+      .home-climate-area-settings {
+        padding: 0 16px 16px;
       }
 
       .home-camera-settings-section {
@@ -4894,6 +5063,12 @@ export class DwainsDashboardStrategyEditor extends LitElement {
 
       .home-section-copy {
         min-width: 0;
+        display: block;
+      }
+
+      .home-section-copy .home-section-title,
+      .home-section-copy .home-section-description {
+        display: block;
       }
 
       .home-section-title {
@@ -4906,6 +5081,10 @@ export class DwainsDashboardStrategyEditor extends LitElement {
         font-size: 12px;
         line-height: 1.35;
         color: var(--secondary-text-color);
+      }
+
+      .home-section-item.has-detail {
+        grid-template-columns: 32px 42px minmax(0, 1fr) 20px auto;
       }
 
       .home-section-actions {
@@ -4950,6 +5129,10 @@ export class DwainsDashboardStrategyEditor extends LitElement {
       @media (max-width: 600px) {
         .home-section-item {
           grid-template-columns: 28px 36px minmax(0, 1fr);
+        }
+
+        .home-section-item.has-detail {
+          grid-template-columns: 28px 36px minmax(0, 1fr) 20px;
         }
 
         .home-info-card-item {
