@@ -92,9 +92,7 @@ export class DwainsBottomNav extends LitElement {
     const first = !this._hass;
     this._hass = hass;
     this._syncThemeAttribute();
-    _applyHaSidebarRestriction(this._hass, this._settings, this.dashSegment);
-    _syncHaShellForBottomNav(this.dashSegment);
-    _injectSidebarSection(this._hass, this._settings, this.dashSegment);
+    _syncHaShell(this._hass, this._settings, this.dashSegment);
     if (first) this._loadItems();
   }
   get hass() {
@@ -102,11 +100,11 @@ export class DwainsBottomNav extends LitElement {
   }
 
   set dashboardSettings(settings: DwainsDashboardSettings | undefined) {
+    // Called on every hass update; only act when the settings really change.
+    if (settings === this._settings) return;
     this._settings = settings;
     if (!this._isHaMenuRestricted()) this._restrictedMenuOpen = false;
-    _applyHaSidebarRestriction(this._hass, this._settings, this.dashSegment);
-    _syncHaShellForBottomNav(this.dashSegment);
-    _injectSidebarSection(this._hass, this._settings, this.dashSegment);
+    _syncHaShell(this._hass, this._settings, this.dashSegment, true);
     this.requestUpdate();
   }
 
@@ -133,9 +131,7 @@ export class DwainsBottomNav extends LitElement {
     this._active = this._normalizeActivePath(this._currentPath());
     // Zichtbaar zolang we op ons eigen dashboard zitten.
     this._visible = !this.dashSegment || this._segment() === this.dashSegment;
-    _applyHaSidebarRestriction(this._hass, this._settings, this.dashSegment);
-    _syncHaShellForBottomNav(this.dashSegment);
-    _injectSidebarSection(this._hass, this._settings, this.dashSegment);
+    _syncHaShell(this._hass, this._settings, this.dashSegment, true);
     if (!this._visible) {
       this._pagesOpen = false;
       this._restrictedMenuOpen = false;
@@ -157,14 +153,18 @@ export class DwainsBottomNav extends LitElement {
   }
 
   private _handleAreaContext = (event: CustomEvent<AreaContext>) => {
-    this._areaContext = event.detail || { areaId: null, view: 'home' };
+    const next = event.detail || { areaId: null, view: 'home' };
+    // The layout card sends this on every hass update; skip unchanged contexts
+    // so the bar does not re-render each time.
+    if (!_sameContext(this._areaContext, next)) this._areaContext = next;
     if (this._isHomeRoute(this._currentPath())) {
       this._active = 'home';
     }
   };
 
   private _handleDeviceContext = (event: CustomEvent<DeviceContext>) => {
-    this._deviceContext = event.detail || { domain: null };
+    const next = event.detail || { domain: null };
+    if (!_sameContext(this._deviceContext, next)) this._deviceContext = next;
     if (this._currentPath() === 'devices') {
       this._active = 'devices';
     }
@@ -1131,10 +1131,58 @@ export function ensureBottomNav(hass: any, settings?: DwainsDashboardSettings): 
   // Onthoud het dashboard-segment waarop wij draaien (voor de zichtbaarheid).
   const seg = window.location.pathname.split('/')[1];
   el.dashSegment = seg && seg !== 'lovelace' ? seg : 'lovelace';
-  _syncHaShellForBottomNav(el.dashSegment);
   el.dashboardSettings = settings;
   el.hass = hass;
-  _injectSidebarSection(hass, settings, el.dashSegment);
+}
+
+function _sameContext(a: object | undefined, b: object | undefined): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  const keysA = Object.keys(a);
+  const keysB = Object.keys(b);
+  return keysA.length === keysB.length &&
+    keysA.every((key) => (a as Record<string, unknown>)[key] === (b as Record<string, unknown>)[key]);
+}
+
+// ---- Shell sync scheduling -------------------------------------------------
+// Syncing the Home Assistant shell walks every shadow root on the page, so it
+// must not run on every hass update. It runs when something that affects the
+// shell changes, on navigation and settings changes, and otherwise at most once
+// every few seconds as a safety net for Home Assistant re-rendering its shell.
+const SHELL_REFRESH_MS = 5000;
+const NATIVE_HEADER_ATTEMPTS = 14;
+let _lastShellKey = '';
+let _lastShellSyncAt = 0;
+let _nativeHeaderTimer: number | undefined;
+let _sidebarRetryTimer: number | undefined;
+
+function _shellKey(hass: any, settings: DwainsDashboardSettings | undefined, dashSegment?: string): string {
+  return [
+    dashSegment || '',
+    _currentDashboardSegment(),
+    _isMobileViewport() ? 'mobile' : 'desktop',
+    restrictNonAdminHaSidebar(hass, settings) ? 'restricted' : '',
+    restrictNonAdminDashboardSettings(hass, settings) ? 'no-settings' : '',
+    hass?.locale?.language || hass?.language || '',
+  ].join('|');
+}
+
+function _syncHaShell(
+  hass: any,
+  settings: DwainsDashboardSettings | undefined,
+  dashSegment?: string,
+  force = false
+): void {
+  const key = _shellKey(hass, settings, dashSegment);
+  const changed = force || key !== _lastShellKey;
+  const now = Date.now();
+  if (!changed && now - _lastShellSyncAt < SHELL_REFRESH_MS) return;
+  _lastShellKey = key;
+  _lastShellSyncAt = now;
+  _applyHaSidebarRestriction(hass, settings, dashSegment);
+  // Late-rendered headers only need the retry chain after a real change.
+  _syncHaShellForBottomNav(dashSegment, changed);
+  _injectSidebarSection(hass, settings, dashSegment, 0, changed);
 }
 
 /**
@@ -1143,6 +1191,10 @@ export function ensureBottomNav(hass: any, settings?: DwainsDashboardSettings): 
  * dezelfde style in meerdere shell shadow-roots in plaats van alleen hui-root.
  */
 function _hideNativeHeaderOnMobile(attempt = 0): void {
+  if (attempt === 0 && _nativeHeaderTimer !== undefined) {
+    window.clearTimeout(_nativeHeaderTimer);
+    _nativeHeaderTimer = undefined;
+  }
   const roots = _nativeHeaderStyleRoots();
   const stillActive = document.documentElement.classList.contains(MOBILE_NAV_ACTIVE_CLASS) ||
     Boolean(document.body?.classList.contains(MOBILE_NAV_ACTIVE_CLASS));
@@ -1262,29 +1314,32 @@ function _hideNativeHeaderOnMobile(attempt = 0): void {
       style.id = HIDE_NATIVE_HEADER_STYLE_ID;
       host.appendChild(style);
     }
-    style.textContent = css;
+    if (style.textContent !== css) style.textContent = css;
   });
-  _setNativeHeaderElementsHidden(true);
-  if (attempt < 14) {
-    setTimeout(() => _hideNativeHeaderOnMobile(attempt + 1), attempt < 4 ? 80 : 250);
+  _setNativeHeaderElementsHidden(true, roots);
+  if (attempt < NATIVE_HEADER_ATTEMPTS) {
+    _nativeHeaderTimer = window.setTimeout(() => _hideNativeHeaderOnMobile(attempt + 1), attempt < 4 ? 80 : 250);
+  } else {
+    _nativeHeaderTimer = undefined;
   }
 }
 
+const NATIVE_HEADER_SHELL_TAGS = new Set([
+  'home-assistant',
+  'home-assistant-main',
+  'app-drawer-layout',
+  'app-header-layout',
+  'partial-panel-resolver',
+  'ha-panel-lovelace',
+  'hui-root',
+  'ha-app-layout',
+]);
+
 function _nativeHeaderStyleRoots(): (Document | ShadowRoot)[] {
+  // One walk over all shadow roots instead of one walk per shell tag.
   const roots = new Set<Document | ShadowRoot>([document]);
-  [
-    'home-assistant',
-    'home-assistant-main',
-    'app-drawer-layout',
-    'app-header-layout',
-    'partial-panel-resolver',
-    'ha-panel-lovelace',
-    'hui-root',
-    'ha-app-layout',
-  ].forEach((tag) => {
-    _deepFindAll(tag).forEach((el) => {
-      if (el.shadowRoot) roots.add(el.shadowRoot);
-    });
+  _shadowHosts().forEach((el) => {
+    if (el.shadowRoot && NATIVE_HEADER_SHELL_TAGS.has(el.localName)) roots.add(el.shadowRoot);
   });
   return Array.from(roots);
 }
@@ -1313,9 +1368,11 @@ function _nativeHeaderElementSelectors(): string {
   ].join(',');
 }
 
-function _setNativeHeaderElementsHidden(active: boolean): void {
+function _setNativeHeaderElementsHidden(
+  active: boolean,
+  roots: (Document | ShadowRoot)[] = _nativeHeaderStyleRoots()
+): void {
   const selector = _nativeHeaderElementSelectors();
-  const roots = _nativeHeaderStyleRoots();
   roots.forEach((root) => {
     root.querySelectorAll(selector).forEach((el) => {
       const element = el as HTMLElement;
@@ -1417,12 +1474,12 @@ function _isMobileNavActive(dashSegment?: string): boolean {
   return _isOnDashboard(dashSegment) && _isMobileViewport();
 }
 
-function _syncHaShellForBottomNav(dashSegment?: string): void {
+function _syncHaShellForBottomNav(dashSegment?: string, withRetries = true): void {
   const active = _isMobileNavActive(dashSegment);
   document.documentElement.classList.toggle(MOBILE_NAV_ACTIVE_CLASS, active);
   document.body?.classList.toggle(MOBILE_NAV_ACTIVE_CLASS, active);
   if (active) {
-    _hideNativeHeaderOnMobile();
+    _hideNativeHeaderOnMobile(withRetries ? 0 : NATIVE_HEADER_ATTEMPTS);
   } else {
     _setNativeHeaderElementsHidden(false);
   }
@@ -1727,7 +1784,7 @@ function _applyHaSidebarRestriction(
       style.id = 'dd-restrict-ha-sidebar';
       styleHost.appendChild(style);
     }
-    style.textContent = cssText;
+    if (style.textContent !== cssText) style.textContent = cssText;
   };
 
   apply(document, documentCss);
@@ -1750,11 +1807,16 @@ function _injectSidebarSection(
   hass: any,
   settings?: DwainsDashboardSettings,
   dashSegment?: string,
-  attempt = 0
+  attempt = 0,
+  rebuild = true
 ): void {
   _sidebarHass = hass;
   _sidebarSettings = settings;
   _sidebarDashSegment = dashSegment;
+  if (attempt === 0 && _sidebarRetryTimer !== undefined) {
+    window.clearTimeout(_sidebarRetryTimer);
+    _sidebarRetryTimer = undefined;
+  }
   if (!_isMobileNavActive(dashSegment)) {
     _removeSidebarSection();
     return;
@@ -1762,13 +1824,21 @@ function _injectSidebarSection(
 
   const sidebar = _deepFind('ha-sidebar');
   if (!sidebar || !sidebar.shadowRoot) {
-    if (attempt < 25) setTimeout(() => _injectSidebarSection(hass, settings, dashSegment, attempt + 1), 300);
+    if (attempt < 25) {
+      _sidebarRetryTimer = window.setTimeout(
+        () => _injectSidebarSection(hass, settings, dashSegment, attempt + 1, rebuild),
+        300
+      );
+    }
     return;
   }
-  _buildSidebarSection(sidebar, hass, settings, dashSegment);
+  // Only rebuild when something changed or the section went missing.
+  if (rebuild || !sidebar.shadowRoot.querySelector('#dd-sidebar-section')) {
+    _buildSidebarSection(sidebar, hass, settings, dashSegment);
+  }
   if (!_sidebarObserver) {
     _sidebarObserver = new MutationObserver(() => {
-      const sb = _deepFind('ha-sidebar');
+      const sb = sidebar.isConnected ? sidebar : _deepFind('ha-sidebar');
       if (sb?.shadowRoot && !sb.shadowRoot.querySelector('#dd-sidebar-section')) {
         _buildSidebarSection(sb, _sidebarHass, _sidebarSettings, _sidebarDashSegment);
       }
@@ -1780,9 +1850,7 @@ function _injectSidebarSection(
     _sidebarMediaListenerAttached = true;
     // Bij wisselen mobiel/desktop opnieuw evalueren (toevoegen of verwijderen).
     window.matchMedia(MOBILE_NAV_QUERY).addEventListener('change', () => {
-      _syncHaShellForBottomNav(_sidebarDashSegment);
-      const sb = _deepFind('ha-sidebar');
-      if (sb) _buildSidebarSection(sb, _sidebarHass, _sidebarSettings, _sidebarDashSegment);
+      _syncHaShell(_sidebarHass, _sidebarSettings, _sidebarDashSegment, true);
     });
   }
 }
@@ -1804,6 +1872,22 @@ function _deepFind(tag: string): Element | null {
     });
   }
   return null;
+}
+
+/** Alle elementen met een shadow root, dwars door shadow-roots heen, in één walk. */
+function _shadowHosts(): Element[] {
+  const hosts: Element[] = [];
+  const queue: (Document | ShadowRoot)[] = [document];
+  while (queue.length) {
+    const root = queue.shift()!;
+    root.querySelectorAll('*').forEach((el) => {
+      if (el.shadowRoot) {
+        hosts.push(el);
+        queue.push(el.shadowRoot);
+      }
+    });
+  }
+  return hosts;
 }
 
 /** Zoek alle elementen met de gegeven tag, dwars door shadow-roots heen. */
