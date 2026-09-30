@@ -6,6 +6,8 @@ export interface HomeAssistant {
   floors?: { [floorId: string]: FloorRegistryEntry };
   user: HassUser;
   language: string;
+  /** User profile settings for language, number, date and time formats. */
+  locale?: FrontendLocaleData;
   config: HassConfig;
   themes: any;
   localize: (key: string, ...args: any[]) => string;
@@ -13,6 +15,17 @@ export interface HomeAssistant {
   callService: (domain: string, service: string, serviceData?: any) => Promise<void>;
   formatEntityState: (stateObj: HassEntity) => string;
   formatEntityAttributeValue: (stateObj: HassEntity, attribute: string) => string;
+}
+
+export interface FrontendLocaleData {
+  language: string;
+  number_format?: string;
+  /** '12', '24', 'language' or 'system'. */
+  time_format?: string;
+  date_format?: string;
+  /** 'local' (browser) or 'server'. */
+  time_zone?: string;
+  first_weekday?: string;
 }
 
 export interface HassEntity {

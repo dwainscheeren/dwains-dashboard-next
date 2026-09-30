@@ -12,6 +12,7 @@ import { getAreaData, clearAreaDataCache } from '../utils/area';
 import { AreaEntityResolver } from '../utils/area-entity-resolver';
 import { ManagedSubscription } from '../utils/managed-subscription';
 import { updateStoredDashboardStrategy } from '../utils/dashboard-config-store';
+import { formatClock, msUntilNextMinute } from '../utils/clock';
 import { isHiddenAsUnavailable, splitHiddenUnavailableEntities } from '../utils/entity-availability';
 import { getAreaConfigMap, getHiddenPersonIdSet, resolveStatusEntityAreaId } from '../utils/entity-lookups';
 import { getDomainStates } from '../utils/state-index';
@@ -62,6 +63,8 @@ const SIDEBAR_COLLAPSED_STORAGE_KEY = 'dd-next-area-sidebar-collapsed';
 const AREA_EDIT_MODE_STORAGE_KEY = 'dd-next-area-edit-mode';
 const AREA_EDIT_MODE_RESTORE_MS = 30000;
 const OPTIMISTIC_ENTITY_STATE_TTL = 5000;
+// Update the clock just after the minute changes.
+const CLOCK_TICK_MARGIN_MS = 50;
 const SIDEBAR_DEFAULT_WIDTH = 250;
 const SIDEBAR_MIN_WIDTH = 240;
 const SIDEBAR_MAX_WIDTH = 660;
@@ -211,7 +214,7 @@ export class DwainsLayoutCard extends LitElement {
   // computed at most once per hass object and config.
   private _areaResolver = new AreaEntityResolver();
   private _hostedCards?: Element[];
-  private _timeInterval?: number;
+  private _clockTimer?: number;
   private _resizeObserver?: ResizeObserver;
   private _persistentNotificationsSubscription = new ManagedSubscription();
   private _persistentNotificationsLoaded = false;
@@ -483,6 +486,9 @@ export class DwainsLayoutCard extends LitElement {
 
     // Handle hass updates for live entity state changes
     if (changedProps.has('hass') && this.hass) {
+      if (this._clockSettingsChanged(changedProps.get('hass') as HomeAssistant | undefined, this.hass)) {
+        this._updateTime();
+      }
       this._syncThemeAttribute();
       // Houd de mobiele onderbalk levend en up-to-date.
       ensureBottomNav(this.hass, this.config?.settings);
@@ -512,9 +518,7 @@ export class DwainsLayoutCard extends LitElement {
     this._persistentNotificationsLoaded = false;
     this._cleanupEventListeners();
     this._cleanupObservers();
-    if (this._timeInterval) {
-      clearInterval(this._timeInterval);
-    }
+    this._stopTimeUpdate();
     this._stopHomeSummariesRefresh();
     if (this._areaHeaderScrollRaf) {
       cancelAnimationFrame(this._areaHeaderScrollRaf);
@@ -820,22 +824,44 @@ export class DwainsLayoutCard extends LitElement {
   }
 
   private _startTimeUpdate() {
+    this._stopTimeUpdate();
     this._updateTime();
-    this._timeInterval = window.setInterval(() => this._updateTime(), 60000);
+    this._scheduleNextTimeUpdate();
   }
 
+  /** Ticks on the minute boundary, so the clock never lags up to a minute behind. */
+  private _scheduleNextTimeUpdate(): void {
+    this._clockTimer = window.setTimeout(() => {
+      this._clockTimer = undefined;
+      this._updateTime();
+      this._scheduleNextTimeUpdate();
+    }, msUntilNextMinute(Date.now()) + CLOCK_TICK_MARGIN_MS);
+  }
+
+  private _stopTimeUpdate(): void {
+    if (this._clockTimer !== undefined) {
+      window.clearTimeout(this._clockTimer);
+      this._clockTimer = undefined;
+    }
+  }
+
+  /** Time and date in the time format and time zone of the user profile. */
   private _updateTime() {
-    const now = new Date();
-    this._currentTime = now.toLocaleTimeString(this.hass?.language || 'en', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false
-    });
-    this._currentDate = now.toLocaleDateString(this.hass?.language || 'en', {
-      weekday: 'short',
-      day: 'numeric',
-      month: 'short'
-    });
+    const clock = formatClock(new Date(), {
+      language: ddLocale(this.hass),
+      time_format: this.hass?.locale?.time_format,
+      time_zone: this.hass?.locale?.time_zone,
+    }, this.hass?.config?.time_zone);
+    this._currentTime = clock.time;
+    this._currentDate = clock.date;
+  }
+
+  /** Whether the language, time format or time zone of the clock changed. */
+  private _clockSettingsChanged(oldHass: HomeAssistant | undefined, newHass: HomeAssistant): boolean {
+    return !oldHass ||
+      oldHass.language !== newHass.language ||
+      oldHass.locale !== newHass.locale ||
+      oldHass.config?.time_zone !== newHass.config?.time_zone;
   }
 
   private _loadMobileEntityLayoutPreference(): void {
