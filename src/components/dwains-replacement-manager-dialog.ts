@@ -809,12 +809,15 @@ export function openReplacementManager(
   config: DwainsDashboardConfig,
   onSave: (config: DwainsDashboardConfig) => void
 ): void {
-  let dlg = document.querySelector(
+  // Mount inside <home-assistant>, where Home Assistant mounts its own dialogs,
+  // so cards and controls can reach the context it provides.
+  const root: ParentNode = (document.querySelector('home-assistant') as HTMLElement | null)?.shadowRoot || document.body;
+  let dlg = root.querySelector(
     'dwains-dashboard-next-replacement-manager-dialog'
   ) as DwainsReplacementManagerDialog | null;
   if (!dlg) {
     dlg = document.createElement('dwains-dashboard-next-replacement-manager-dialog') as DwainsReplacementManagerDialog;
-    document.body.appendChild(dlg);
+    root.appendChild(dlg);
   }
   dlg.hass = hass;
   dlg.showDialog({ config, onSave });

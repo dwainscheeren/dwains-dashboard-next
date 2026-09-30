@@ -28,7 +28,6 @@ import { TRANSLATIONS_LOADED_EVENT } from '../i18n';
 // The settings editor is large and only needed on the settings page.
 const loadStrategyEditor = () => import('./dwains-dashboard-strategy-editor');
 import { ensureBottomNav } from './dwains-bottom-nav';
-import { makeDialogManager } from './utils/make-dialog-manager';
 import './utils/dd-card-host';
 import './utils/dd-tile-host';
 import { fireEvent } from './utils/fire-event';
@@ -461,7 +460,6 @@ export class DwainsLayoutCard extends LitElement {
     window.addEventListener('dwains-dashboard-next-open-home', this._handleOpenHomeEvent);
     this._startTimeUpdate();
     this._initializeObservers();
-    makeDialogManager(this);
   }
 
   protected override willUpdate(changedProps: PropertyValues): void {
@@ -3593,7 +3591,8 @@ export class DwainsLayoutCard extends LitElement {
   }
 
   // Dispatch een show-dialog event voor een (native HA) dialog dat al
-  // geregistreerd is. De dialog-manager maakt het element aan.
+  // geregistreerd is. Home Assistant's eigen dialog-manager maakt het element
+  // aan, hangt het in <home-assistant> en koppelt het aan de terugknop.
   private _fireNativeDialog(tag: string, dialogParams: any) {
     this.dispatchEvent(new CustomEvent('show-dialog', {
       bubbles: true,
