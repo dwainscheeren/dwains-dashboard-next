@@ -1481,7 +1481,7 @@ export const layoutCardStyles = css`
       }
 
       .weather-label {
-        font-size: 10px;
+        font-size: 11px;
       }
     }
 
@@ -2804,7 +2804,7 @@ export const layoutCardStyles = css`
     .metric-range {
       margin-top: 4px;
       color: color-mix(in srgb, var(--primary-text-color) 38%, transparent);
-      font-size: 10px;
+      font-size: 11px;
       font-weight: 800;
       line-height: 1;
     }
@@ -3422,7 +3422,7 @@ export const layoutCardStyles = css`
 
     .mobile-entity-meta {
       color: color-mix(in srgb, var(--primary-text-color) 42%, transparent);
-      font-size: 10px;
+      font-size: 11px;
       font-weight: 750;
       line-height: 1.1;
       overflow: hidden;
@@ -4336,7 +4336,7 @@ export const layoutCardStyles = css`
     .favorite-state {
       margin-top: 0;
       color: color-mix(in srgb, var(--primary-text-color) 58%, transparent);
-      font-size: 10px;
+      font-size: 11px;
       font-weight: 750;
       line-height: 1.15;
       overflow: hidden;
@@ -4347,7 +4347,7 @@ export const layoutCardStyles = css`
     .favorite-area {
       margin-top: 0;
       color: color-mix(in srgb, var(--primary-text-color) 46%, transparent);
-      font-size: 10px;
+      font-size: 11px;
       font-weight: 750;
       line-height: 1.1;
       overflow: hidden;
@@ -5194,7 +5194,7 @@ export const layoutCardStyles = css`
     }
 
     .house-climate-metric-label {
-      font-size: 10px;
+      font-size: 11px;
       font-weight: 750;
       color: var(--secondary-text-color);
     }
@@ -5368,7 +5368,7 @@ export const layoutCardStyles = css`
 
     .house-person-mini-state {
       color: var(--secondary-text-color);
-      font-size: 10px;
+      font-size: 11px;
       font-weight: 700;
       line-height: 1.1;
     }
@@ -5454,7 +5454,7 @@ export const layoutCardStyles = css`
       width: 100%;
       margin-top: 1px;
       color: var(--secondary-text-color);
-      font-size: 10px;
+      font-size: 11px;
       font-weight: 750;
       line-height: 1.1;
       white-space: nowrap;
@@ -6876,7 +6876,7 @@ export const layoutCardStyles = css`
       }
 
       .area-header-metric .metric-label {
-        font-size: 10px;
+        font-size: 11px;
         letter-spacing: 0.02em;
         text-transform: uppercase;
       }
@@ -7354,7 +7354,7 @@ export const layoutCardStyles = css`
       }
 
       .area-header.is-stuck .area-quick-count {
-        font-size: 10px;
+        font-size: 11px;
       }
 
       .area-header.is-stuck .area-quick-switch {
@@ -7590,7 +7590,7 @@ export const layoutCardStyles = css`
       }
 
       .area-header.is-stuck .area-header-metric .metric-value {
-        font-size: 9px;
+        font-size: 11px;
       }
 
       .area-header.is-stuck .area-header-metric .metric-label {
@@ -7598,7 +7598,7 @@ export const layoutCardStyles = css`
       }
 
       .area-header.is-stuck .area-header-metric .metric-reading {
-        font-size: 10px;
+        font-size: 11px;
       }
 
       .area-header.is-stuck .area-header-metric .metric-range {
@@ -8077,7 +8077,7 @@ export const layoutCardStyles = css`
       }
 
       .area-content-area .area-header-metric .metric-value {
-        font-size: 10px;
+        font-size: 11px;
       }
 
       .area-content-area .area-header-metric .metric-label {
@@ -8388,7 +8388,7 @@ export const layoutCardStyles = css`
       }
 
       .area-content-area .area-quick-count {
-        font-size: 10px;
+        font-size: 11px;
       }
 
       .area-content-area .area-quick-switch {
