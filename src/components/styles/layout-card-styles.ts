@@ -1651,6 +1651,230 @@ export const layoutCardStyles = css`
       min-width: 0;
     }
 
+    /* Scenes & scripts: compact chips that run a scene or script on tap. */
+    .home-scenes-section {
+      --home-section-color: #db2777;
+      position: relative;
+      margin-bottom: 36px;
+    }
+
+    .home-scenes-section .home-status-heading ha-icon {
+      color: var(--home-section-color);
+      background: color-mix(in srgb, var(--home-section-color) 12%, transparent);
+      box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--home-section-color) 8%, transparent);
+    }
+
+    .home-scenes-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .home-scene-chip {
+      --scene-color: var(--home-section-color, var(--primary-color));
+      appearance: none;
+      box-sizing: border-box;
+      min-width: 0;
+      max-width: 280px;
+      min-height: 56px;
+      padding: 8px 16px 8px 8px;
+      display: inline-flex;
+      align-items: center;
+      gap: 11px;
+      border: 1px solid color-mix(in srgb, var(--primary-text-color) 9%, transparent);
+      border-radius: 12px;
+      background: var(--card-background-color);
+      color: var(--primary-text-color);
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+      box-shadow: 0 8px 20px color-mix(in srgb, var(--primary-text-color) 5%, transparent);
+      -webkit-tap-highlight-color: transparent;
+      transition:
+        transform 0.16s ease,
+        border-color 0.16s ease,
+        box-shadow 0.16s ease;
+    }
+
+    .home-scene-chip:hover:not(:disabled) {
+      transform: translateY(-1px);
+      border-color: color-mix(in srgb, var(--scene-color) 35%, transparent);
+      box-shadow: 0 12px 26px color-mix(in srgb, var(--scene-color) 13%, transparent);
+    }
+
+    .home-scene-chip:active:not(:disabled) {
+      transform: scale(0.97);
+    }
+
+    .home-scene-chip:focus-visible {
+      outline: 2px solid color-mix(in srgb, var(--scene-color) 70%, #ffffff);
+      outline-offset: 2px;
+    }
+
+    .home-scene-chip:disabled {
+      cursor: not-allowed;
+      opacity: 0.55;
+      box-shadow: none;
+    }
+
+    .home-scene-chip:disabled .home-scene-icon {
+      color: var(--secondary-text-color);
+      background: color-mix(in srgb, var(--secondary-text-color) 12%, transparent);
+    }
+
+    .home-scene-chip.is-pending {
+      cursor: progress;
+    }
+
+    .home-scene-icon {
+      width: 38px;
+      height: 38px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex: 0 0 auto;
+      border-radius: 9px;
+      color: var(--scene-color);
+      background: color-mix(in srgb, var(--scene-color) 14%, transparent);
+      transition:
+        color 0.2s ease,
+        background-color 0.2s ease;
+    }
+
+    .home-scene-icon ha-icon {
+      --mdc-icon-size: 21px;
+    }
+
+    .home-scene-copy {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .home-scene-name {
+      font-size: 14px;
+      font-weight: 850;
+      line-height: 1.2;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .home-scene-meta {
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--secondary-text-color);
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1.25;
+    }
+
+    .home-scene-meta-text {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    /* Waiting for Home Assistant: the icon breathes. */
+    .home-scene-chip.is-pending .home-scene-icon {
+      animation: dd-scene-pending 0.9s ease-in-out infinite;
+    }
+
+    /* Done: a short green check. */
+    .home-scene-chip.is-success {
+      border-color: color-mix(in srgb, var(--success-color, #43a047) 45%, transparent);
+    }
+
+    .home-scene-chip.is-success .home-scene-icon {
+      color: #ffffff;
+      background: var(--success-color, #43a047);
+      animation: dd-scene-done 0.3s ease-out;
+    }
+
+    .home-scene-chip.is-success .home-scene-meta {
+      color: var(--success-color, #43a047);
+    }
+
+    /* A script that is still running. */
+    .home-scene-chip.is-running .home-scene-icon {
+      color: #ffffff;
+      background: var(--scene-color);
+    }
+
+    .home-scene-chip.is-running .home-scene-meta {
+      color: var(--scene-color);
+    }
+
+    .home-scene-running-dot {
+      width: 7px;
+      height: 7px;
+      flex: 0 0 auto;
+      border-radius: 999px;
+      background: currentColor;
+      animation: dd-scene-running 1.2s ease-in-out infinite;
+    }
+
+    @keyframes dd-scene-pending {
+      50% { transform: scale(0.88); opacity: 0.6; }
+    }
+
+    @keyframes dd-scene-done {
+      from { transform: scale(0.8); }
+      to { transform: scale(1); }
+    }
+
+    @keyframes dd-scene-running {
+      50% { opacity: 0.25; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .home-scene-chip.is-pending .home-scene-icon,
+      .home-scene-chip.is-success .home-scene-icon,
+      .home-scene-running-dot {
+        animation: none;
+      }
+
+      .home-scene-chip.is-pending .home-scene-icon {
+        opacity: 0.6;
+      }
+
+      .home-scene-chip:hover:not(:disabled),
+      .home-scene-chip:active:not(:disabled) {
+        transform: none;
+      }
+    }
+
+    :host([data-theme-dark]) .home-scene-chip {
+      background:
+        linear-gradient(180deg,
+          color-mix(in srgb, var(--card-background-color) 88%, #ffffff 4%),
+          color-mix(in srgb, var(--card-background-color) 96%, #000000 4%));
+      border-color: rgba(255, 255, 255, 0.08);
+      box-shadow:
+        0 12px 26px rgba(0, 0, 0, 0.24),
+        inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    }
+
+    :host([data-theme-dark]) .home-scene-chip:not(.is-running, .is-success, :disabled) .home-scene-icon {
+      background: color-mix(in srgb, var(--scene-color) 20%, transparent);
+    }
+
+    .dd-visually-hidden {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      margin: -1px;
+      padding: 0;
+      overflow: hidden;
+      clip: rect(0 0 0 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
     .home-summary-list {
       width: min(100%, 980px);
       display: grid;
@@ -5683,6 +5907,45 @@ export const layoutCardStyles = css`
         grid-template-columns: minmax(0, 1fr);
         gap: 10px;
         padding: 2px 18px 16px;
+      }
+
+      .home-scenes-section {
+        min-width: 0;
+        margin: 0 -10px 18px;
+      }
+
+      .home-scenes-list {
+        flex-wrap: nowrap;
+        gap: 8px;
+        padding: 2px 18px 16px;
+        overflow-x: auto;
+        scroll-padding: 18px;
+        scroll-snap-type: x proximity;
+        scrollbar-width: none;
+      }
+
+      .home-scenes-list::-webkit-scrollbar {
+        display: none;
+      }
+
+      .home-scenes-section.layout-grid .home-scenes-list {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        overflow: visible;
+        scroll-snap-type: none;
+      }
+
+      .home-scene-chip {
+        flex: 0 0 auto;
+        max-width: 220px;
+        border-radius: 14px;
+        scroll-snap-align: start;
+      }
+
+      .home-scenes-section.layout-grid .home-scene-chip {
+        width: 100%;
+        max-width: none;
+        scroll-snap-align: none;
       }
 
       .home-summary-list {

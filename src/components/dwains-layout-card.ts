@@ -33,6 +33,7 @@ import { navigateHomeAssistant } from '../utils/navigation';
 import { syncHassDarkThemeAttribute } from '../utils/theme';
 import { HOME_SECTION_META, normalizeHiddenHomeInformationCards, normalizeHiddenHomeSections, normalizeHomeSectionsOrder } from '../utils/home-sections';
 import { buildHousePowerUsage } from '../utils/power-usage';
+import { normalizeHomeScenes, resolveHomeSceneItems, type HomeSceneItem } from '../utils/home-scenes';
 import { formatEntityStateWithUnit, formatValueWithUnit } from '../utils/unit-format';
 import { showDomainEntitiesDialog } from './utils/show-domain-entities-dialog';
 import { showCardEditorDialog } from './utils/show-card-editor-dialog';
@@ -77,6 +78,8 @@ const MOBILE_INITIAL_HOME_AREAS = 12;
 const MOBILE_INITIAL_ENTITY_GROUPS = 4;
 const MOBILE_INITIAL_ENTITY_CARDS = 12;
 const UNGROUPED_AREA_EDIT_GROUP = '__ungrouped__';
+// How long a scene or script chip shows its success state after a tap.
+const HOME_SCENE_SUCCESS_MS = 1500;
 const ICON_ARROW_LEFT = 'M20,11V13H8L13.5,18.5L12.08,19.92L4.16,12L12.08,4.08L13.5,5.5L8,11H20Z';
 
 interface PersistentNotification {
@@ -193,6 +196,11 @@ export class DwainsLayoutCard extends LitElement {
   @state() private _mobileHomeDevicesLayout: 'rail' | 'grid' = 'rail';
   @state() private _mobileHomeFavoritesLayout: 'rail' | 'grid' = 'rail';
   @state() private _mobileHomeCamerasLayout: 'rail' | 'grid' = 'rail';
+  @state() private _mobileHomeScenesLayout: 'rail' | 'grid' = 'rail';
+  /** Scene and script chips that are running their service call or show success. */
+  @state() private _homeSceneFeedback: Record<string, 'pending' | 'success'> = {};
+  /** Read out by screen readers after a scene or script was started. */
+  @state() private _homeSceneAnnouncement = '';
   @state() private _areaSidebarWidth = SIDEBAR_DEFAULT_WIDTH;
   @state() private _areaSidebarCollapsed = false;
   @state() private _isResizingSidebar = false;
@@ -225,6 +233,7 @@ export class DwainsLayoutCard extends LitElement {
   private _homeSummariesRefreshInterval?: number;
   private _favoriteSuggestionsLoaded = false;
   private _favoriteSuggestionsLoading = false;
+  private _homeSceneFeedbackTimers = new Map<string, number>();
   private _areaHeaderScrollRaf?: number;
   private _pendingAreaScrollTop = 0;
   private _optimisticCleanupTimer?: number;
@@ -539,6 +548,9 @@ export class DwainsLayoutCard extends LitElement {
       this._progressiveRenderCancel();
       this._progressiveRenderCancel = undefined;
     }
+    this._homeSceneFeedbackTimers.forEach(timer => window.clearTimeout(timer));
+    this._homeSceneFeedbackTimers.clear();
+    this._homeSceneFeedback = {};
     closeConfirmDialog(this);
   }
 
@@ -874,11 +886,13 @@ export class DwainsLayoutCard extends LitElement {
       const savedDevicesLayout = window.localStorage.getItem('dd-next-mobile-home-devices-layout');
       const savedFavoritesLayout = window.localStorage.getItem('dd-next-mobile-home-favorites-layout');
       const savedCamerasLayout = window.localStorage.getItem('dd-next-mobile-home-cameras-layout');
+      const savedScenesLayout = window.localStorage.getItem('dd-next-mobile-home-scenes-layout');
       if (savedEntityLayout === 'rail' || savedEntityLayout === 'grid') this._mobileEntityLayout = savedEntityLayout;
       if (savedAreasLayout === 'rail' || savedAreasLayout === 'grid') this._mobileHomeAreasLayout = savedAreasLayout;
       if (savedDevicesLayout === 'rail' || savedDevicesLayout === 'grid') this._mobileHomeDevicesLayout = savedDevicesLayout;
       if (savedFavoritesLayout === 'rail' || savedFavoritesLayout === 'grid') this._mobileHomeFavoritesLayout = savedFavoritesLayout;
       if (savedCamerasLayout === 'rail' || savedCamerasLayout === 'grid') this._mobileHomeCamerasLayout = savedCamerasLayout;
+      if (savedScenesLayout === 'rail' || savedScenesLayout === 'grid') this._mobileHomeScenesLayout = savedScenesLayout;
     } catch {
       // localStorage can be unavailable in private or restricted contexts.
     }
@@ -1054,6 +1068,16 @@ export class DwainsLayoutCard extends LitElement {
     this._mobileHomeCamerasLayout = this._mobileHomeCamerasLayout === 'rail' ? 'grid' : 'rail';
     try {
       window.localStorage.setItem('dd-next-mobile-home-cameras-layout', this._mobileHomeCamerasLayout);
+    } catch {
+      // Preference persistence is best-effort only.
+    }
+  };
+
+  private _toggleMobileHomeScenesLayout = (event?: Event): void => {
+    event?.stopPropagation();
+    this._mobileHomeScenesLayout = this._mobileHomeScenesLayout === 'rail' ? 'grid' : 'rail';
+    try {
+      window.localStorage.setItem('dd-next-mobile-home-scenes-layout', this._mobileHomeScenesLayout);
     } catch {
       // Preference persistence is best-effort only.
     }
@@ -1284,15 +1308,19 @@ export class DwainsLayoutCard extends LitElement {
 
   /**
    * Entities the Home view shows directly, whatever their domain: favorites
-   * (manual and suggested), the weather and alarm entities and the temperature
-   * and humidity sensors of every area.
+   * (manual and suggested), the picked scenes and scripts, the weather and
+   * alarm entities and the temperature and humidity sensors of every area.
    */
   private _homeExplicitEntityIds = memoizeOne((
     config: DwainsDashboardConfig,
     areasRegistry: HomeAssistant['areas'] | undefined,
     suggestedFavorites: string[]
   ): ReadonlySet<string> => {
-    const ids = new Set<string>([...(config.favorites || []), ...suggestedFavorites]);
+    const ids = new Set<string>([
+      ...(config.favorites || []),
+      ...suggestedFavorites,
+      ...normalizeHomeScenes(config.settings?.home_scenes),
+    ]);
     if (config.settings?.weather_entity_id) ids.add(config.settings.weather_entity_id);
     if (config.settings?.alarm_entity_id) ids.add(config.settings.alarm_entity_id);
     const addSensor = (entityId: unknown) => {
@@ -2049,6 +2077,8 @@ export class DwainsLayoutCard extends LitElement {
         return this._renderHomeCustomCards();
       case 'favorites':
         return this._renderFavorites();
+      case 'scenes':
+        return this._renderHomeScenes();
       default:
         return nothing;
     }
@@ -3219,6 +3249,158 @@ export class DwainsLayoutCard extends LitElement {
         <span class="alarm-text">${getAlarmText()}</span>
       </button>
     `;
+  }
+
+  private _getHomeSceneItems(): HomeSceneItem[] {
+    if (!this.hass) return [];
+    return this._homeSceneItems(
+      this.config?.settings?.home_scenes,
+      this.hass.states,
+      getEntityRegistry(this.hass),
+      this.config?.settings?.hide_unavailable_entities !== false
+    );
+  }
+
+  private _homeSceneItems = memoizeOne(resolveHomeSceneItems);
+
+  private _homeSceneName(entityId: string): string {
+    const state = this.hass?.states?.[entityId];
+    return state?.attributes?.friendly_name || getEntityRegistry(this.hass)[entityId]?.name || entityId;
+  }
+
+  private _renderHomeScenes() {
+    const items = this._getHomeSceneItems();
+    if (!items.length) return nothing;
+    const gridMode = this._mobileHomeScenesLayout === 'grid';
+    const title = this._t('home_section.scenes.label');
+
+    return html`
+      <section class="home-scenes-section layout-${this._mobileHomeScenesLayout}">
+        <div class="home-status-heading">
+          <ha-icon icon=${HOME_SECTION_META.scenes.icon}></ha-icon>
+          <span>${title}</span>
+        </div>
+        ${this._renderMobileSectionHeading('scenes', title, items.length > 1 ? {
+          toggle: {
+            gridMode,
+            title: gridMode ? this._t('scenes.swipe') : this._t('scenes.show_all'),
+            label: gridMode ? this._t('scenes.switch_swipe') : this._t('scenes.show_all'),
+            onToggle: this._toggleMobileHomeScenesLayout,
+          },
+        } : {})}
+        <div class="home-scenes-list">
+          ${repeat(
+            items,
+            item => item.entityId,
+            item => this._renderHomeSceneChip(item)
+          )}
+        </div>
+        <span class="dd-visually-hidden" role="status">${this._homeSceneAnnouncement}</span>
+      </section>
+    `;
+  }
+
+  private _renderHomeSceneChip(item: HomeSceneItem) {
+    const { entityId, domain, unavailable } = item;
+    const state = this.hass.states[entityId];
+    if (!state) return nothing;
+
+    const registry = getEntityRegistry(this.hass)[entityId];
+    const name = this._homeSceneName(entityId);
+    const feedback = unavailable ? undefined : this._homeSceneFeedback[entityId];
+    const running = !unavailable && domain === 'script' && state.state === 'on';
+    const icon = feedback === 'success'
+      ? 'mdi:check'
+      : registry?.icon || state.attributes?.icon || getDomainIcon(domain);
+    let meta: string;
+    if (unavailable) {
+      meta = this._t('common.unavailable');
+    } else if (feedback === 'success') {
+      meta = this._t(domain === 'scene' ? 'scenes.activated' : 'scenes.started');
+    } else if (running) {
+      meta = this._t('scenes.running');
+    } else {
+      meta = domain === 'scene' ? this._sceneLastActivatedText(state) : this._scriptLastRunText(state);
+    }
+    const label = this._t(domain === 'scene' ? 'scenes.activate_named' : 'scenes.run_named', { name });
+    const metaId = `dd-scene-meta-${entityId}`;
+    const classes = {
+      'home-scene-chip': true,
+      [`home-scene-${domain}`]: true,
+      'is-pending': feedback === 'pending',
+      'is-success': feedback === 'success',
+      'is-running': running && !feedback,
+    };
+
+    return html`
+      <button
+        class=${classMap(classes)}
+        type="button"
+        data-entity=${entityId}
+        title=${label}
+        aria-label=${label}
+        aria-describedby=${metaId}
+        aria-busy=${feedback === 'pending' ? 'true' : 'false'}
+        ?disabled=${unavailable}
+        @click=${() => this._runHomeScene(item)}
+      >
+        <span class="home-scene-icon" aria-hidden="true">
+          <ha-icon icon=${icon}></ha-icon>
+        </span>
+        <span class="home-scene-copy">
+          <span class="home-scene-name">${name}</span>
+          <span class="home-scene-meta" id=${metaId}>
+            ${running && !feedback ? html`<span class="home-scene-running-dot" aria-hidden="true"></span>` : nothing}
+            <span class="home-scene-meta-text">${meta}</span>
+          </span>
+        </span>
+      </button>
+    `;
+  }
+
+  private _scriptLastRunText(state: any): string {
+    const timestamp = Date.parse(state?.attributes?.last_triggered || '');
+    return Number.isFinite(timestamp) ? this._formatRelativeTime(timestamp) : this._t('scenes.not_run');
+  }
+
+  private async _runHomeScene(item: HomeSceneItem): Promise<void> {
+    const { entityId, domain, unavailable } = item;
+    if (unavailable || !this.hass || this._homeSceneFeedback[entityId] === 'pending') return;
+
+    const name = this._homeSceneName(entityId);
+    this._setHomeSceneFeedback(entityId, 'pending');
+    try {
+      // script.turn_on starts the script without waiting for it to finish.
+      await this.hass.callService(domain, 'turn_on', { entity_id: entityId });
+      if (!this.isConnected) return;
+      this._setHomeSceneFeedback(entityId, 'success');
+      this._homeSceneAnnouncement = this._t(
+        domain === 'scene' ? 'scenes.activated_named' : 'scenes.started_named',
+        { name }
+      );
+      this._homeSceneFeedbackTimers.set(entityId, window.setTimeout(() => {
+        this._homeSceneFeedbackTimers.delete(entityId);
+        this._setHomeSceneFeedback(entityId, undefined);
+        this._homeSceneAnnouncement = '';
+      }, HOME_SCENE_SUCCESS_MS));
+    } catch (err) {
+      console.warn(`Failed to run ${entityId}:`, err);
+      this._setHomeSceneFeedback(entityId, undefined);
+      this._showToast(this._t(domain === 'scene' ? 'scenes.scene_failed' : 'scenes.script_failed', { name }));
+    }
+  }
+
+  private _setHomeSceneFeedback(entityId: string, feedback: 'pending' | 'success' | undefined): void {
+    const timer = this._homeSceneFeedbackTimers.get(entityId);
+    if (timer !== undefined) {
+      window.clearTimeout(timer);
+      this._homeSceneFeedbackTimers.delete(entityId);
+    }
+    if (this._homeSceneFeedback[entityId] === feedback) return;
+    const next = { ...this._homeSceneFeedback };
+    if (feedback) next[entityId] = feedback;
+    else delete next[entityId];
+    this._homeSceneFeedback = next;
   }
 
   private _renderFavorites() {
