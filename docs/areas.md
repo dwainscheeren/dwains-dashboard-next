@@ -21,7 +21,22 @@ The area header can show:
 - Device count
 - Temperature and humidity when available
 - Quick controls for lights, switches and covers
+- A thermostat when the area has one climate entity
 - Edit button for admins
+
+## Thermostat
+
+When an area has exactly one visible climate entity and it is available, the area header shows a compact thermostat on desktop and mobile:
+
+- The current temperature
+- The target temperature with minus and plus buttons
+- A chip with what the thermostat is doing, for example Heating, Cooling, Idle or Off
+
+Minus and plus follow the entity's `target_temp_step` (0.5 for °C and 1 for °F when the entity does not set one) and stay between its `min_temp` and `max_temp`. The new target is shown right away. Dwains Dashboard waits until you stop tapping for a moment and then sends one `climate.set_temperature` with the final value. If Home Assistant rejects it, the old target comes back and a message is shown.
+
+In `heat_cool` mode with a low and high target, or when the thermostat has no single target (for example while it is off), the header shows the values without minus and plus. Tap the current temperature, the target range or the chip to open the Home Assistant details dialog.
+
+Areas with several climate entities keep the climate quick control, which opens a list of all climate entities. The thermostat can be turned off in **Dashboard settings > Areas > Show thermostat in the room header**.
 
 ## Entity Groups
 

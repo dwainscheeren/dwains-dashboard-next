@@ -1281,6 +1281,15 @@ export class DwainsDashboardStrategyEditor extends LitElement {
             </ha-formfield>
             <p class="toggle-description">${this._t('settings.hide_unavailable_areas_description')}</p>
           </div>
+          <div class="hide-unavailable-toggle">
+            <ha-formfield .label=${this._t('thermostat.setting_label')}>
+              <ha-switch
+                .checked=${this._config?.settings?.show_area_thermostat !== false}
+                @change=${this._toggleAreaThermostat}
+              ></ha-switch>
+            </ha-formfield>
+            <p class="toggle-description">${this._t('thermostat.setting_description')}</p>
+          </div>
           ${this._renderAreasConfiguration()}
         </div>
       `
@@ -4540,6 +4549,19 @@ export class DwainsDashboardStrategyEditor extends LitElement {
       settings: {
         ...this._config!.settings,
         hide_unavailable_entities: hideUnavailable
+      }
+    };
+
+    this._fireConfigChanged(newConfig);
+  }
+
+  private _toggleAreaThermostat(e: Event): void {
+    const target = e.target as any;
+    const newConfig: DwainsDashboardConfig = {
+      ...this._config!,
+      settings: {
+        ...this._config!.settings,
+        show_area_thermostat: Boolean(target.checked)
       }
     };
 

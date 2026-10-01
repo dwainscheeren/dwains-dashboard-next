@@ -74,6 +74,8 @@ export interface DwainsDashboardSettings {
   master_action_confirmations?: MasterActionConfirmationSettings;
   /** Scenes and scripts shown in the Home "Scenes & scripts" row, in order. */
   home_scenes?: string[];
+  /** Thermostat in the room header for rooms with one climate entity. Default on. */
+  show_area_thermostat?: boolean;
 }
 
 // New interfaces for areas configuration like Home Assistant

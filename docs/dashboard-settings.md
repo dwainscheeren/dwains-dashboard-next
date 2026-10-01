@@ -46,6 +46,7 @@ Configure:
 - Area icons
 - Area entity ordering
 - Whether unavailable area entities are shown
+- Whether rooms with one climate entity show a thermostat in the room header (on by default)
 
 Custom order supports dragging on desktop and move up/down controls on touch devices. New areas that are added later are appended without changing the order of existing areas. The selected order is used consistently in the desktop sidebar, mobile area menu and area overviews.
 

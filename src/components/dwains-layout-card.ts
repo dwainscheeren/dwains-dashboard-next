@@ -38,6 +38,7 @@ import { formatEntityStateWithUnit, formatValueWithUnit } from '../utils/unit-fo
 import { showDomainEntitiesDialog } from './utils/show-domain-entities-dialog';
 import { showCardEditorDialog } from './utils/show-card-editor-dialog';
 import { layoutCardStyles } from './styles/layout-card-styles';
+import { layoutControlsStyles } from './styles/layout-controls-styles';
 import { TRANSLATIONS_LOADED_EVENT } from '../i18n';
 
 // The settings editor is large and only needed on the settings page.
@@ -54,6 +55,8 @@ import {
   normalizeMasterActionConfirmationDomain,
 } from '../utils/master-action-confirmations';
 import { getEntityRegistry } from '../utils/entity-registry';
+import { pickAreaThermostatEntityId } from '../utils/thermostat';
+import './dwains-area-thermostat';
 
 // Use DomainCount from header-status-domains utility
 type DomainCount = StatusDomainCount;
@@ -460,7 +463,7 @@ export class DwainsLayoutCard extends LitElement {
     };
   }
 
-  static override styles = layoutCardStyles;
+  static override styles = [layoutCardStyles, layoutControlsStyles];
 
   connectedCallback() {
     super.connectedCallback();
@@ -3694,7 +3697,13 @@ export class DwainsLayoutCard extends LitElement {
     const pictureContrastClass = hasPicture ? this._getPictureContrastClass(area.picture) : '';
     const deviceCount = this._getAreaDeviceCount(area.area_id, visibleAreaEntities);
     const hasHeaderMetrics = Boolean(areaData.temperature || areaData.humidity);
-    const hasMobileQuickControls = visibleAreaEntities.some(entity =>
+    // With one available climate entity the header gets a thermostat, which
+    // replaces the climate quick control.
+    const thermostatEntityId = this._areaThermostatEntityId(visibleAreaEntities);
+    const quickControlEntities = thermostatEntityId
+      ? visibleAreaEntities.filter(entity => entity.entity_id !== thermostatEntityId)
+      : visibleAreaEntities;
+    const hasMobileQuickControls = quickControlEntities.some(entity =>
       entity.entity_id.startsWith('light.') ||
       entity.entity_id.startsWith('switch.') ||
       entity.entity_id.startsWith('cover.') ||
@@ -3710,7 +3719,7 @@ export class DwainsLayoutCard extends LitElement {
 
     return html`
       <div class="area-view">
-        <div class="area-header ${hasPicture ? 'has-picture' : ''} ${pictureContrastClass} ${hasHeaderMetrics ? 'has-metrics' : ''} ${hasMobileQuickControls ? 'has-quick-controls' : ''} ${this._areaHeaderStuck ? 'is-stuck' : ''} ${this._areaHeaderRevealed ? 'is-revealed' : ''}">
+        <div class="area-header ${hasPicture ? 'has-picture' : ''} ${pictureContrastClass} ${hasHeaderMetrics ? 'has-metrics' : ''} ${hasMobileQuickControls ? 'has-quick-controls' : ''} ${thermostatEntityId ? 'has-thermostat' : ''} ${this._areaHeaderStuck ? 'is-stuck' : ''} ${this._areaHeaderRevealed ? 'is-revealed' : ''}">
           ${hasPicture ? html`
             <div class="area-header-background" style="background-image: url('${area.picture}');"></div>
           ` : nothing}
@@ -3723,7 +3732,7 @@ export class DwainsLayoutCard extends LitElement {
             >
               ${this._renderStaticIcon(ICON_ARROW_LEFT)}
             </button>
-              ${this._renderAreaMobileQuickControls(area.area_id, visibleAreaEntities)}
+              ${this._renderAreaMobileQuickControls(area.area_id, quickControlEntities)}
             <div class="area-mobile-actions">
               ${this._renderAreaMobileCameraAction(visibleAreaEntities)}
               ${this._renderUnavailableEntitiesIcon(area.area_id)}
@@ -3773,6 +3782,13 @@ export class DwainsLayoutCard extends LitElement {
             </div>
           </div>
           ${this._renderAreaHeaderMetrics(areaData)}
+          ${thermostatEntityId ? html`
+            <dwains-dashboard-next-area-thermostat
+              .hass=${this.hass}
+              .entityId=${thermostatEntityId}
+              .roomName=${area.name}
+            ></dwains-dashboard-next-area-thermostat>
+          ` : nothing}
         </div>
 
         ${this._renderCustomCardSlot(area.area_id, 'top', this._t('layout.custom_cards_top'))}
@@ -7034,6 +7050,17 @@ export class DwainsLayoutCard extends LitElement {
       customEntities: allProblematicEntities,
       customDescription: `These entities are currently hidden because they have 'unavailable' or 'unknown' states. You can disable this filtering in the dashboard configuration.`
     });
+  }
+
+  /**
+   * The climate entity shown as a thermostat in the room header: the only
+   * visible climate entity of the room, when it is available and the setting
+   * is on. Changes of that entity re-render the header, because the room
+   * relevance check includes every entity of the room.
+   */
+  private _areaThermostatEntityId(entities: EntityConfig[]): string | undefined {
+    if (this.config?.settings?.show_area_thermostat === false) return undefined;
+    return pickAreaThermostatEntityId(entities.map(entity => entity.entity_id), this.hass.states);
   }
 
   private _openAreaClimateControls(areaId: string, climates: EntityConfig[]): void {
