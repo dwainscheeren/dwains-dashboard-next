@@ -76,6 +76,8 @@ export interface DwainsDashboardSettings {
   home_scenes?: string[];
   /** Thermostat in the room header for rooms with one climate entity. Default on. */
   show_area_thermostat?: boolean;
+  /** Where the Now playing bar is shown. Default 'home'. */
+  now_playing_bar?: 'off' | 'home' | 'all';
 }
 
 // New interfaces for areas configuration like Home Assistant

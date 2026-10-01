@@ -27,6 +27,7 @@ Configure which status information appears in the header:
 - Notifications
 - Alarm entity
 - Home summary text
+- Now playing bar: **Off**, **Home only** (default) or **All pages**
 
 If no alarm entity is selected, no alarm chip is shown.
 

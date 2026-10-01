@@ -57,6 +57,16 @@ import {
 import { getEntityRegistry } from '../utils/entity-registry';
 import { pickAreaThermostatEntityId } from '../utils/thermostat';
 import './dwains-area-thermostat';
+import {
+  isNowPlayingPlayerVisible,
+  isNowPlayingRelevantStateChange,
+  isNowPlayingShownOn,
+  normalizeNowPlayingMode,
+  nowPlayingRoomName,
+  pickNowPlayingEntityIds,
+} from '../utils/now-playing';
+import type { NowPlayingPlayer } from './dwains-now-playing-bar';
+import './dwains-now-playing-bar';
 
 // Use DomainCount from header-status-domains utility
 type DomainCount = StatusDomainCount;
@@ -1263,13 +1273,17 @@ export class DwainsLayoutCard extends LitElement {
       return hasRelevantStateChange(oldHass.states, newHass.states, isUpdateEntityStateChange);
     }
 
+    // The Now playing bar shows media players from every room.
+    const nowPlaying = this._nowPlayingShown();
+
     if (this._selectedView === 'area' && this._selectedArea) {
       const areaEntityIds = this._areaRelevantEntityIds(this._selectedArea);
       return hasRelevantStateChange(oldHass.states, newHass.states, (entityId, oldState, newState) =>
         !oldState ||
         !newState ||
         areaEntityIds.has(entityId) ||
-        isUpdateEntityStateChange(entityId, oldState, newState)
+        isUpdateEntityStateChange(entityId, oldState, newState) ||
+        (nowPlaying && isNowPlayingRelevantStateChange(entityId, oldState, newState))
       );
     }
 
@@ -1280,7 +1294,8 @@ export class DwainsLayoutCard extends LitElement {
         this._suggestedFavoriteEntities
       );
       return hasRelevantStateChange(oldHass.states, newHass.states, (entityId, oldState, newState) =>
-        isHomeRelevantStateChange(entityId, oldState, newState, explicitEntityIds)
+        isHomeRelevantStateChange(entityId, oldState, newState, explicitEntityIds) ||
+        (nowPlaying && isNowPlayingRelevantStateChange(entityId, oldState, newState))
       );
     }
 
@@ -1354,10 +1369,14 @@ export class DwainsLayoutCard extends LitElement {
       return html`<div class="loading">${this._t('common.loading')}</div>`;
     }
 
+    // Desktop shows the Now playing bar inline below the page header, mobile
+    // floats it just above the bottom navigation.
+    const floatingNowPlaying = this._isMobile && this._getNowPlayingPlayers().length > 0;
     const layoutClasses = {
       'layout-container': true,
       'sidebar-resizing': this._isResizingSidebar,
       'sidebar-collapsed': this._isDesktopAreaSidebarCollapsed(),
+      'has-floating-now-playing': floatingNowPlaying,
     };
 
     return html`
@@ -1384,6 +1403,7 @@ export class DwainsLayoutCard extends LitElement {
           </div>
         </div>
       </div>
+      ${floatingNowPlaying ? this._renderNowPlayingBar(true) : nothing}
       ${this._renderNotificationsPanel()}
     `;
   }
@@ -1427,6 +1447,43 @@ export class DwainsLayoutCard extends LitElement {
         class="mobile-nav-overlay ${this._mobileNavOpen ? 'open' : ''}"
         @click=${this._closeMobileNav}
       ></div>
+    `;
+  }
+
+  /** Whether the Now playing bar setting includes the current view. */
+  private _nowPlayingShown(): boolean {
+    return isNowPlayingShownOn(normalizeNowPlayingMode(this.config?.settings?.now_playing_bar), this._selectedView);
+  }
+
+  /** Players for the Now playing bar on the current view, most relevant first. */
+  private _getNowPlayingPlayers(): NowPlayingPlayer[] {
+    if (!this.hass || !this._nowPlayingShown()) return [];
+    // The clock text changes every minute, so paused players drop out of the
+    // bar within a minute after their grace period ends.
+    return this._nowPlayingPlayers(this.hass, this.hass.states, this.config, getEntityRegistry(this.hass), this._currentTime);
+  }
+
+  private _nowPlayingPlayers = memoizeOne((
+    hass: HomeAssistant,
+    states: HomeAssistant['states'],
+    config: DwainsDashboardConfig,
+    _registry: unknown,
+    _clock: string
+  ): NowPlayingPlayer[] => pickNowPlayingEntityIds(getDomainStates(states, 'media_player'), {
+    now: Date.now(),
+    isVisible: (entityId) => isNowPlayingPlayerVisible(hass, config, entityId),
+  }).map((entityId) => ({ entityId, roomName: nowPlayingRoomName(hass, config, entityId) })));
+
+  private _renderNowPlayingBar(floating: boolean) {
+    const players = this._getNowPlayingPlayers();
+    if (!players.length) return nothing;
+    return html`
+      <dwains-dashboard-next-now-playing
+        class=${floating ? 'floating' : 'inline'}
+        .hass=${this.hass}
+        .players=${players}
+        .floating=${floating}
+      ></dwains-dashboard-next-now-playing>
     `;
   }
 
@@ -2044,6 +2101,7 @@ export class DwainsLayoutCard extends LitElement {
     return html`
       <div class="home-view">
         ${this._renderHomeWelcome()}
+        ${!this._isMobile ? this._renderNowPlayingBar(false) : nothing}
         ${sections.map(section => this._renderHomeSection(section))}
       </div>
     `;
@@ -3791,6 +3849,7 @@ export class DwainsLayoutCard extends LitElement {
           ` : nothing}
         </div>
 
+        ${!this._isMobile ? this._renderNowPlayingBar(false) : nothing}
         ${this._renderCustomCardSlot(area.area_id, 'top', this._t('layout.custom_cards_top'))}
         ${this._renderMobileEntitiesSection(area, areaEntities)}
         ${this._renderCustomCardSlot(area.area_id, 'bottom', this._t('layout.custom_cards_bottom'))}

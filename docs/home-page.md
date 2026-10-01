@@ -13,6 +13,17 @@ The header can show:
 - Time and date on desktop
 - Settings button
 
+## Now Playing
+
+When a media player is playing, Home shows a compact **Now playing** bar with the artwork, the title and artist (or the app name) and the room. Play/pause and next track buttons appear when the player supports them. Tap the bar to open the Home Assistant details dialog of the player.
+
+- On desktop and tablet the bar sits below the greeting. On phones it floats just above the bottom navigation, and the page gets extra room at the bottom so the bar never covers a card.
+- With several players playing, the most recently started one is shown, with a **+N** button that switches to the next player. A player you switched to or controlled stays in the bar while it is still playing or paused.
+- A paused player stays in the bar for 5 minutes after it was paused, so it can be resumed. After that the bar disappears within a minute.
+- Players follow the same visibility rules as the rest of the dashboard: hidden or disabled entities, entities of hidden devices, entities in hidden areas and entities hidden in their area are left out. Players without an area, like a Spotify account, are shown with their own name.
+
+Choose where the bar appears in **Dashboard settings > Header & status > Now playing bar**: Off, Home only (default) or All pages (Home and every room page).
+
 ## Sections
 
 The home page can show these sections:

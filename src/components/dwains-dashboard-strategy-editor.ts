@@ -36,6 +36,7 @@ import { countReplacementRules } from "../utils/blueprint-replacements";
 import { persistableConfig } from "../utils/dashboard-config";
 import { isHiddenAsUnavailable } from "../utils/entity-availability";
 import { isConfigEntityInArea, resolveStatusEntityAreaId } from "../utils/entity-lookups";
+import { normalizeNowPlayingMode, type NowPlayingMode } from "../utils/now-playing";
 import { getDeviceClassName, getDomainName } from "../utils/domain-names";
 import { getDeviceClassIcon, getDomainColor, getDomainIcon } from "../utils/icons";
 import { ddLocale, ddLocalize, ddLocalizePlural } from "../utils/localize";
@@ -796,6 +797,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
           ${this._renderNotificationSettingsPanel()}
           ${this._renderWeatherSettingsPanel()}
           ${this._renderAlarmSettingsPanel()}
+          ${this._renderNowPlayingSettingsPanel()}
         `;
       case "controls":
         return this._renderMasterActionConfirmationSettingsPanel();
@@ -1119,6 +1121,42 @@ export class DwainsDashboardStrategyEditor extends LitElement {
                 @change=${this._toggleNotificationsDisplay}
               ></ha-switch>
             </ha-formfield>
+          </div>
+        </div>
+      `
+    );
+  }
+
+  private _renderNowPlayingSettingsPanel() {
+    const mode = normalizeNowPlayingMode(this._config?.settings?.now_playing_bar);
+    const modes: Array<{ value: NowPlayingMode; icon: string }> = [
+      { value: 'off', icon: 'mdi:music-off' },
+      { value: 'home', icon: 'mdi:home-outline' },
+      { value: 'all', icon: 'mdi:view-dashboard-outline' },
+    ];
+
+    return this._renderSettingsPanel(
+      "mdi:music-circle-outline",
+      this._t('now_playing.setting_title'),
+      this._t('now_playing.setting_description'),
+      html`
+        <div class="now-playing-settings">
+          <div class="area-order-modes" role="radiogroup" aria-label=${this._t('now_playing.setting_title')}>
+            ${modes.map(({ value, icon }) => html`
+              <button
+                type="button"
+                class="area-order-mode ${mode === value ? 'selected' : ''}"
+                role="radio"
+                aria-checked=${mode === value ? 'true' : 'false'}
+                @click=${() => this._setNowPlayingMode(value)}
+              >
+                <ha-icon .icon=${icon}></ha-icon>
+                <span>
+                  <strong>${this._t(`now_playing.mode_${value}`)}</strong>
+                  <small>${this._t(`now_playing.mode_${value}_description`)}</small>
+                </span>
+              </button>
+            `)}
           </div>
         </div>
       `
@@ -4555,6 +4593,18 @@ export class DwainsDashboardStrategyEditor extends LitElement {
     this._fireConfigChanged(newConfig);
   }
 
+  private _setNowPlayingMode(mode: NowPlayingMode): void {
+    const newConfig: DwainsDashboardConfig = {
+      ...this._config!,
+      settings: {
+        ...this._config!.settings,
+        now_playing_bar: mode
+      }
+    };
+
+    this._fireConfigChanged(newConfig);
+  }
+
   private _toggleAreaThermostat(e: Event): void {
     const target = e.target as any;
     const newConfig: DwainsDashboardConfig = {
@@ -5764,6 +5814,10 @@ export class DwainsDashboardStrategyEditor extends LitElement {
 
       .area-order-hint {
         margin: 12px 0 0;
+      }
+
+      .now-playing-settings {
+        padding: 0 16px 16px;
       }
 
       .area-entity-layout-settings {
