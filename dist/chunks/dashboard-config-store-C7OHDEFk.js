@@ -1,0 +1,1 @@
+let t=Promise.resolve();function e(e,n,a){return function(e,n,a){const c=async()=>{const t=n?{url_path:n}:{},c=await e.callWS({type:"lovelace/config",...t}),l=a(c);return l?(await e.callWS({type:"lovelace/config/save",...t,config:l}),l):null},l=t.then(c,c);return t=l.catch(()=>{}),l}(e,n,t=>{const e=a(t?.strategy,t);return e?{...t,strategy:e}:null})}export{e as u};
