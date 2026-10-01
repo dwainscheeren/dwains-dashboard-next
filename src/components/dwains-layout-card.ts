@@ -232,6 +232,10 @@ export class DwainsLayoutCard extends LitElement {
   @state() private _renderAllMobileAreaEntities = false;
   @state() private _settingsDirty = false;
   @state() private _settingsSavePending = false;
+  // Open page inside the settings editor, and a short "saved" note for device settings.
+  @state() private _settingsSubPage = 'overview';
+  @state() private _deviceSettingsJustSaved = false;
+  private _deviceSettingsSavedTimer?: number;
   @state() private _settingsSaveError = '';
 
   // Performance: Home Assistant sets `hass` on every state change of any
@@ -534,6 +538,7 @@ export class DwainsLayoutCard extends LitElement {
 
   disconnectedCallback() {
     super.disconnectedCallback();
+    window.clearTimeout(this._deviceSettingsSavedTimer);
     window.removeEventListener(TRANSLATIONS_LOADED_EVENT, this._handleTranslationsLoaded);
     window.removeEventListener('dwains-dashboard-next-toggle-area-nav', this._handleAreaNavToggle);
     window.removeEventListener('dwains-dashboard-next-open-settings', this._handleOpenSettingsEvent);
@@ -6772,13 +6777,18 @@ export class DwainsLayoutCard extends LitElement {
         : this._settingsDirty
           ? 'dirty'
           : 'saved';
+    // Wall tablet settings belong to this device and are saved on every change,
+    // so that page shows an automatic save note instead of a disabled Save button.
+    const deviceSettingsPage = this._settingsSubPage === 'wall_tablet' && saveState === 'saved';
     const saveStatus = saveState === 'error'
       ? this._settingsSaveError
       : saveState === 'saving'
         ? this._t('common.saving')
         : saveState === 'dirty'
           ? this._t('settings.unsaved_changes')
-          : this._t('settings.all_saved');
+          : deviceSettingsPage
+            ? this._t(this._deviceSettingsJustSaved ? 'kiosk.saved_now' : 'kiosk.autosave')
+            : this._t('settings.all_saved');
 
     // One header with the title and one save bar. The save bar sticks to the
     // bottom of the page and sits above the bottom navigation on phones.
@@ -6796,10 +6806,15 @@ export class DwainsLayoutCard extends LitElement {
           </button>
           <div class="settings-page-title">
             <h1>${this._t('sidebar.dashboard_settings')}</h1>
-            <p>${this._t('settings.subtitle')}</p>
+            <p>${this._t(this._settingsSubPage === 'wall_tablet' ? 'kiosk.autosave_subtitle' : 'settings.subtitle')}</p>
           </div>
         </header>
-        <div class="settings-page-editor" @config-changed=${this._handleSettingsConfigChanged}>
+        <div
+          class="settings-page-editor"
+          @config-changed=${this._handleSettingsConfigChanged}
+          @dwains-dashboard-next-settings-page-changed=${this._handleSettingsSubPageChanged}
+          @dwains-dashboard-next-device-settings-saved=${this._handleDeviceSettingsSaved}
+        >
           <dwains-dashboard-next-strategy-editor></dwains-dashboard-next-strategy-editor>
         </div>
         <div class="settings-save-bar is-${saveState}">
@@ -6811,18 +6826,32 @@ export class DwainsLayoutCard extends LitElement {
             <span class="settings-save-dot" aria-hidden="true"></span>
             <span class="settings-save-text">${saveStatus}</span>
           </div>
-          <button
-            type="button"
-            class="settings-primary"
-            ?disabled=${!canSave}
-            @click=${this._saveSettingsPage}
-          >
-            ${this._t('common.save')}
-          </button>
+          ${deviceSettingsPage ? nothing : html`
+            <button
+              type="button"
+              class="settings-primary"
+              ?disabled=${!canSave}
+              @click=${this._saveSettingsPage}
+            >
+              ${this._t('common.save')}
+            </button>
+          `}
         </div>
       </section>
     `;
   }
+
+  private _handleSettingsSubPageChanged = (event: Event): void => {
+    this._settingsSubPage = String((event as CustomEvent<{ page?: string }>).detail?.page || 'overview');
+  };
+
+  private _handleDeviceSettingsSaved = (): void => {
+    this._deviceSettingsJustSaved = true;
+    window.clearTimeout(this._deviceSettingsSavedTimer);
+    this._deviceSettingsSavedTimer = window.setTimeout(() => {
+      this._deviceSettingsJustSaved = false;
+    }, 2000);
+  };
 
   private _getWelcomeUserPicture(userName: string): string | undefined {
     if (!this.hass?.states) return undefined;

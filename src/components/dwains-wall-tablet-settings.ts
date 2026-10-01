@@ -65,6 +65,8 @@ export class DwainsWallTabletSettings extends LitElement {
 
   private _update(patch: Partial<WallTabletPrefs>): void {
     this._prefs = updateWallTabletPrefs(this._segment, patch);
+    // Saved right away on this device; let the settings page confirm it.
+    this.dispatchEvent(new CustomEvent('dwains-dashboard-next-device-settings-saved', { bubbles: true, composed: true }));
   }
 
   private _toggleEnabled = (event: Event): void => {

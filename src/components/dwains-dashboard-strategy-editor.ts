@@ -19,7 +19,7 @@ import {
   mdiThermometerWater,
   mdiViewDashboardEdit,
 } from "@mdi/js";
-import { css, html, LitElement, nothing } from "lit";
+import { css, html, LitElement, nothing, type PropertyValues } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { repeat } from "lit/directives/repeat.js";
 import type { HomeAssistant } from "../types/home-assistant";
@@ -715,6 +715,18 @@ export class DwainsDashboardStrategyEditor extends LitElement {
         <path d=${path}></path>
       </svg>
     `;
+  }
+
+  protected updated(changedProps: PropertyValues): void {
+    super.updated(changedProps);
+    if (changedProps.has("_settingsPage")) {
+      // The settings page host shows a different save bar for device settings.
+      this.dispatchEvent(new CustomEvent("dwains-dashboard-next-settings-page-changed", {
+        detail: { page: this._settingsPage },
+        bubbles: true,
+        composed: true,
+      }));
+    }
   }
 
   private _openSettingsPage(page: Exclude<SettingsPageKey, "overview">): void {
