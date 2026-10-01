@@ -17,8 +17,42 @@ describe('normalizeHomeSectionsOrder', () => {
   });
 
   it('keeps a complete stored order', () => {
-    const order = ['favorites', 'summaries', 'areas', 'cameras', 'devices', 'todos', 'custom_cards'];
+    const order = ['favorites', 'scenes', 'summaries', 'areas', 'cameras', 'devices', 'todos', 'custom_cards'];
     expect(normalizeHomeSectionsOrder(order)).toEqual(order);
+  });
+
+  it('places scenes after favorites by default', () => {
+    const order = normalizeHomeSectionsOrder();
+    expect(order.indexOf('scenes')).toBe(order.indexOf('favorites') + 1);
+  });
+
+  it('adds scenes to an order saved before scenes existed', () => {
+    // A customised order from an older version keeps its own order.
+    expect(normalizeHomeSectionsOrder(['favorites', 'summaries', 'areas', 'cameras', 'devices', 'todos', 'custom_cards'])).toEqual([
+      'favorites',
+      'scenes',
+      'summaries',
+      'areas',
+      'cameras',
+      'devices',
+      'todos',
+      'custom_cards',
+    ]);
+    // Summaries first: scenes is placed before the first later default section.
+    expect(normalizeHomeSectionsOrder(['summaries', 'favorites', 'custom_cards', 'todos', 'devices', 'areas', 'cameras'])).toEqual([
+      'scenes',
+      'summaries',
+      'favorites',
+      'custom_cards',
+      'todos',
+      'devices',
+      'areas',
+      'cameras',
+    ]);
+  });
+
+  it('keeps a stored scenes position', () => {
+    expect(normalizeHomeSectionsOrder(['scenes', 'cameras', 'areas', 'devices', 'todos', 'custom_cards', 'favorites', 'summaries'])[0]).toBe('scenes');
   });
 
   it('drops unknown and duplicate sections', () => {
@@ -29,6 +63,7 @@ describe('normalizeHomeSectionsOrder', () => {
       'todos',
       'custom_cards',
       'favorites',
+      'scenes',
       'summaries',
     ]);
   });
@@ -42,6 +77,7 @@ describe('normalizeHomeSectionsOrder', () => {
       'todos',
       'custom_cards',
       'favorites',
+      'scenes',
       'summaries',
     ]);
   });
@@ -50,6 +86,7 @@ describe('normalizeHomeSectionsOrder', () => {
 describe('normalizeHiddenHomeSections', () => {
   it('keeps only known sections once', () => {
     expect(normalizeHiddenHomeSections(['todos', 'todos', 'unknown', 'cameras'])).toEqual(['todos', 'cameras']);
+    expect(normalizeHiddenHomeSections(['scenes'])).toEqual(['scenes']);
     expect(normalizeHiddenHomeSections(undefined)).toEqual([]);
   });
 });
