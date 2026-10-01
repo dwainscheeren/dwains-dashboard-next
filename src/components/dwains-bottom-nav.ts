@@ -20,6 +20,13 @@ import {
   restrictNonAdminDashboardSettings,
   restrictNonAdminHaSidebar,
 } from '../utils/security';
+import {
+  WALL_TABLET_CHANGED_EVENT,
+  WALL_TABLET_RESET_EVENT,
+  isWallTabletEnabled,
+  wallTabletHaMenuPeek,
+} from '../utils/wall-tablet';
+import { ensureWallTablet } from './dwains-wall-tablet';
 
 interface NavItem {
   path: string;
@@ -118,6 +125,8 @@ export class DwainsBottomNav extends LitElement {
     window.addEventListener(TRANSLATIONS_LOADED_EVENT, this._handleTranslationsLoaded);
     window.addEventListener('dwains-dashboard-next-area-context-changed', this._handleAreaContext as EventListener);
     window.addEventListener('dwains-dashboard-next-device-context-changed', this._handleDeviceContext as EventListener);
+    window.addEventListener(WALL_TABLET_CHANGED_EVENT, this._handleWallTabletChanged);
+    window.addEventListener(WALL_TABLET_RESET_EVENT, this._handleWallTabletReset);
   }
 
   disconnectedCallback(): void {
@@ -127,6 +136,8 @@ export class DwainsBottomNav extends LitElement {
     window.removeEventListener(TRANSLATIONS_LOADED_EVENT, this._handleTranslationsLoaded);
     window.removeEventListener('dwains-dashboard-next-area-context-changed', this._handleAreaContext as EventListener);
     window.removeEventListener('dwains-dashboard-next-device-context-changed', this._handleDeviceContext as EventListener);
+    window.removeEventListener(WALL_TABLET_CHANGED_EVENT, this._handleWallTabletChanged);
+    window.removeEventListener(WALL_TABLET_RESET_EVENT, this._handleWallTabletReset);
   }
 
   private _sync = () => {
@@ -140,6 +151,18 @@ export class DwainsBottomNav extends LitElement {
       this._restrictedMenuOpen = false;
     }
     if (!this._isHaMenuRestricted()) this._restrictedMenuOpen = false;
+  };
+
+  /** Wall tablet mode was turned on or off, or the Home Assistant menu was opened from it. */
+  private _handleWallTabletChanged = (): void => {
+    _syncHaShell(this._hass, this._settings, this.dashSegment, true);
+    this.requestUpdate();
+  };
+
+  /** The wall tablet returns to Home after inactivity: close open sheets. */
+  private _handleWallTabletReset = (): void => {
+    this._pagesOpen = false;
+    this._restrictedMenuOpen = false;
   };
 
   private _handleTranslationsLoaded = (): void => {
@@ -242,7 +265,8 @@ export class DwainsBottomNav extends LitElement {
   private _openHomeAreas(): void {
     this._pagesOpen = false;
 
-    if (this._areaContext.view === 'settings') {
+    // On wide screens (wall tablet mode) there is no area menu to open: go to Home.
+    if (this._areaContext.view === 'settings' || (this._areaContext.view === 'area' && !_isMobileViewport())) {
       this._active = 'home';
       window.dispatchEvent(new CustomEvent('dwains-dashboard-next-open-home'));
       return;
@@ -367,6 +391,10 @@ export class DwainsBottomNav extends LitElement {
 
   private _renderStandaloneMenuButton() {
     const isArea = this._areaContext.view === 'area' && Boolean(this._areaContext.areaId);
+    // A wall tablet keeps the Home Assistant menu out of reach; the wall tablet
+    // menu (press and hold the clock) opens it when needed. On wide screens the
+    // area sidebar and the Home item already lead back from an area.
+    if (_isWallTabletShellActive(this.dashSegment) && (!isArea || !_isMobileViewport())) return nothing;
     const label = isArea
       ? ddLocalize(this._hass, 'navigation.back_home')
       : ddLocalize(this._hass, 'navigation.open_menu');
@@ -1140,6 +1168,8 @@ export function ensureBottomNav(hass: any, settings?: DwainsDashboardSettings): 
   // Onthoud het dashboard-segment waarop wij draaien (voor de zichtbaarheid).
   const seg = window.location.pathname.split('/')[1];
   el.dashSegment = seg && seg !== 'lovelace' ? seg : 'lovelace';
+  // Before the shell sync below, so a ?dd_kiosk parameter is applied first.
+  ensureWallTablet(hass, settings, el.dashSegment);
   el.dashboardSettings = settings;
   el.hass = hass;
 }
@@ -1164,6 +1194,7 @@ let _lastShellKey = '';
 let _lastShellSyncAt = 0;
 let _nativeHeaderTimer: number | undefined;
 let _sidebarRetryTimer: number | undefined;
+let _nativeHeaderHiddenOnAllWidths = false;
 
 function _shellKey(hass: any, settings: DwainsDashboardSettings | undefined, dashSegment?: string): string {
   return [
@@ -1173,6 +1204,7 @@ function _shellKey(hass: any, settings: DwainsDashboardSettings | undefined, das
     restrictNonAdminHaSidebar(hass, settings) ? 'restricted' : '',
     restrictNonAdminDashboardSettings(hass, settings) ? 'no-settings' : '',
     hass?.locale?.language || hass?.language || '',
+    _isWallTabletShellActive(dashSegment) ? (wallTabletHaMenuPeek() ? 'wall-tablet-menu' : 'wall-tablet') : '',
   ].join('|');
 }
 
@@ -1251,11 +1283,12 @@ function _hideNativeHeaderOnMobile(attempt = 0): void {
     .map((selector) => `:host-context(.${activeClass}) ${selector}`)
     .join(',\n      ');
 
-  const css = `
-    @media (max-width: 768px) {
+  const rules = `
       html.${activeClass},
       body.${activeClass} {
         overflow-x: hidden !important;
+        /* Room the dashboard cards keep free for the bottom navigation. */
+        --dd-next-bottom-nav-space: calc(84px + env(safe-area-inset-bottom, 0px));
       }
 
       html.${activeClass} dwains-dashboard-next-bottom-nav,
@@ -1313,8 +1346,10 @@ function _hideNativeHeaderOnMobile(attempt = 0): void {
         padding-top: 0 !important;
         margin-top: 0 !important;
       }
-    }
   `;
+  // On mobile the bottom navigation replaces the header below the breakpoint;
+  // a wall tablet hides the header on every screen width.
+  const css = _nativeHeaderHiddenOnAllWidths ? rules : `@media (max-width: 768px) {${rules}}`;
   roots.forEach((root) => {
     const host = root instanceof Document ? root.head || root.documentElement : root;
     let style = root.querySelector(`#${HIDE_NATIVE_HEADER_STYLE_ID}`) as HTMLStyleElement | null;
@@ -1483,8 +1518,18 @@ function _isMobileNavActive(dashSegment?: string): boolean {
   return _isOnDashboard(dashSegment) && _isMobileViewport();
 }
 
+/** Wall tablet mode is on for this device and the dashboard is shown. */
+function _isWallTabletShellActive(dashSegment?: string): boolean {
+  return Boolean(dashSegment) && _isOnDashboard(dashSegment) && isWallTabletEnabled(dashSegment!);
+}
+
 function _syncHaShellForBottomNav(dashSegment?: string, withRetries = true): void {
-  const active = _isMobileNavActive(dashSegment);
+  const mobileNavActive = _isMobileNavActive(dashSegment);
+  const wallTablet = _isWallTabletShellActive(dashSegment);
+  // The bottom navigation replaces the header on mobile, and on every screen
+  // width in wall tablet mode.
+  const active = mobileNavActive || wallTablet;
+  _nativeHeaderHiddenOnAllWidths = wallTablet;
   document.documentElement.classList.toggle(MOBILE_NAV_ACTIVE_CLASS, active);
   document.body?.classList.toggle(MOBILE_NAV_ACTIVE_CLASS, active);
   if (active) {
@@ -1493,7 +1538,7 @@ function _syncHaShellForBottomNav(dashSegment?: string, withRetries = true): voi
     _setNativeHeaderElementsHidden(false);
   }
   _setDrawerPlacement('start');
-  if (!active) {
+  if (!mobileNavActive) {
     _removeSidebarSection();
   }
 }
@@ -1704,7 +1749,9 @@ function _applyHaSidebarRestriction(
 ): void {
   const currentSegment = window.location.pathname.split('/')[1] || 'lovelace';
   const onDashboard = !dashSegment || currentSegment === dashSegment;
-  const active = onDashboard && restrictNonAdminHaSidebar(hass, settings);
+  // Wall tablet mode hides the sidebar too, unless it was opened from the wall tablet menu.
+  const wallTabletHidesSidebar = _isWallTabletShellActive(dashSegment) && !wallTabletHaMenuPeek();
+  const active = (onDashboard && restrictNonAdminHaSidebar(hass, settings)) || wallTabletHidesSidebar;
   const drawerVars = `
     --app-drawer-width: 0px !important;
     --mdc-drawer-width: 0px !important;

@@ -1818,6 +1818,8 @@ export class DwainsDevicesCard extends LitElement {
       flex: 1;
       overflow-y: auto;
       padding: 16px;
+      /* Set while the bottom navigation is shown on wide screens (wall tablet mode). */
+      padding-bottom: var(--dd-next-bottom-nav-space, 16px);
     }
     @media (max-width: 768px) {
       .content-area {

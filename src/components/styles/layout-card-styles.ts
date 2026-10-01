@@ -860,6 +860,8 @@ export const layoutCardStyles = css`
       overscroll-behavior: auto;
       -webkit-overflow-scrolling: touch;
       padding: 16px;
+      /* Set while the bottom navigation is shown on wide screens (wall tablet mode). */
+      padding-bottom: var(--dd-next-bottom-nav-space, 16px);
     }
 
     .content-area.settings-content-area {
@@ -873,11 +875,11 @@ export const layoutCardStyles = css`
 
     .settings-page-view {
       /* Distance of the save bar from the bottom of the screen. */
-      --dd-settings-bar-bottom: 16px;
+      --dd-settings-bar-bottom: var(--dd-next-bottom-nav-space, 16px);
       width: min(1180px, calc(100% - 32px));
       min-height: 100%;
       margin: 0 auto;
-      padding: 18px 0 24px;
+      padding: 18px 0 calc(24px + var(--dd-next-bottom-nav-space, 0px));
       box-sizing: border-box;
     }
 
@@ -1060,6 +1062,13 @@ export const layoutCardStyles = css`
       .content-area {
         padding-bottom: calc(104px + env(safe-area-inset-bottom, 0px));
       }
+    }
+
+    /* Wall tablet mode: press and hold these to open the wall tablet menu. */
+    [data-dd-wall-tablet-hold] {
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      user-select: none;
     }
 
     /* Home View */

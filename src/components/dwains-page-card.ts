@@ -213,6 +213,8 @@ export class DwainsPageCard extends LitElement {
       max-width: 1100px;
       margin: 0 auto;
       padding: 8px 12px 24px;
+      /* Set while the bottom navigation is shown on wide screens (wall tablet mode). */
+      padding-bottom: var(--dd-next-bottom-nav-space, 24px);
     }
     .page-toolbar {
       display: flex;

@@ -67,6 +67,7 @@ import {
 } from '../utils/now-playing';
 import type { NowPlayingPlayer } from './dwains-now-playing-bar';
 import './dwains-now-playing-bar';
+import { WALL_TABLET_RESET_EVENT } from '../utils/wall-tablet';
 
 // Use DomainCount from header-status-domains utility
 type DomainCount = StatusDomainCount;
@@ -487,6 +488,7 @@ export class DwainsLayoutCard extends LitElement {
     window.addEventListener('dwains-dashboard-next-toggle-area-nav', this._handleAreaNavToggle);
     window.addEventListener('dwains-dashboard-next-open-settings', this._handleOpenSettingsEvent);
     window.addEventListener('dwains-dashboard-next-open-home', this._handleOpenHomeEvent);
+    window.addEventListener(WALL_TABLET_RESET_EVENT, this._handleWallTabletReset);
     this._startTimeUpdate();
     this._initializeObservers();
     // After navigating away and back the card is connected again: subscribe
@@ -536,6 +538,7 @@ export class DwainsLayoutCard extends LitElement {
     window.removeEventListener('dwains-dashboard-next-toggle-area-nav', this._handleAreaNavToggle);
     window.removeEventListener('dwains-dashboard-next-open-settings', this._handleOpenSettingsEvent);
     window.removeEventListener('dwains-dashboard-next-open-home', this._handleOpenHomeEvent);
+    window.removeEventListener(WALL_TABLET_RESET_EVENT, this._handleWallTabletReset);
     window.removeEventListener('pointermove', this._handleSidebarResizeMove);
     window.removeEventListener('pointerup', this._handleSidebarResizeEnd);
     window.removeEventListener('pointercancel', this._handleSidebarResizeEnd);
@@ -1902,7 +1905,7 @@ export class DwainsLayoutCard extends LitElement {
           ${!this._isMobile ? html`
             <div class="header-time-weather">
               ${this.config?.settings?.show_time !== false ? html`
-                <div class="header-time-section">
+                <div class="header-time-section" data-dd-wall-tablet-hold>
               <div class="header-time">${this._currentTime}</div>
               <div class="header-date">${this._currentDate}</div>
             </div>
@@ -2426,7 +2429,7 @@ export class DwainsLayoutCard extends LitElement {
                     ? html`<span class="welcome-avatar-initials" aria-hidden="true">${userInitials}</span>`
                     : html`<ha-icon icon="mdi:account"></ha-icon>`}
               </button>
-              <div class="welcome-copy">
+              <div class="welcome-copy" data-dd-wall-tablet-hold>
                 <div class="welcome-text">
                   <span class="welcome-greeting">${greeting},</span>
                   <span class="welcome-name">${userName}</span>
@@ -2460,7 +2463,7 @@ export class DwainsLayoutCard extends LitElement {
                 </button>
               ` : nothing}
             </div>
-            <div class="welcome-time-section">
+            <div class="welcome-time-section" data-dd-wall-tablet-hold>
               <div class="welcome-time">${this._currentTime}</div>
               <div class="welcome-date">${this._currentDate}</div>
             </div>
@@ -6410,6 +6413,25 @@ export class DwainsLayoutCard extends LitElement {
 
   private _handleOpenHomeEvent = () => {
     this._selectView('home');
+  };
+
+  /**
+   * Wall tablet mode returns to Home after inactivity. Unsaved dashboard
+   * settings are never discarded for that: the reset is cancelled instead.
+   */
+  private _handleWallTabletReset = (event: Event) => {
+    if (this._selectedView === 'settings' && (this._settingsDirty || this._settingsSavePending)) {
+      event.preventDefault();
+      return;
+    }
+    closeConfirmDialog(this);
+    this._notificationsOpen = false;
+    this._headerExpanded = false;
+    if (this._selectedView !== 'home' || this._editMode) this._selectView('home');
+    else this._closeMobileNav();
+    void this.updateComplete.then(() => {
+      this.renderRoot?.querySelector('.content-area')?.scrollTo({ top: 0 });
+    });
   };
 
   private _openMobileAreaSwitcher = () => {
