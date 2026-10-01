@@ -35,7 +35,7 @@ import {
 import { countReplacementRules } from "../utils/blueprint-replacements";
 import { persistableConfig } from "../utils/dashboard-config";
 import { isHiddenAsUnavailable } from "../utils/entity-availability";
-import { isConfigEntityInArea } from "../utils/entity-lookups";
+import { isConfigEntityInArea, resolveStatusEntityAreaId } from "../utils/entity-lookups";
 import { getDeviceClassName, getDomainName } from "../utils/domain-names";
 import { getDeviceClassIcon, getDomainColor, getDomainIcon } from "../utils/icons";
 import { ddLocale, ddLocalize, ddLocalizePlural } from "../utils/localize";
@@ -47,6 +47,17 @@ import {
   normalizeHiddenHomeSections,
   normalizeHomeSectionsOrder,
 } from "../utils/home-sections";
+import {
+  addHomeScene,
+  filterHomeSceneCandidates,
+  homeSceneDomain,
+  moveHomeScene,
+  moveHomeSceneTo,
+  normalizeHomeScenes,
+  pickableHomeSceneIds,
+  removeHomeScene,
+  type HomeSceneCandidate,
+} from "../utils/home-scenes";
 import { DD_NEXT_VERSION } from "../version";
 import {
   MASTER_ACTION_CONFIRMATION_DOMAINS,
@@ -202,6 +213,18 @@ export class DwainsDashboardStrategyEditor extends LitElement {
   private _dragOverHomeCameraIndex?: number;
 
   @state()
+  private _draggedHomeScene?: string;
+
+  @state()
+  private _dragOverHomeSceneIndex?: number;
+
+  @state()
+  private _showHomeScenePicker = false;
+
+  @state()
+  private _homeSceneSearch = '';
+
+  @state()
   private _draggedEntityId?: string;
 
   @state()
@@ -244,7 +267,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
   private _settingsPage: SettingsPageKey = restoreSettingsPage();
 
   @state()
-  private _homeSettingsDetail: 'overview' | 'house_information' | 'climate' | 'outdoor_climate' | 'cameras' | 'custom_cards' | 'favorites' = 'overview';
+  private _homeSettingsDetail: 'overview' | 'house_information' | 'climate' | 'outdoor_climate' | 'cameras' | 'custom_cards' | 'favorites' | 'scenes' = 'overview';
 
   // Dashboard-eigenschappen (naam + sidebar-icoon)
   @state() private _dashboardId?: string;
@@ -692,6 +715,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
     this._showEntityPicker = false;
     this._showWeatherPicker = false;
     this._showAlarmPicker = false;
+    this._showHomeScenePicker = false;
   }
 
   private _homeSettingsDetailHeader(): { title: string; description: string; backLabel: string } | undefined {
@@ -920,6 +944,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
     if (section === 'cameras') return 'cameras';
     if (section === 'custom_cards') return 'custom_cards';
     if (section === 'favorites') return 'favorites';
+    if (section === 'scenes') return 'scenes';
     return undefined;
   }
 
@@ -980,6 +1005,16 @@ export class DwainsDashboardStrategyEditor extends LitElement {
 
     if (this._homeSettingsDetail === 'favorites') {
       return this._renderFavoritesSettingsPanel();
+    }
+
+    if (this._homeSettingsDetail === 'scenes') {
+      const meta = HOME_SECTION_META.scenes;
+      return this._renderSettingsPanel(
+        meta.icon,
+        this._t(meta.labelKey),
+        this._t(meta.descriptionKey),
+        this._renderHomeScenesSettings()
+      );
     }
 
     return this._renderSettingsPanel(
@@ -2458,6 +2493,248 @@ export class DwainsDashboardStrategyEditor extends LitElement {
         ` : html`<div class="home-camera-settings-empty">${this._t('settings.home_camera_cards_empty')}</div>`}
       </div>
     `;
+  }
+
+  private _getHomeScenes(): string[] {
+    return normalizeHomeScenes(this._config?.settings?.home_scenes);
+  }
+
+  private _setHomeScenes(ids: string[]): void {
+    if (!this._config) return;
+    this._fireConfigChanged({
+      ...this._config,
+      settings: { ...this._config.settings, home_scenes: ids },
+    });
+  }
+
+  private _homeSceneAreaName(entityId: string): string | undefined {
+    if (!this.hass || !this._config) return undefined;
+    const areaId = resolveStatusEntityAreaId(this.hass, this._config, entityId);
+    if (!areaId) return undefined;
+    return (this._config.areas || []).find(area => area.area_id === areaId)?.name ||
+      this.hass.areas?.[areaId]?.name ||
+      undefined;
+  }
+
+  private _homeSceneName(entityId: string): string {
+    return this.hass?.states[entityId]?.attributes?.friendly_name ||
+      getEntityRegistry(this.hass)[entityId]?.name ||
+      entityId;
+  }
+
+  private _homeSceneIcon(entityId: string): string {
+    const domain = homeSceneDomain(entityId) || 'scene';
+    return getEntityRegistry(this.hass)[entityId]?.icon ||
+      this.hass?.states[entityId]?.attributes?.icon ||
+      getDomainIcon(domain);
+  }
+
+  private _homeSceneTypeLabel(entityId: string): string {
+    return this._t(homeSceneDomain(entityId) === 'script' ? 'scenes.type_script' : 'scenes.type_scene');
+  }
+
+  private _openHomeScenePicker = (): void => {
+    this._homeSceneSearch = '';
+    this._showHomeScenePicker = true;
+  };
+
+  private _addHomeScene(entityId: string): void {
+    this._setHomeScenes(addHomeScene(this._getHomeScenes(), entityId));
+    this._showHomeScenePicker = false;
+  }
+
+  private _removeHomeScene(entityId: string): void {
+    this._setHomeScenes(removeHomeScene(this._getHomeScenes(), entityId));
+  }
+
+  private _moveHomeScene(entityId: string, direction: -1 | 1): void {
+    this._setHomeScenes(moveHomeScene(this._getHomeScenes(), entityId, direction));
+  }
+
+  private _renderHomeScenesSettings() {
+    const picked = this._getHomeScenes();
+
+    return html`
+      <div class="home-info-card-section home-scene-settings-section">
+        <div class="home-info-card-header">
+          <div>
+            <h4>${this._t('scenes.settings_title')}</h4>
+            ${picked.length ? html`<p>${this._t('scenes.settings_help')}</p>` : nothing}
+          </div>
+          <button class="home-custom-card-add" type="button" @click=${this._openHomeScenePicker}>
+            <ha-icon icon="mdi:plus"></ha-icon>
+            ${this._t('scenes.add')}
+          </button>
+        </div>
+        ${picked.length ? html`
+          <div class="home-camera-settings-list ${this._draggedHomeScene ? 'dragging' : ''}">
+            ${repeat(
+              picked,
+              entityId => entityId,
+              (entityId, index) => {
+                const state = this.hass?.states[entityId];
+                const name = this._homeSceneName(entityId);
+                const areaName = this._homeSceneAreaName(entityId);
+                const unavailable = Boolean(state && isHiddenAsUnavailable(state));
+                const details = !state
+                  ? `${this._t('scenes.missing')} · ${entityId}`
+                  : [this._homeSceneTypeLabel(entityId), areaName, unavailable ? this._t('common.unavailable') : '']
+                    .filter(Boolean)
+                    .join(' · ');
+                const isDragging = this._draggedHomeScene === entityId;
+                const isDragOver = this._dragOverHomeSceneIndex === index && !isDragging && Boolean(this._draggedHomeScene);
+                return html`
+                  <div
+                    class="home-section-item home-scene-settings-item ${state && !unavailable ? '' : 'disabled'} ${isDragging ? 'dragging' : ''} ${isDragOver ? 'drag-over' : ''}"
+                    draggable="true"
+                    data-entity-id=${entityId}
+                    @dragstart=${(event: DragEvent) => this._handleHomeSceneDragStart(event, entityId)}
+                    @dragend=${this._handleHomeSceneDragEnd}
+                    @dragover=${(event: DragEvent) => this._handleHomeSceneDragOver(event, index)}
+                    @dragleave=${this._handleHomeSceneDragLeave}
+                    @drop=${(event: DragEvent) => this._handleHomeSceneDrop(event, index)}
+                  >
+                    <div class="home-section-handle"><ha-svg-icon .path=${mdiDrag}></ha-svg-icon></div>
+                    <div class="home-section-icon">
+                      <ha-icon icon=${state ? this._homeSceneIcon(entityId) : 'mdi:help-circle-outline'}></ha-icon>
+                    </div>
+                    <div class="home-section-copy">
+                      <div class="home-section-title">${name}</div>
+                      <div class="home-section-description">${details}</div>
+                    </div>
+                    <div class="home-section-actions">
+                      <ha-icon-button
+                        .label=${this._t('settings.move_up')}
+                        .path=${mdiArrowUp}
+                        .disabled=${index === 0}
+                        @click=${() => this._moveHomeScene(entityId, -1)}
+                      ></ha-icon-button>
+                      <ha-icon-button
+                        .label=${this._t('settings.move_down')}
+                        .path=${mdiArrowDown}
+                        .disabled=${index === picked.length - 1}
+                        @click=${() => this._moveHomeScene(entityId, 1)}
+                      ></ha-icon-button>
+                      <ha-icon-button
+                        .label=${this._t('scenes.remove_named', { name })}
+                        .path=${mdiDelete}
+                        @click=${() => this._removeHomeScene(entityId)}
+                      ></ha-icon-button>
+                    </div>
+                  </div>
+                `;
+              }
+            )}
+          </div>
+        ` : html`
+          <div class="home-camera-settings-empty">${this._t('scenes.settings_empty')}</div>
+        `}
+        ${this._showHomeScenePicker ? this._renderHomeScenePicker(picked) : nothing}
+      </div>
+    `;
+  }
+
+  private _renderHomeScenePicker(picked: string[]) {
+    const registry = getEntityRegistry(this.hass);
+    const candidates = pickableHomeSceneIds(this.hass?.states || {}, registry).map(entityId => {
+      const candidate: HomeSceneCandidate = { entityId, name: this._homeSceneName(entityId) };
+      const areaName = this._homeSceneAreaName(entityId);
+      if (areaName) candidate.areaName = areaName;
+      return candidate;
+    });
+    const options = filterHomeSceneCandidates(candidates, picked, this._homeSceneSearch, ddLocale(this.hass));
+
+    return html`
+      <div class="entity-picker-modal" @click=${(event: Event) => {
+        if (event.target === event.currentTarget) this._showHomeScenePicker = false;
+      }}>
+        <div class="entity-picker-content" role="dialog" aria-modal="true" aria-label=${this._t('scenes.picker_title')}>
+          <div class="entity-picker-header">
+            <h4>${this._t('scenes.picker_title')}</h4>
+            <button
+              class="close-button"
+              type="button"
+              title=${this._t('common.close')}
+              aria-label=${this._t('common.close')}
+              @click=${() => this._showHomeScenePicker = false}
+            >
+              <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+                <path fill="currentColor" d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z" />
+              </svg>
+            </button>
+          </div>
+
+          <div class="entity-search">
+            <input
+              class="entity-search-input"
+              type="search"
+              placeholder=${this._t('scenes.search')}
+              aria-label=${this._t('scenes.search')}
+              .value=${this._homeSceneSearch}
+              @input=${(event: Event) => this._homeSceneSearch = (event.target as HTMLInputElement).value}
+            />
+          </div>
+
+          <div class="entity-list">
+            ${repeat(
+              options,
+              option => option.entityId,
+              option => html`
+                <button type="button" class="entity-option home-scene-option" @click=${() => this._addHomeScene(option.entityId)}>
+                  <ha-icon class="entity-icon" icon=${this._homeSceneIcon(option.entityId)}></ha-icon>
+                  <span class="entity-name">
+                    <span class="home-scene-option-name">${option.name}</span>
+                    <span class="home-scene-option-meta">
+                      ${[this._homeSceneTypeLabel(option.entityId), option.areaName].filter(Boolean).join(' · ')}
+                    </span>
+                  </span>
+                  <span class="entity-id">${option.entityId}</span>
+                </button>
+              `
+            )}
+            ${options.length === 0 ? html`
+              <div class="entity-picker-hint empty">${this._t('scenes.no_results')}</div>
+            ` : nothing}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  private _handleHomeSceneDragStart(event: DragEvent, entityId: string): void {
+    this._draggedHomeScene = entityId;
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('text/plain', entityId);
+    }
+  }
+
+  private _handleHomeSceneDragEnd = (): void => {
+    this._draggedHomeScene = undefined;
+    this._dragOverHomeSceneIndex = undefined;
+  };
+
+  private _handleHomeSceneDragOver(event: DragEvent, index: number): void {
+    if (!this._draggedHomeScene) return;
+    event.preventDefault();
+    this._dragOverHomeSceneIndex = index;
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+  }
+
+  private _handleHomeSceneDragLeave = (event: DragEvent): void => {
+    const currentTarget = event.currentTarget as HTMLElement | null;
+    const relatedTarget = event.relatedTarget as Node | null;
+    if (!currentTarget?.contains(relatedTarget)) this._dragOverHomeSceneIndex = undefined;
+  };
+
+  private _handleHomeSceneDrop(event: DragEvent, dropIndex: number): void {
+    event.preventDefault();
+    const dragged = this._draggedHomeScene;
+    this._handleHomeSceneDragEnd();
+    if (!dragged) return;
+    const current = this._getHomeScenes();
+    const next = moveHomeSceneTo(current, dragged, dropIndex);
+    if (next.join('|') !== current.join('|')) this._setHomeScenes(next);
   }
 
   private _renderDeviceTypeVisibilitySettings() {
@@ -4911,6 +5188,27 @@ export class DwainsDashboardStrategyEditor extends LitElement {
         gap: 8px;
       }
 
+      .home-scene-settings-section {
+        padding: 0 16px 16px;
+      }
+
+      .home-scene-settings-section .home-custom-card-add {
+        flex: 0 0 auto;
+        white-space: nowrap;
+      }
+
+      .home-scene-option .entity-name {
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+
+      .home-scene-option-meta {
+        color: var(--secondary-text-color);
+        font-size: 12px;
+      }
+
       .home-camera-settings-empty {
         padding: 18px;
         border: 1px dashed var(--divider-color);
@@ -5096,7 +5394,8 @@ export class DwainsDashboardStrategyEditor extends LitElement {
         }
 
         .home-camera-settings-section,
-        .home-custom-card-settings-section {
+        .home-custom-card-settings-section,
+        .home-scene-settings-section {
           padding-inline: 10px;
         }
       }
