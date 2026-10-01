@@ -68,6 +68,8 @@ import { showCardEditorDialog } from "./utils/show-card-editor-dialog";
 import { fireEvent } from "./utils/fire-event";
 import { showConfirmDialog } from "./utils/confirm-dialog";
 import { getEntityRegistry, setFullEntityRegistry } from "../utils/entity-registry";
+import { dashboardSegmentFromPath, readWallTabletPrefs } from "../utils/wall-tablet";
+import "./dwains-wall-tablet-settings";
 
 // We'll create our own entity picker since ha-entity-picker is external
 type SettingsPageKey =
@@ -81,11 +83,12 @@ type SettingsPageKey =
   | "areas"
   | "replacements"
   | "permissions"
-  | "support";
+  | "support"
+  | "wall_tablet";
 
 interface SettingsPageItem {
   page: Exclude<SettingsPageKey, "overview">;
-  group: "general" | "layout" | "advanced";
+  group: "general" | "layout" | "advanced" | "device";
   icon: string;
   color: string;
   title: string;
@@ -495,6 +498,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
       { key: "general", title: this._t('settings.general') },
       { key: "layout", title: this._t('settings.dashboard_layout') },
       { key: "advanced", title: this._t('settings.advanced') },
+      { key: "device", title: this._t('kiosk.group_title') },
     ];
     const items = this._settingsOverviewItems();
 
@@ -657,6 +661,19 @@ export class DwainsDashboardStrategyEditor extends LitElement {
         description: this._t('settings.support_description'),
         summary: [this._t('settings.optional')],
       },
+      {
+        page: "wall_tablet",
+        group: "device",
+        icon: "mdi:tablet-dashboard",
+        color: "#64748b",
+        title: this._t('kiosk.title'),
+        description: this._t('kiosk.description'),
+        summary: [
+          readWallTabletPrefs(dashboardSegmentFromPath(window.location.pathname)).enabled
+            ? this._t('kiosk.summary_on')
+            : this._t('kiosk.summary_off'),
+        ],
+      },
     ];
   }
 
@@ -813,6 +830,13 @@ export class DwainsDashboardStrategyEditor extends LitElement {
         return this._renderPermissionsSettingsPanel();
       case "support":
         return this._renderSupportSection();
+      case "wall_tablet":
+        return this._renderSettingsPanel(
+          "mdi:tablet-dashboard",
+          this._t('kiosk.title'),
+          this._t('kiosk.panel_description'),
+          html`<dwains-dashboard-next-wall-tablet-settings .hass=${this.hass}></dwains-dashboard-next-wall-tablet-settings>`
+        );
       default:
         return nothing;
     }
