@@ -98,6 +98,7 @@ export const ptBR = {
   'navigation.profile_settings': 'Configurações do perfil',
   'navigation.profile_description': 'Abrir seu perfil do Home Assistant',
   'navigation.back_home': 'Voltar ao início',
+  'navigation.back_devices': 'Voltar para dispositivos',
   'navigation.open_menu': 'Abrir menu',
   'navigation.current_page': 'Página atual',
   'navigation.open_page': 'Abrir página',

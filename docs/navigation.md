@@ -21,7 +21,7 @@ Mobile uses a bottom navigation bar:
 - Devices
 - More pages
 
-The standalone menu button opens the Home Assistant sidebar. When you are inside an area, the standalone button becomes a back button.
+The standalone menu button opens the Home Assistant sidebar. Inside an area it becomes a back button to Home, and inside a device group it becomes a back button to the devices overview.
 
 ## Area Switching
 

@@ -96,6 +96,7 @@ export const fr = {
   'navigation.profile_settings': 'Paramètres du profil',
   'navigation.profile_description': 'Ouvrez votre profil Home Assistant',
   'navigation.back_home': 'Retour à la maison',
+  'navigation.back_devices': 'Retour aux appareils',
   'navigation.open_menu': 'Ouvrir le menu',
   'navigation.current_page': 'Page actuelle',
   'navigation.open_page': 'Ouvrir la page',

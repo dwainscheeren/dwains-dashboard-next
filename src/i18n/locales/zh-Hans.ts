@@ -96,6 +96,7 @@ export const zhHans = {
   'navigation.profile_settings': '个人设置',
   'navigation.profile_description': '打开你的 Home Assistant 个人数据',
   'navigation.back_home': '返回首页',
+  'navigation.back_devices': '返回设备',
   'navigation.open_menu': '打开菜单',
   'navigation.current_page': '目前页面',
   'navigation.open_page': '打开页面',

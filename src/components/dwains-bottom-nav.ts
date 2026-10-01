@@ -52,6 +52,8 @@ interface DeviceContext {
   domain: string | null;
   icon?: string;
   label?: string;
+  /** True on the devices overview, false while a device group is open. */
+  overview?: boolean;
 }
 
 const PAGES_PATH = '__dd_pages__';
@@ -266,7 +268,9 @@ export class DwainsBottomNav extends LitElement {
     this._pagesOpen = false;
 
     // On wide screens (wall tablet mode) there is no area menu to open: go to Home.
-    if (this._areaContext.view === 'settings' || (this._areaContext.view === 'area' && !_isMobileViewport())) {
+    // Only while Home is open: on other views the layout card is not there to listen.
+    const onHome = this._isHomeRoute(this._currentPath());
+    if (onHome && (this._areaContext.view === 'settings' || (this._areaContext.view === 'area' && !_isMobileViewport()))) {
       this._active = 'home';
       window.dispatchEvent(new CustomEvent('dwains-dashboard-next-open-home'));
       return;
@@ -389,33 +393,58 @@ export class DwainsBottomNav extends LitElement {
     `;
   }
 
+  /**
+   * The button left of the bar goes one level back when there is one: from an
+   * area to Home, or from a device group to the devices overview. Everywhere
+   * else it opens the Home Assistant menu.
+   */
   private _renderStandaloneMenuButton() {
-    const isArea = this._areaContext.view === 'area' && Boolean(this._areaContext.areaId);
+    const path = this._currentPath();
+    // The area context is only current on Home: the layout card does not send
+    // a new one when another view (such as Devices) is opened.
+    const isArea = this._isHomeRoute(path) &&
+      this._areaContext.view === 'area' &&
+      Boolean(this._areaContext.areaId);
+    const isDeviceGroup = path === 'devices' &&
+      Boolean(this._deviceContext.domain) &&
+      this._deviceContext.overview === false;
+    const isBack = isArea || isDeviceGroup;
     // A wall tablet keeps the Home Assistant menu out of reach; the wall tablet
     // menu (press and hold the clock) opens it when needed. On wide screens the
-    // area sidebar and the Home item already lead back from an area.
-    if (_isWallTabletShellActive(this.dashSegment) && (!isArea || !_isMobileViewport())) return nothing;
+    // sidebars and the Home item already lead back.
+    if (_isWallTabletShellActive(this.dashSegment) && (!isBack || !_isMobileViewport())) return nothing;
     const label = isArea
       ? ddLocalize(this._hass, 'navigation.back_home')
-      : ddLocalize(this._hass, 'navigation.open_menu');
+      : isDeviceGroup
+        ? ddLocalize(this._hass, 'navigation.back_devices')
+        : ddLocalize(this._hass, 'navigation.open_menu');
     return html`
       <button
-        class="standalone-menu ${isArea ? 'is-back' : ''}"
+        class="standalone-menu ${isBack ? 'is-back' : ''}"
         type="button"
         title=${label}
         aria-label=${label}
         @click=${() => {
           if (isArea) {
             this._goHomeFromArea();
+          } else if (isDeviceGroup) {
+            this._goToDevicesOverview();
           } else {
             this._toggleHaMenu();
           }
         }}
       >
-        ${this._renderIcon(isArea ? 'mdi:arrow-left' : 'mdi:menu')}
+        ${this._renderIcon(isBack ? 'mdi:arrow-left' : 'mdi:menu')}
       </button>
     `;
   }
+
+  private _goToDevicesOverview = (): void => {
+    this._pagesOpen = false;
+    this._restrictedMenuOpen = false;
+    this._active = 'devices';
+    window.dispatchEvent(new CustomEvent('dwains-dashboard-next-open-devices-overview'));
+  };
 
   private _goHomeFromArea = (): void => {
     this._pagesOpen = false;

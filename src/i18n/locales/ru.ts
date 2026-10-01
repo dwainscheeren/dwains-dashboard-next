@@ -98,6 +98,7 @@ export const ru = {
   'navigation.profile_settings': 'Настройки профиля',
   'navigation.profile_description': 'Открыть профиль Home Assistant',
   'navigation.back_home': 'Вернуться на главную',
+  'navigation.back_devices': 'Назад к устройствам',
   'navigation.open_menu': 'Открыть меню',
   'navigation.current_page': 'Текущая страница',
   'navigation.open_page': 'Открыть страницу',

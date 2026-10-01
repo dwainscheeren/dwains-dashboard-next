@@ -185,6 +185,7 @@ export class DwainsDevicesCard extends LitElement {
     window.addEventListener('resize', this._resizeHandler);
     window.addEventListener('dwains-dashboard-next-toggle-devices-nav', this._handleDevicesNavToggle);
     window.addEventListener('dwains-dashboard-next-select-device-domain', this._handleSelectDeviceDomain as EventListener);
+    window.addEventListener('dwains-dashboard-next-open-devices-overview', this._handleOpenOverview);
     window.addEventListener('location-changed', this._locationHandler);
     window.addEventListener('popstate', this._locationHandler);
     // The house power total switches to the energy settings once they are loaded.
@@ -203,6 +204,7 @@ export class DwainsDevicesCard extends LitElement {
     window.removeEventListener('resize', this._resizeHandler);
     window.removeEventListener('dwains-dashboard-next-toggle-devices-nav', this._handleDevicesNavToggle);
     window.removeEventListener('dwains-dashboard-next-select-device-domain', this._handleSelectDeviceDomain as EventListener);
+    window.removeEventListener('dwains-dashboard-next-open-devices-overview', this._handleOpenOverview);
     window.removeEventListener('location-changed', this._locationHandler);
     window.removeEventListener('popstate', this._locationHandler);
     if (this._deviceTrackingTimer !== undefined) {
@@ -256,6 +258,11 @@ export class DwainsDevicesCard extends LitElement {
     this._applyPendingDomainSelection();
     this.requestUpdate();
   }
+
+  /** The back button of the bottom navigation. */
+  private _handleOpenOverview = () => {
+    this._selectDomain(DEVICES_OVERVIEW_KEY);
+  };
 
   private _handleSelectDeviceDomain = (event: CustomEvent<{ domain?: string }>) => {
     const domain = event.detail?.domain;
@@ -703,6 +710,7 @@ export class DwainsDevicesCard extends LitElement {
           : domain
             ? this._typeName(domain)
             : this._t('devices.title'),
+        overview: domain === DEVICES_OVERVIEW_KEY || !domain,
       },
     }));
   }
@@ -1091,8 +1099,8 @@ export class DwainsDevicesCard extends LitElement {
             <button
               class="dd-page-header-button dd-page-header-back"
               type="button"
-              title=${this._t('navigation.overview')}
-              aria-label=${this._t('navigation.overview')}
+              title=${this._t('navigation.back_devices')}
+              aria-label=${this._t('navigation.back_devices')}
               @click=${() => this._selectDomain(DEVICES_OVERVIEW_KEY)}
             >
               <ha-icon icon="mdi:arrow-left"></ha-icon>

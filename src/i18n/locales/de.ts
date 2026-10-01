@@ -96,6 +96,7 @@ export const de = {
   'navigation.profile_settings': 'Profileinstellungen',
   'navigation.profile_description': 'Home-Assistant-Profil öffnen',
   'navigation.back_home': 'Zur Startseite',
+  'navigation.back_devices': 'Zurück zu den Geräten',
   'navigation.open_menu': 'Menü öffnen',
   'navigation.current_page': 'Aktuelle Seite',
   'navigation.open_page': 'Seite öffnen',

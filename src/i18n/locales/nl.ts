@@ -96,6 +96,7 @@ export const nl = {
   'navigation.profile_settings': 'Profielinstellingen',
   'navigation.profile_description': 'Open uw Home Assistant-profiel',
   'navigation.back_home': 'Terug naar huis',
+  'navigation.back_devices': 'Terug naar apparaten',
   'navigation.open_menu': 'Menu openen',
   'navigation.current_page': 'Huidige pagina',
   'navigation.open_page': 'Pagina openen',

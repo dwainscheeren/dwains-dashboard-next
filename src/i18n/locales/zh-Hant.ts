@@ -96,6 +96,7 @@ export const zhHant = {
   'navigation.profile_settings': '個人設定',
   'navigation.profile_description': '開啟你的 Home Assistant 個人資料',
   'navigation.back_home': '返回首頁',
+  'navigation.back_devices': '返回裝置',
   'navigation.open_menu': '開啟選單',
   'navigation.current_page': '目前頁面',
   'navigation.open_page': '開啟頁面',
