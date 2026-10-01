@@ -70,3 +70,7 @@ Restrict what non-admin users can see or edit.
 ## Support
 
 Configure support links and SmartHomeShop links.
+
+## Wall Tablet (This Device)
+
+Turn the current browser into a wall tablet: hide the Home Assistant header and sidebar, return to Home after inactivity and show a screensaver. These settings are stored on this device only and are applied right away, without saving. See [Wall tablet mode](wall-tablet.html).

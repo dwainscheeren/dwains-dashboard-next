@@ -69,6 +69,10 @@
     <strong>Custom cards</strong>
     <span>Add manual cards above, below or inside generated area sections.</span>
   </a>
+  <a class="doc-card" href="wall-tablet.html">
+    <strong>Wall tablet mode</strong>
+    <span>Hide the Home Assistant header, return to Home and show a screensaver on a tablet.</span>
+  </a>
   <a class="doc-card" href="translations.html">
     <strong>Languages</strong>
     <span>Use English, Dutch, German, French, Spanish or Chinese automatically.</span>
