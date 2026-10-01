@@ -29,6 +29,8 @@ export const zhHant = {
   'common.off': '離開',
   'common.open': '開啟',
   'common.closed': '關閉',
+  'area_header.on_count': '{active}/{total} 已開啟',
+  'area_header.open_count': '{active}/{total} 已打開',
   'common.unknown': '未知',
   'common.unavailable': '無法使用',
   'common.none': '沒有任何',

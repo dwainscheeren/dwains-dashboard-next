@@ -29,6 +29,8 @@ export const ru = {
   'common.off': 'Выкл.',
   'common.open': 'Открыто',
   'common.closed': 'Закрыто',
+  'area_header.on_count': 'Вкл.: {active} из {total}',
+  'area_header.open_count': 'Открыто: {active} из {total}',
   'common.unknown': 'Неизвестно',
   'common.unavailable': 'Недоступно',
   'common.none': 'Нет',

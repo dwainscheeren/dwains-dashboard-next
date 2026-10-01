@@ -29,6 +29,8 @@ export const nl = {
   'common.off': 'Uit',
   'common.open': 'Open',
   'common.closed': 'Gesloten',
+  'area_header.on_count': '{active} van {total} aan',
+  'area_header.open_count': '{active} van {total} open',
   'common.unknown': 'Onbekend',
   'common.unavailable': 'Niet beschikbaar',
   'common.none': 'Geen',

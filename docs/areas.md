@@ -20,9 +20,15 @@ The area header can show:
 - Area name
 - Device count
 - Temperature and humidity when available
-- Quick controls for lights, switches and covers
+- Quick control tiles for lights, switches, covers, fans and climate
 - A thermostat when the area has one climate entity
+- A camera button when the area has an available camera
+- A button with the number of hidden unavailable entities
 - Edit button for admins
+
+On desktop and tablet the header is a card: the name and buttons on the first row, the quick control tiles and the thermostat below. When the area has a picture, the picture fills the header.
+
+On phones the back and other buttons sit at the top, with the area name in large text below them. The quick control tiles scroll sideways and the thermostat uses the full width. Once you scroll down, a slim bar with the area name, the temperature and humidity and the buttons stays at the top of the screen. Scroll up a little to show the quick control tiles in that bar as well.
 
 ## Thermostat
 
@@ -56,11 +62,13 @@ To-do entities use Home Assistant's editable to-do list card, so list items can 
 
 ## Quick Controls
 
-Supported group actions include:
+Each quick control tile shows the group and its state, for example **Lights, 2 of 5 on** or **Covers, Closed**. Supported group actions include:
 
 - Turn all lights on or off
 - Turn all switches on or off
+- Turn all fans on or off
 - Open or close all covers
+- Open a list of all climate entities (when the area has several)
 
 ## Unavailable Entities
 

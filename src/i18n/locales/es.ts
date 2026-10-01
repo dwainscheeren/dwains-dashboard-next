@@ -29,6 +29,8 @@ export const es = {
   'common.off': 'Apagado',
   'common.open': 'Abierto',
   'common.closed': 'Cerrado',
+  'area_header.on_count': '{active} de {total} encendidos',
+  'area_header.open_count': '{active} de {total} abiertos',
   'common.unknown': 'Desconocido',
   'common.unavailable': 'Indisponible',
   'common.none': 'Ninguno',

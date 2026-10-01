@@ -29,6 +29,8 @@ export const ptBR = {
   'common.off': 'Desligado',
   'common.open': 'Aberto',
   'common.closed': 'Fechado',
+  'area_header.on_count': '{active} de {total} ligados',
+  'area_header.open_count': '{active} de {total} abertos',
   'common.unknown': 'Desconhecido',
   'common.unavailable': 'Indisponível',
   'common.none': 'Nenhum',

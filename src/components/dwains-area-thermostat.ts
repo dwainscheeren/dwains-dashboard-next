@@ -307,23 +307,24 @@ export class DwainsAreaThermostat extends LitElement {
       -webkit-tap-highlight-color: transparent;
     }
 
+    /* Same tile shape as the room tiles next to it. The --ph-* colors come
+       from the page header, so the thermostat also follows a room picture. */
     .thermostat {
       --thermostat-color: var(--secondary-text-color, #6b7280);
+      --tile-text: var(--ph-text, var(--primary-text-color));
+      --tile-muted: var(--ph-muted, var(--secondary-text-color));
       box-sizing: border-box;
-      min-height: 44px;
-      padding: 4px;
+      min-height: 52px;
+      padding: 6px;
       display: flex;
       align-items: center;
-      gap: 4px;
+      gap: 6px;
       min-width: 0;
-      border-radius: 999px;
-      background: color-mix(in srgb, var(--card-background-color, #fff) 92%, transparent);
-      color: var(--primary-text-color);
-      box-shadow:
-        0 10px 24px rgba(15, 23, 42, 0.1),
-        inset 0 0 0 1px color-mix(in srgb, var(--divider-color, rgba(0, 0, 0, 0.12)) 58%, transparent);
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
+      border-radius: 14px;
+      background: var(--ph-control, color-mix(in srgb, var(--primary-text-color) 6%, transparent));
+      color: var(--tile-text);
+      backdrop-filter: blur(16px) saturate(1.3);
+      -webkit-backdrop-filter: blur(16px) saturate(1.3);
     }
 
     .thermostat.activity-heat { --thermostat-color: var(--state-climate-heat-color, #ff8100); }
@@ -358,13 +359,13 @@ export class DwainsAreaThermostat extends LitElement {
 
     .segment {
       min-width: 0;
-      min-height: 36px;
-      padding: 0 10px 0 4px;
+      min-height: 40px;
+      padding: 0 10px 0 0;
       display: inline-flex;
       align-items: center;
-      gap: 6px;
+      gap: 10px;
       flex: 0 1 auto;
-      border-radius: 999px;
+      border-radius: 11px;
       text-align: left;
       transition: background-color 0.18s ease;
     }
@@ -373,26 +374,29 @@ export class DwainsAreaThermostat extends LitElement {
       padding-left: 10px;
     }
 
-    .segment:hover,
+    .segment:hover {
+      background: color-mix(in srgb, var(--tile-text) 7%, transparent);
+    }
+
     .mode:hover {
-      background: color-mix(in srgb, var(--primary-text-color) 7%, transparent);
+      background: color-mix(in srgb, var(--thermostat-color) 22%, transparent);
     }
 
     .segment-icon {
-      width: 28px;
-      height: 28px;
+      width: 40px;
+      height: 40px;
       display: inline-flex;
       align-items: center;
       justify-content: center;
       flex: 0 0 auto;
-      border-radius: 50%;
-      background: color-mix(in srgb, var(--thermostat-color) 14%, transparent);
-      color: color-mix(in srgb, var(--thermostat-color) 78%, var(--primary-text-color));
+      border-radius: 11px;
+      background: color-mix(in srgb, var(--thermostat-color) 16%, transparent);
+      color: color-mix(in srgb, var(--thermostat-color) 78%, var(--tile-text));
     }
 
     .segment-icon svg {
-      width: 16px;
-      height: 16px;
+      width: 20px;
+      height: 20px;
     }
 
     .copy {
@@ -404,17 +408,15 @@ export class DwainsAreaThermostat extends LitElement {
     }
 
     .label {
-      color: var(--secondary-text-color);
-      font-size: 10px;
-      font-weight: 700;
-      letter-spacing: 0.02em;
-      text-transform: uppercase;
+      color: var(--tile-muted);
+      font-size: 12px;
+      font-weight: 500;
       white-space: nowrap;
     }
 
     .value {
-      font-size: 13px;
-      font-weight: 800;
+      font-size: 14px;
+      font-weight: 650;
       font-variant-numeric: tabular-nums;
       white-space: nowrap;
       overflow: hidden;
@@ -427,8 +429,7 @@ export class DwainsAreaThermostat extends LitElement {
       gap: 2px;
       flex: 0 0 auto;
       padding: 0;
-      border-radius: 999px;
-      background: color-mix(in srgb, var(--primary-text-color) 5%, transparent);
+      border-radius: 11px;
     }
 
     .target-copy {
@@ -444,13 +445,14 @@ export class DwainsAreaThermostat extends LitElement {
       align-items: center;
       justify-content: center;
       flex: 0 0 auto;
-      border-radius: 50%;
-      background: var(--card-background-color, #fff);
-      color: var(--primary-text-color);
-      box-shadow:
-        0 2px 6px rgba(15, 23, 42, 0.1),
-        inset 0 0 0 1px color-mix(in srgb, var(--divider-color, rgba(0, 0, 0, 0.12)) 60%, transparent);
-      transition: transform 0.12s ease, opacity 0.18s ease;
+      border-radius: 10px;
+      background: color-mix(in srgb, var(--tile-text) 8%, transparent);
+      color: var(--tile-text);
+      transition: background-color 0.18s ease, transform 0.12s ease, opacity 0.18s ease;
+    }
+
+    .step:hover:not(:disabled) {
+      background: color-mix(in srgb, var(--tile-text) 13%, transparent);
     }
 
     .step:active:not(:disabled) {
@@ -465,18 +467,18 @@ export class DwainsAreaThermostat extends LitElement {
     .mode {
       min-width: 36px;
       max-width: 150px;
-      min-height: 36px;
+      min-height: 40px;
       margin-left: auto;
-      padding: 0 12px 0 9px;
+      padding: 0 12px 0 10px;
       display: inline-flex;
       align-items: center;
       gap: 6px;
       flex: 0 1 auto;
-      border-radius: 999px;
-      background: color-mix(in srgb, var(--thermostat-color) 14%, transparent);
-      color: color-mix(in srgb, var(--thermostat-color) 70%, var(--primary-text-color));
-      font-size: 12px;
-      font-weight: 800;
+      border-radius: 11px;
+      background: color-mix(in srgb, var(--thermostat-color) 15%, transparent);
+      color: color-mix(in srgb, var(--thermostat-color) 70%, var(--tile-text));
+      font-size: 13px;
+      font-weight: 650;
       transition: background-color 0.18s ease;
     }
 
@@ -493,9 +495,6 @@ export class DwainsAreaThermostat extends LitElement {
     }
 
     @media (pointer: coarse) {
-      .thermostat {
-        min-height: 48px;
-      }
 
       .segment,
       .mode {
@@ -510,7 +509,7 @@ export class DwainsAreaThermostat extends LitElement {
 
     @media (max-width: 380px) {
       .segment {
-        padding: 0 6px 0 10px;
+        padding: 0 6px 0 8px;
       }
 
       .segment-icon {

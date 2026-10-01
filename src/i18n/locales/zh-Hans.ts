@@ -29,6 +29,8 @@ export const zhHans = {
   'common.off': '离开',
   'common.open': '打开',
   'common.closed': '已关闭',
+  'area_header.on_count': '{active}/{total} 已开启',
+  'area_header.open_count': '{active}/{total} 已打开',
   'common.unknown': '未知',
   'common.unavailable': '无法使用',
   'common.none': '无',

@@ -29,6 +29,8 @@ export const fr = {
   'common.off': 'Désactivé',
   'common.open': 'Ouvrir',
   'common.closed': 'Fermé',
+  'area_header.on_count': '{active} sur {total} allumés',
+  'area_header.open_count': '{active} sur {total} ouverts',
   'common.unknown': 'Inconnu',
   'common.unavailable': 'Indisponible',
   'common.none': 'Aucun',
