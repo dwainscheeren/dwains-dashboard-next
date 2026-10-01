@@ -41,6 +41,7 @@ import { formatValueWithUnit } from '../utils/unit-format';
 import { TRANSLATIONS_LOADED_EVENT } from '../i18n';
 import './utils/dd-card-host';
 import { getEntityRegistry } from '../utils/entity-registry';
+import { pageHeaderStyles } from './styles/page-header-styles';
 
 const NEW_DEVICES_KEY = '__new_devices__';
 const MAINTENANCE_KEY = '__maintenance__';
@@ -790,11 +791,20 @@ export class DwainsDevicesCard extends LitElement {
   // ---- Selectie -------------------------------------------------------------
 
   private _selectDomain(domain: string) {
+    const changed = this._selectedDomain !== domain;
     this._pendingDomainSelection = null;
     this._selectedDomain = domain;
     this._updateUrlDomain(domain === DEVICES_OVERVIEW_KEY ? null : domain);
     this._syncBottomNavDeviceContext();
     this._closeMobileNav();
+    if (changed) this._scrollToTop();
+  }
+
+  /** A new group starts at the top: the content area on wide screens, the page on phones. */
+  private _scrollToTop(): void {
+    const contentArea = this.shadowRoot?.querySelector('.content-area') as HTMLElement | null;
+    if (contentArea) contentArea.scrollTop = 0;
+    if (this._isMobile && window.scrollY > 0) window.scrollTo(0, 0);
   }
 
   private _toggleMobileNav = () => {
@@ -1055,6 +1065,12 @@ export class DwainsDevicesCard extends LitElement {
     `;
   }
 
+  /**
+   * Page header in the same style as the room pages (see page-header-styles).
+   * Small actions such as a count sit at the top right; wider content such as
+   * the energy total or the maintenance summary moves below the title on
+   * phones.
+   */
   private _renderDevicePageHeader(options: {
     icon: string;
     title: string;
@@ -1062,37 +1078,42 @@ export class DwainsDevicesCard extends LitElement {
     color: string;
     back?: boolean;
     actions?: unknown;
+    wideActions?: boolean;
     className?: string;
   }) {
-    const classes = ['device-page-header'];
-    if (options.back) classes.push('has-back');
-    if (options.actions) classes.push('has-actions');
+    const classes = ['dd-page-header', 'device-page-header'];
     if (options.className) classes.push(options.className);
 
     return html`
-      <div class=${classes.join(' ')} style=${`--domain-color: ${options.color};`}>
-        ${options.back ? html`
-          <button
-            class="device-header-back"
-            type="button"
-            title=${this._t('navigation.overview')}
-            aria-label=${this._t('navigation.overview')}
-            @click=${() => this._selectDomain(DEVICES_OVERVIEW_KEY)}
-          >
-            <ha-icon icon="mdi:arrow-left"></ha-icon>
-          </button>
-        ` : nothing}
-        <div class="device-header-main">
-          <span class="device-header-icon">
-            <ha-icon icon=${options.icon}></ha-icon>
-          </span>
-          <div class="device-header-copy">
-            <h1 class="device-title">${options.title}</h1>
-            ${options.subtitle ? html`<div class="device-subtitle">${options.subtitle}</div>` : nothing}
+      <header class=${classes.join(' ')} style=${`--domain-color: ${options.color};`}>
+        <div class="dd-page-header-top">
+          ${options.back ? html`
+            <button
+              class="dd-page-header-button dd-page-header-back"
+              type="button"
+              title=${this._t('navigation.overview')}
+              aria-label=${this._t('navigation.overview')}
+              @click=${() => this._selectDomain(DEVICES_OVERVIEW_KEY)}
+            >
+              <ha-icon icon="mdi:arrow-left"></ha-icon>
+            </button>
+          ` : nothing}
+          <div class="dd-page-header-identity">
+            <span class="dd-page-header-icon">
+              <ha-icon icon=${options.icon}></ha-icon>
+            </span>
+            <div class="dd-page-header-copy">
+              <h1 class="dd-page-header-title">${options.title}</h1>
+              ${options.subtitle ? html`
+                <div class="dd-page-header-subtitle"><span>${options.subtitle}</span></div>
+              ` : nothing}
+            </div>
           </div>
+          ${options.actions ? html`
+            <div class="dd-page-header-actions ${options.wideActions ? 'is-content' : ''}">${options.actions}</div>
+          ` : nothing}
         </div>
-        ${options.actions ? html`<div class="device-header-actions">${options.actions}</div>` : nothing}
-      </div>
+      </header>
     `;
   }
 
@@ -1159,6 +1180,7 @@ export class DwainsDevicesCard extends LitElement {
           subtitle: this._t('devices.live_power_usage'),
           color: this._typeColor(ENERGY_KEY),
           back: true,
+          wideActions: true,
           actions: html`
             <div class="energy-header-total" title=${basisLabel}>
               <span>${summary.formattedTotal}</span>
@@ -1362,7 +1384,6 @@ export class DwainsDevicesCard extends LitElement {
   }
 
   private _renderMaintenanceView(maintenance: Map<string, MaintenanceBucket>) {
-    const summary = this._maintenanceSummary(maintenance);
     const orderedBuckets = this._orderedMaintenanceBuckets(maintenance);
 
     return html`
@@ -1373,18 +1394,6 @@ export class DwainsDevicesCard extends LitElement {
           subtitle: this._maintenanceSubtitle(maintenance),
           color: this._typeColor(MAINTENANCE_KEY),
           back: true,
-          actions: html`
-            <div class="maintenance-summary">
-              <span>
-                <ha-icon icon="mdi:battery-alert"></ha-icon>
-                ${summary.lowBatteryCount}
-              </span>
-              <span>
-                <ha-icon icon="mdi:alert-circle-outline"></ha-icon>
-                ${summary.unavailableDeviceCount}
-              </span>
-            </div>
-          `,
         })}
 
         ${orderedBuckets.length
@@ -1625,9 +1634,15 @@ export class DwainsDevicesCard extends LitElement {
     }
   }
 
-  static override styles = css`
+  static override styles = [css`
+    /* Fill the space below the Home Assistant toolbar, like the room pages.
+       Only the sidebar and the content area scroll, so the page itself never
+       gets a second scrollbar. */
     :host {
       display: block;
+      height: calc(100dvh - var(--header-height, 56px));
+      min-height: 0;
+      overflow: hidden;
       -webkit-tap-highlight-color: transparent;
     }
 
@@ -1653,8 +1668,10 @@ export class DwainsDevicesCard extends LitElement {
     /* Layout Container */
     .layout-container {
       display: flex;
-      height: 100vh;
+      height: 100%;
+      min-height: 0;
       position: relative;
+      overflow: hidden;
     }
 
     /* Sidebar */
@@ -1809,6 +1826,8 @@ export class DwainsDevicesCard extends LitElement {
     /* Main Content */
     .main-content {
       flex: 1;
+      min-width: 0;
+      min-height: 0;
       display: flex;
       flex-direction: column;
       overflow: hidden;
@@ -1816,14 +1835,35 @@ export class DwainsDevicesCard extends LitElement {
 
     .content-area {
       flex: 1;
+      min-height: 0;
       overflow-y: auto;
       padding: 16px;
       /* Set while the bottom navigation is shown on wide screens (wall tablet mode). */
       padding-bottom: var(--dd-next-bottom-nav-space, 16px);
     }
     @media (max-width: 768px) {
+      /* Phones scroll the page itself, like the room pages. */
+      :host {
+        height: auto;
+        min-height: 100%;
+        overflow: visible;
+      }
+
+      .layout-container {
+        display: block;
+        height: auto;
+        min-height: 100dvh;
+        overflow: visible;
+      }
+
+      .main-content {
+        display: block;
+        overflow: visible;
+      }
+
       .content-area {
-        padding-bottom: calc(104px + env(safe-area-inset-bottom, 0px));
+        padding: 0 10px calc(104px + env(safe-area-inset-bottom, 0px));
+        overflow: visible;
       }
 
       .domain-header {
@@ -1832,132 +1872,26 @@ export class DwainsDevicesCard extends LitElement {
       }
     }
 
+    /* Same width as the room pages. */
     .device-view {
-      max-width: 1600px;
+      max-width: 1400px;
       margin: 0 auto;
     }
 
-    .device-page-header {
-      --domain-color: var(--primary-color);
-      min-height: 134px;
-      margin: 0 0 20px;
-      padding: 22px 24px;
-      display: grid;
-      grid-template-columns: auto minmax(0, 1fr) auto;
-      align-items: center;
-      gap: 16px;
-      border: 1px solid color-mix(in srgb, var(--domain-color) 18%, var(--divider-color));
-      border-radius: 8px;
-      background:
-        radial-gradient(circle at 16% 20%, color-mix(in srgb, var(--domain-color) 10%, transparent), transparent 34%),
-        linear-gradient(135deg,
-          color-mix(in srgb, var(--card-background-color) 96%, var(--domain-color) 4%),
-          color-mix(in srgb, var(--card-background-color) 99%, transparent));
-      box-shadow: 0 20px 44px rgba(15, 23, 42, 0.06);
-      overflow: hidden;
-    }
-
-    .device-page-header:not(.has-back) {
-      grid-template-columns: minmax(0, 1fr) auto;
-    }
-
-    .device-header-back {
-      width: 46px;
-      height: 46px;
-      padding: 0;
-      border: 0;
-      border-radius: 999px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      background: #182044;
-      color: #ffffff;
-      box-shadow: 0 12px 28px rgba(15, 23, 42, 0.18);
-      cursor: pointer;
-      -webkit-tap-highlight-color: transparent;
-    }
-
-    .device-header-back ha-icon {
-      --mdc-icon-size: 23px;
-    }
-
-    .device-header-main {
-      min-width: 0;
-      display: flex;
-      align-items: center;
-      gap: 16px;
-    }
-
-    .device-header-icon {
-      width: 52px;
-      height: 52px;
-      border-radius: 8px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      flex: 0 0 auto;
-      background: color-mix(in srgb, var(--domain-color) 12%, var(--card-background-color));
-      color: var(--domain-color);
-      box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--domain-color) 14%, transparent);
-    }
-
-    .device-header-icon ha-icon {
-      --mdc-icon-size: 28px;
-    }
-
-    .device-header-copy {
-      min-width: 0;
-    }
-
-    .device-title {
-      margin: 0;
-      color: var(--primary-text-color);
-      font-size: clamp(24px, 3vw, 38px);
-      font-weight: 850;
-      line-height: 1.02;
-      letter-spacing: 0;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    .device-subtitle {
-      margin-top: 6px;
-      color: var(--secondary-text-color);
-      font-size: 13px;
-      font-weight: 700;
-      line-height: 1.2;
-    }
-
-    .device-header-actions {
-      justify-self: end;
-      display: inline-flex;
-      align-items: center;
-      justify-content: flex-end;
-      gap: 8px;
-      min-width: 0;
-    }
-
     .device-header-count {
-      min-width: 34px;
-      height: 34px;
+      min-width: 40px;
+      height: 40px;
       padding: 0 12px;
-      border-radius: 999px;
+      box-sizing: border-box;
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      background: color-mix(in srgb, var(--domain-color) 13%, var(--card-background-color));
-      color: var(--domain-color);
-      font-size: 14px;
-      font-weight: 850;
-      box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--domain-color) 16%, transparent);
-    }
-
-    .overview-subtitle {
-      margin-top: 3px;
-      color: var(--secondary-text-color);
-      font-size: 13px;
-      font-weight: 600;
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--domain-color) 14%, var(--card-background-color));
+      color: color-mix(in srgb, var(--domain-color) 82%, var(--primary-text-color));
+      font-size: 15px;
+      font-weight: 750;
+      font-variant-numeric: tabular-nums;
     }
 
     .devices-overview-grid {
@@ -2218,47 +2152,6 @@ export class DwainsDevicesCard extends LitElement {
       font-size: 11px;
     }
 
-    .maintenance-view {
-      max-width: 1200px;
-    }
-
-    .maintenance-header {
-      align-items: flex-start;
-      margin-bottom: 22px;
-    }
-
-    .maintenance-header-subtitle {
-      margin-top: 3px;
-      color: var(--secondary-text-color);
-      font-size: 13px;
-      font-weight: 500;
-    }
-
-    .maintenance-summary {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      flex-wrap: wrap;
-    }
-
-    .maintenance-summary span {
-      min-height: 34px;
-      padding: 0 12px;
-      border-radius: 999px;
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      background: color-mix(in srgb, var(--domain-color) 10%, var(--card-background-color));
-      color: var(--domain-color);
-      font-size: 13px;
-      font-weight: 800;
-      box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--domain-color) 14%, transparent);
-    }
-
-    .maintenance-summary ha-icon {
-      --mdc-icon-size: 17px;
-    }
-
     .maintenance-area-group {
       margin-bottom: 18px;
     }
@@ -2427,36 +2320,26 @@ export class DwainsDevicesCard extends LitElement {
 
     .energy-view {
       --domain-color: #d88e20;
-      max-width: 1320px;
-    }
-
-    .energy-header {
-      align-items: flex-start;
-      margin-bottom: 18px;
-    }
-
-    .energy-header-subtitle {
-      margin-top: 3px;
-      color: var(--secondary-text-color);
-      font-size: 13px;
-      font-weight: 600;
     }
 
     .energy-header-total {
-      min-width: 150px;
-      padding: 9px 12px;
-      border-radius: 12px;
+      box-sizing: border-box;
+      min-height: 52px;
+      padding: 7px 14px;
       display: grid;
+      align-content: center;
       justify-items: end;
-      background: color-mix(in srgb, var(--domain-color) 10%, var(--card-background-color));
-      box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--domain-color) 14%, transparent);
+      gap: 2px;
+      border-radius: 14px;
+      background: color-mix(in srgb, var(--domain-color) 13%, var(--card-background-color));
     }
 
     .energy-header-total span {
       color: var(--primary-text-color);
-      font-size: 24px;
-      font-weight: 950;
-      line-height: 1;
+      font-size: 22px;
+      font-weight: 800;
+      line-height: 1.05;
+      font-variant-numeric: tabular-nums;
     }
 
     .energy-header-total small,
@@ -3129,90 +3012,6 @@ export class DwainsDevicesCard extends LitElement {
         padding: 2px 0;
       }
 
-      /* Compact page title on phones: the content matters more than the banner. */
-      .device-page-header {
-        min-height: 0;
-        margin: 0 -10px 12px;
-        padding: calc(10px + env(safe-area-inset-top, 0px)) 14px 12px;
-        grid-template-columns: auto minmax(0, 1fr);
-        align-items: center;
-        gap: 10px;
-        border-width: 0 0 1px;
-        border-radius: 0 0 8px 8px;
-        background:
-          linear-gradient(180deg,
-            color-mix(in srgb, var(--card-background-color) 98%, transparent) 0%,
-            color-mix(in srgb, var(--card-background-color) 90%, var(--domain-color) 4%) 100%);
-        box-shadow: 0 12px 28px rgba(15, 23, 42, 0.06);
-      }
-
-      .device-page-header.has-actions {
-        grid-template-columns: auto minmax(0, 1fr) auto;
-      }
-
-      .device-page-header:not(.has-back) {
-        grid-template-columns: minmax(0, 1fr) auto;
-      }
-
-      .device-page-header:not(.has-back) .device-header-main {
-        grid-column: 1;
-      }
-
-      .device-header-back {
-        width: 36px;
-        height: 36px;
-        box-shadow: 0 8px 18px rgba(15, 23, 42, 0.16);
-      }
-
-      .device-header-back ha-icon {
-        --mdc-icon-size: 20px;
-      }
-
-      .device-header-main {
-        align-items: center;
-        gap: 10px;
-      }
-
-      .device-page-header.has-back .device-header-main {
-        align-items: flex-start;
-        flex-direction: column;
-        gap: 0;
-      }
-
-      .device-page-header.has-back .device-header-icon {
-        display: none;
-      }
-
-      .device-header-icon {
-        width: 36px;
-        height: 36px;
-      }
-
-      .device-header-icon ha-icon {
-        --mdc-icon-size: 20px;
-      }
-
-      .device-title {
-        font-size: 20px;
-        font-weight: 800;
-      }
-
-      .device-subtitle {
-        margin-top: 2px;
-        font-size: 12px;
-        font-weight: 600;
-      }
-
-      .device-header-actions {
-        align-self: center;
-      }
-
-      .device-page-header.has-actions .device-header-actions {
-        grid-column: 1 / -1;
-        width: 100%;
-        justify-content: flex-start;
-      }
-
       .devices-overview-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 12px;
@@ -3249,10 +3048,6 @@ export class DwainsDevicesCard extends LitElement {
         flex-direction: column;
       }
 
-      .maintenance-summary {
-        width: auto;
-      }
-
       .maintenance-grid {
         grid-template-columns: 1fr;
       }
@@ -3262,13 +3057,7 @@ export class DwainsDevicesCard extends LitElement {
       }
 
       .energy-header-total {
-        min-width: 0;
-        padding: 6px 10px;
         justify-items: start;
-      }
-
-      .energy-header-total span {
-        font-size: 20px;
       }
 
       .energy-overview-grid,
@@ -3303,7 +3092,7 @@ export class DwainsDevicesCard extends LitElement {
         justify-self: start;
       }
     }
-  `;
+  `, pageHeaderStyles];
 }
 
 declare global {

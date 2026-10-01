@@ -6,6 +6,8 @@ The Devices page groups entities by domain and device type.
 
 On mobile, opening Devices first shows a device overview. From there you can open a group such as lights, covers, people, maintenance or energy.
 
+Every group has the same page header as the area pages, with a back button to the overview, and uses the same page width. On desktop only the group list and the group itself scroll, so the page never shows a second scrollbar.
+
 ## Device Groups
 
 Common groups include:
