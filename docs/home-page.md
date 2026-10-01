@@ -22,6 +22,7 @@ The home page can show these sections:
 - House information
 - To-do lists
 - Favorites
+- Scenes & scripts
 - Summaries
 
 The order and visibility can be changed in Dashboard settings.
@@ -58,6 +59,23 @@ Available Home Assistant `todo.*` entities appear as editable lists. Items can b
 ## Favorites
 
 Favorites show pinned or automatically selected useful entities. On mobile, favorites use the same horizontal section behavior as other home sections.
+
+## Scenes & scripts
+
+A row of compact buttons that run the scenes and scripts you pick. Tap a button to activate a scene or start a script; the button shows a short check when Home Assistant accepted it, and a message appears when it failed.
+
+- Scenes show when they were last activated.
+- Scripts show when they last ran, and **Running** with a small pulsing dot while they are still running.
+
+Open **Dashboard settings > Home page > Scenes & scripts** to choose them:
+
+- **Add scene or script** searches all scenes and scripts by name, area or entity id.
+- Drag an item, or use the up and down arrows on touch screens, to change the order.
+- The delete button removes an item from the row. It does not delete the scene or script in Home Assistant.
+
+The row stays hidden until at least one scene or script is picked. Scenes and scripts that were deleted or hidden in Home Assistant are skipped. Unavailable ones follow **Dashboard settings > Areas > Hide unavailable/unknown entities in area views**: hidden when it is on (the default), otherwise shown greyed out and disabled.
+
+On desktop the buttons wrap over as many lines as needed. On mobile they scroll sideways like the other Home sections, and the grid button in the section heading shows all of them at once.
 
 ## Summaries
 
