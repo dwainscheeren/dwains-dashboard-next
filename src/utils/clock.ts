@@ -94,6 +94,16 @@ export function formatClock(now: Date, settings: ClockSettings, serverTimeZone?:
   return { time, date };
 }
 
+/** Long date line, for example of the wall tablet screensaver: "Wednesday 30 September". */
+export function formatLongDate(now: Date, settings: ClockSettings, serverTimeZone?: string): string {
+  const timeZone = resolveClockTimeZone(settings.time_zone, serverTimeZone);
+  return dateTimeFormat(settings.language || undefined, {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+  }, timeZone).format(now);
+}
+
 /** Milliseconds until the next whole minute, between 1 and 60000. */
 export function msUntilNextMinute(nowMs: number): number {
   const intoMinute = ((nowMs % MINUTE_MS) + MINUTE_MS) % MINUTE_MS;
