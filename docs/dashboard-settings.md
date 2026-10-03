@@ -73,4 +73,4 @@ Configure support links and SmartHomeShop links.
 
 ## Wall Tablet (This Device)
 
-Turn the current browser into a wall tablet: hide the Home Assistant header and sidebar, return to Home after inactivity and show a screensaver. These settings are stored on this device only and are applied right away, without saving. See [Wall tablet mode](wall-tablet.html).
+Turn the current browser into a wall tablet: hide the Home Assistant header and sidebar, return to Home after inactivity and show a screensaver with a clock, an image or a slideshow of your photos. These settings are stored on this device only and are applied right away, without saving. See [Wall tablet mode](wall-tablet.html).
