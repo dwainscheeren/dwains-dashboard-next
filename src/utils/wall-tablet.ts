@@ -5,6 +5,18 @@
 
 export const WALL_TABLET_MINUTE_OPTIONS = [0, 1, 2, 5, 10, 30] as const;
 export const WALL_TABLET_DIM_OPTIONS = [60, 80, 95] as const;
+/** What the screensaver shows: only the clock, one image or a slideshow of photos. */
+export const WALL_TABLET_SCREENSAVER_MODES = ['clock', 'image', 'slideshow'] as const;
+export type WallTabletScreensaverMode = (typeof WALL_TABLET_SCREENSAVER_MODES)[number];
+/** Seconds a photo of the slideshow stays on screen. */
+export const WALL_TABLET_SLIDE_SECONDS_OPTIONS = [10, 30, 60, 300, 900] as const;
+/** Darkness of the photos, in percent. */
+export const WALL_TABLET_PHOTO_DIM_OPTIONS = [0, 20, 40, 60] as const;
+/** `cover` fills the screen and may cut off the edges, `contain` shows the whole photo. */
+export const WALL_TABLET_PHOTO_FITS = ['cover', 'contain'] as const;
+export type WallTabletPhotoFit = (typeof WALL_TABLET_PHOTO_FITS)[number];
+/** Home Assistant media ids start with this, for example `media-source://media_source/local/photos`. */
+export const MEDIA_SOURCE_PREFIX = 'media-source://';
 /** `?dd_kiosk=1` turns the mode on for this device, `?dd_kiosk=0` turns it off. */
 export const WALL_TABLET_URL_PARAM = 'dd_kiosk';
 /**
@@ -20,6 +32,8 @@ export const WALL_TABLET_CHANGED_EVENT = 'dwains-dashboard-next-wall-tablet-chan
  * inactivity. A view with unsaved changes cancels it to keep them.
  */
 export const WALL_TABLET_RESET_EVENT = 'dwains-dashboard-next-wall-tablet-reset';
+/** Fired on window by the settings page to show the screensaver right away. */
+export const WALL_TABLET_PREVIEW_EVENT = 'dwains-dashboard-next-wall-tablet-preview';
 
 const STORAGE_PREFIX = 'dd-next-wall-tablet:';
 const MINUTE_MS = 60_000;
@@ -32,6 +46,22 @@ export interface WallTabletPrefs {
   screensaverMinutes: number;
   /** Darkness of the screensaver, in percent. */
   dimLevel: number;
+  screensaverMode: WallTabletScreensaverMode;
+  /** The image of the `image` mode: a link, or a Home Assistant media id. */
+  screensaverImage: string;
+  /** Name of that image when it was chosen from the Home Assistant media. */
+  screensaverImageName: string;
+  /** The Home Assistant media folder of the `slideshow` mode. */
+  slideshowFolder: string;
+  slideshowFolderName: string;
+  /** Seconds each photo of the slideshow stays on screen. */
+  slideSeconds: number;
+  slideshowShuffle: boolean;
+  photoFit: WallTabletPhotoFit;
+  /** Darkness of the photos, in percent. */
+  photoDimLevel: number;
+  /** Show the clock, date and weather on the photos. */
+  photoClock: boolean;
 }
 
 export const DEFAULT_WALL_TABLET_PREFS: Readonly<WallTabletPrefs> = Object.freeze({
@@ -39,7 +69,20 @@ export const DEFAULT_WALL_TABLET_PREFS: Readonly<WallTabletPrefs> = Object.freez
   returnHomeMinutes: 5,
   screensaverMinutes: 0,
   dimLevel: 80,
+  screensaverMode: 'clock',
+  screensaverImage: '',
+  screensaverImageName: '',
+  slideshowFolder: '',
+  slideshowFolderName: '',
+  slideSeconds: 30,
+  slideshowShuffle: true,
+  photoFit: 'cover',
+  photoDimLevel: 20,
+  photoClock: true,
 });
+
+const MAX_LINK_LENGTH = 2000;
+const MAX_NAME_LENGTH = 200;
 
 type StorageLike = Pick<Storage, 'getItem' | 'setItem'>;
 
@@ -72,15 +115,76 @@ function pickOption(value: unknown, options: readonly number[], fallback: number
   return typeof number === 'number' && options.includes(number) ? number : fallback;
 }
 
+function pickName<T extends string>(value: unknown, options: readonly T[], fallback: T): T {
+  return typeof value === 'string' && (options as readonly string[]).includes(value) ? value as T : fallback;
+}
+
+function pickText(value: unknown, maxLength: number): string {
+  return typeof value === 'string' ? value.trim().slice(0, maxLength) : '';
+}
+
+export function isMediaSourceId(value: unknown): value is string {
+  return typeof value === 'string' && value.startsWith(MEDIA_SOURCE_PREFIX) && value.length > MEDIA_SOURCE_PREFIX.length;
+}
+
+/**
+ * An image link that may be shown: a Home Assistant media id, a path on this
+ * Home Assistant (`/local/photo.jpg`) or an http(s) address. Anything else
+ * gives an empty string.
+ */
+export function sanitizeImageLink(value: unknown): string {
+  const link = pickText(value, MAX_LINK_LENGTH);
+  if (!link) return '';
+  if (isMediaSourceId(link)) return link;
+  if (/^https?:\/\/[^\s]+$/i.test(link)) return link;
+  // A path, but not a protocol-relative address (`//host/photo.jpg`).
+  if (/^\/(?!\/)[^\s]*$/.test(link)) return link;
+  return '';
+}
+
 /** Preferences with every unknown or invalid value replaced by its default. */
 export function normalizeWallTabletPrefs(value: unknown): WallTabletPrefs {
   const record = value && typeof value === 'object' ? value as Record<string, unknown> : {};
+  const defaults = DEFAULT_WALL_TABLET_PREFS;
+  const screensaverImage = sanitizeImageLink(record.screensaverImage);
+  const slideshowFolder = isMediaSourceId(record.slideshowFolder) ? pickText(record.slideshowFolder, MAX_LINK_LENGTH) : '';
   return {
     enabled: record.enabled === true,
-    returnHomeMinutes: pickOption(record.returnHomeMinutes, WALL_TABLET_MINUTE_OPTIONS, DEFAULT_WALL_TABLET_PREFS.returnHomeMinutes),
-    screensaverMinutes: pickOption(record.screensaverMinutes, WALL_TABLET_MINUTE_OPTIONS, DEFAULT_WALL_TABLET_PREFS.screensaverMinutes),
-    dimLevel: pickOption(record.dimLevel, WALL_TABLET_DIM_OPTIONS, DEFAULT_WALL_TABLET_PREFS.dimLevel),
+    returnHomeMinutes: pickOption(record.returnHomeMinutes, WALL_TABLET_MINUTE_OPTIONS, defaults.returnHomeMinutes),
+    screensaverMinutes: pickOption(record.screensaverMinutes, WALL_TABLET_MINUTE_OPTIONS, defaults.screensaverMinutes),
+    dimLevel: pickOption(record.dimLevel, WALL_TABLET_DIM_OPTIONS, defaults.dimLevel),
+    screensaverMode: pickName(record.screensaverMode, WALL_TABLET_SCREENSAVER_MODES, defaults.screensaverMode),
+    screensaverImage,
+    screensaverImageName: screensaverImage ? pickText(record.screensaverImageName, MAX_NAME_LENGTH) : '',
+    slideshowFolder,
+    slideshowFolderName: slideshowFolder ? pickText(record.slideshowFolderName, MAX_NAME_LENGTH) : '',
+    slideSeconds: pickOption(record.slideSeconds, WALL_TABLET_SLIDE_SECONDS_OPTIONS, defaults.slideSeconds),
+    slideshowShuffle: record.slideshowShuffle !== false,
+    photoFit: pickName(record.photoFit, WALL_TABLET_PHOTO_FITS, defaults.photoFit),
+    photoDimLevel: pickOption(record.photoDimLevel, WALL_TABLET_PHOTO_DIM_OPTIONS, defaults.photoDimLevel),
+    photoClock: record.photoClock !== false,
   };
+}
+
+export type ScreensaverSource =
+  | { kind: 'clock' }
+  | { kind: 'image'; image: string }
+  | { kind: 'slideshow'; folder: string };
+
+/**
+ * What the screensaver shows for these preferences. The image and slideshow
+ * modes fall back to the clock until an image or a folder is chosen.
+ */
+export function screensaverSource(
+  prefs: Pick<WallTabletPrefs, 'screensaverMode' | 'screensaverImage' | 'slideshowFolder'>
+): ScreensaverSource {
+  if (prefs.screensaverMode === 'image' && prefs.screensaverImage) {
+    return { kind: 'image', image: prefs.screensaverImage };
+  }
+  if (prefs.screensaverMode === 'slideshow' && prefs.slideshowFolder) {
+    return { kind: 'slideshow', folder: prefs.slideshowFolder };
+  }
+  return { kind: 'clock' };
 }
 
 export function parseWallTabletPrefs(raw: string | null | undefined): WallTabletPrefs {

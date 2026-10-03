@@ -9,6 +9,7 @@ import {
   invalidateWallTabletPrefs,
   isEditingDialogState,
   isHomeViewPath,
+  isMediaSourceId,
   isOpenDialogState,
   isWallTabletStorageKey,
   normalizeWallTabletPrefs,
@@ -17,6 +18,8 @@ import {
   planIdleActions,
   readWallTabletPrefs,
   removeWallTabletUrlParam,
+  sanitizeImageLink,
+  screensaverSource,
   updateWallTabletPrefs,
   viewPathFromPath,
   wallTabletStorageKey,
@@ -63,6 +66,16 @@ describe('wall tablet preferences', () => {
       returnHomeMinutes: 5,
       screensaverMinutes: 0,
       dimLevel: 80,
+      screensaverMode: 'clock',
+      screensaverImage: '',
+      screensaverImageName: '',
+      slideshowFolder: '',
+      slideshowFolderName: '',
+      slideSeconds: 30,
+      slideshowShuffle: true,
+      photoFit: 'cover',
+      photoDimLevel: 20,
+      photoClock: true,
     });
   });
 
@@ -72,15 +85,134 @@ describe('wall tablet preferences', () => {
       returnHomeMinutes: 7,
       screensaverMinutes: '10',
       dimLevel: 50,
-    })).toEqual({ enabled: false, returnHomeMinutes: 5, screensaverMinutes: 10, dimLevel: 80 });
+    })).toEqual({ ...DEFAULT_WALL_TABLET_PREFS, enabled: false, returnHomeMinutes: 5, screensaverMinutes: 10, dimLevel: 80 });
 
     expect(normalizeWallTabletPrefs({
       enabled: true,
       returnHomeMinutes: 0,
       screensaverMinutes: 30,
       dimLevel: 95,
-    })).toEqual({ enabled: true, returnHomeMinutes: 0, screensaverMinutes: 30, dimLevel: 95 });
+    })).toEqual({ ...DEFAULT_WALL_TABLET_PREFS, enabled: true, returnHomeMinutes: 0, screensaverMinutes: 30, dimLevel: 95 });
   });
+
+  it('keeps preferences stored by an older version and adds the photo defaults', () => {
+    const stored = JSON.stringify({ enabled: true, returnHomeMinutes: 10, screensaverMinutes: 2, dimLevel: 60 });
+    expect(parseWallTabletPrefs(stored)).toEqual({
+      ...DEFAULT_WALL_TABLET_PREFS,
+      enabled: true,
+      returnHomeMinutes: 10,
+      screensaverMinutes: 2,
+      dimLevel: 60,
+    });
+  });
+
+  it('only accepts the offered photo options', () => {
+    expect(normalizeWallTabletPrefs({
+      screensaverMode: 'video',
+      slideSeconds: 7,
+      slideshowShuffle: 'no',
+      photoFit: 'stretch',
+      photoDimLevel: 95,
+      photoClock: 0,
+    })).toMatchObject({
+      screensaverMode: 'clock',
+      slideSeconds: 30,
+      slideshowShuffle: true,
+      photoFit: 'cover',
+      photoDimLevel: 20,
+      photoClock: true,
+    });
+
+    expect(normalizeWallTabletPrefs({
+      screensaverMode: 'slideshow',
+      slideSeconds: '300',
+      slideshowShuffle: false,
+      photoFit: 'contain',
+      photoDimLevel: 0,
+      photoClock: false,
+    })).toMatchObject({
+      screensaverMode: 'slideshow',
+      slideSeconds: 300,
+      slideshowShuffle: false,
+      photoFit: 'contain',
+      photoDimLevel: 0,
+      photoClock: false,
+    });
+  });
+
+  it('keeps an image link, a media image and a media folder, and drops anything else', () => {
+    expect(normalizeWallTabletPrefs({
+      screensaverImage: '  /local/photo.jpg ',
+      screensaverImageName: ' Hallway ',
+      slideshowFolder: 'media-source://media_source/local/photos',
+      slideshowFolderName: ' My media / photos ',
+    })).toMatchObject({
+      screensaverImage: '/local/photo.jpg',
+      screensaverImageName: 'Hallway',
+      slideshowFolder: 'media-source://media_source/local/photos',
+      slideshowFolderName: 'My media / photos',
+    });
+
+    // A folder has to be a Home Assistant media id; names without a source are dropped.
+    expect(normalizeWallTabletPrefs({
+      screensaverImage: 'javascript:alert(1)',
+      screensaverImageName: 'Photo',
+      slideshowFolder: '/local/photos',
+      slideshowFolderName: 'photos',
+    })).toMatchObject({
+      screensaverImage: '',
+      screensaverImageName: '',
+      slideshowFolder: '',
+      slideshowFolderName: '',
+    });
+  });
+});
+
+describe('screensaver image links', () => {
+  it('accepts paths, http(s) addresses and media ids', () => {
+    expect(sanitizeImageLink('/local/photo.jpg')).toBe('/local/photo.jpg');
+    expect(sanitizeImageLink('https://example.com/a.png?size=2')).toBe('https://example.com/a.png?size=2');
+    expect(sanitizeImageLink('HTTP://example.com/a.png')).toBe('HTTP://example.com/a.png');
+    expect(sanitizeImageLink('media-source://image_upload/abc')).toBe('media-source://image_upload/abc');
+  });
+
+  it('rejects everything else', () => {
+    expect(sanitizeImageLink('')).toBe('');
+    expect(sanitizeImageLink(undefined)).toBe('');
+    expect(sanitizeImageLink(42)).toBe('');
+    expect(sanitizeImageLink('photo.jpg')).toBe('');
+    expect(sanitizeImageLink('//example.com/photo.jpg')).toBe('');
+    expect(sanitizeImageLink('javascript:alert(1)')).toBe('');
+    expect(sanitizeImageLink('data:image/png;base64,AAAA')).toBe('');
+    expect(sanitizeImageLink('/local/my photo.jpg')).toBe('');
+    expect(sanitizeImageLink('media-source://')).toBe('');
+  });
+
+  it('tells media ids from links', () => {
+    expect(isMediaSourceId('media-source://media_source/local/a.jpg')).toBe(true);
+    expect(isMediaSourceId('/local/a.jpg')).toBe(false);
+    expect(isMediaSourceId(null)).toBe(false);
+  });
+});
+
+describe('what the screensaver shows', () => {
+  it('shows the clock until an image or a folder is chosen', () => {
+    expect(screensaverSource(DEFAULT_WALL_TABLET_PREFS)).toEqual({ kind: 'clock' });
+    expect(screensaverSource({ screensaverMode: 'image', screensaverImage: '', slideshowFolder: 'media-source://a/b' }))
+      .toEqual({ kind: 'clock' });
+    expect(screensaverSource({ screensaverMode: 'slideshow', screensaverImage: '/local/a.jpg', slideshowFolder: '' }))
+      .toEqual({ kind: 'clock' });
+  });
+
+  it('uses the image or the folder of the chosen mode', () => {
+    const chosen = { screensaverImage: '/local/a.jpg', slideshowFolder: 'media-source://a/b' };
+    expect(screensaverSource({ ...chosen, screensaverMode: 'image' })).toEqual({ kind: 'image', image: '/local/a.jpg' });
+    expect(screensaverSource({ ...chosen, screensaverMode: 'slideshow' })).toEqual({ kind: 'slideshow', folder: 'media-source://a/b' });
+    expect(screensaverSource({ ...chosen, screensaverMode: 'clock' })).toEqual({ kind: 'clock' });
+  });
+});
+
+describe('wall tablet storage', () => {
 
   it('stores the preferences per dashboard url path', () => {
     const storage = memoryStorage();
