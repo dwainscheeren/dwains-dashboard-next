@@ -12,10 +12,17 @@ import { getEntityRegistry } from '../utils/entity-registry';
 import { formatValueWithUnit } from '../utils/unit-format';
 import { getWeatherIcon } from '../utils/weather';
 import {
+  browseMedia,
+  collectSlideshowImages,
+  createSlidePlaylist,
+  resolveImageUrl,
+} from '../utils/screensaver-media';
+import {
   DEFAULT_WALL_TABLET_PREFS,
   WALL_TABLET_CHANGED_EVENT,
   WALL_TABLET_HOLD_ATTRIBUTE,
   WALL_TABLET_HOLD_MS,
+  WALL_TABLET_PREVIEW_EVENT,
   WALL_TABLET_RESET_EVENT,
   WALL_TABLET_URL_PARAM,
   burnInOffset,
@@ -29,6 +36,7 @@ import {
   isWallTabletStorageKey,
   planIdleActions,
   readWallTabletPrefs,
+  screensaverSource,
   setWallTabletHaMenuPeek,
   updateWallTabletPrefs,
   viewPathFromPath,
@@ -44,6 +52,16 @@ const HOLD_MOVE_TOLERANCE_PX = 12;
 /** Keep the waking screensaver in place until the tap's click has landed on it. */
 const WAKE_RELEASE_MS = 400;
 const SCREENSAVER_MARGIN_PX = 24;
+/** How far the clock in the corner of a photo moves against burn-in. */
+const CORNER_SHIFT_PX = 14;
+/** Crossfade between two photos; keep in step with the .ss-photo transition. */
+const PHOTO_FADE_SECONDS = 1.6;
+/** Read the folder again after this long, so new photos show up. */
+const PLAYLIST_MAX_AGE_MS = 30 * 60_000;
+/** Give up on a photo that takes longer than this to load. */
+const PHOTO_LOAD_TIMEOUT_MS = 30_000;
+/** Wait this long before trying the next photo after one failed. */
+const PHOTO_RETRY_MS = 5000;
 const CLOCK_TICK_MARGIN_MS = 50;
 /** Ignore a click on the menu backdrop right after a long press opened the menu. */
 const MENU_GUARD_MS = 400;
@@ -53,6 +71,34 @@ const DIALOG_CLOSE_TIMEOUT_MS = 500;
 const MAX_DIALOG_CLOSE_STEPS = 5;
 /** The Home view can still be connecting after navigating to it, so the reset is sent again. */
 const RESET_RETRY_DELAYS_MS = [150, 450];
+
+/** One of the two stacked photo layers that fade into each other. */
+interface PhotoLayer {
+  url: string;
+  /** Counts the photos this layer has shown; restarts its slow zoom. */
+  loads: number;
+}
+
+/** Load an image before it is shown, so the crossfade never shows half a photo. */
+function preloadImage(url: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    const timer = window.setTimeout(() => {
+      image.src = '';
+      reject(new Error('timeout'));
+    }, PHOTO_LOAD_TIMEOUT_MS);
+    image.onload = () => {
+      window.clearTimeout(timer);
+      resolve();
+    };
+    image.onerror = () => {
+      window.clearTimeout(timer);
+      reject(new Error('load failed'));
+    };
+    image.decoding = 'async';
+    image.src = url;
+  });
+}
 
 interface PendingHold {
   pointerId: number;
@@ -110,6 +156,12 @@ export class DwainsWallTablet extends LitElement {
   private _returningHome = false;
   private _consumingUrl = false;
   private _weatherState?: HassEntity;
+  /** Changes whenever the photos are stopped; running photo work then gives up. */
+  private _photoRun = 0;
+  private _photoTimer?: number;
+  private _playlistFolder = '';
+  private _playlistImages: string[] = [];
+  private _playlistLoadedAt = 0;
 
   @state() private _menuOpen = false;
   @state() private _screensaver = false;
@@ -117,6 +169,11 @@ export class DwainsWallTablet extends LitElement {
   @state() private _time = '';
   @state() private _date = '';
   @state() private _offset = { x: 0, y: 0 };
+  @state() private _photoLayers: [PhotoLayer, PhotoLayer] = [{ url: '', loads: 0 }, { url: '', loads: 0 }];
+  @state() private _frontLayer = 0;
+  @state() private _photoShown = false;
+  /** The image or folder could not be shown: fall back to the clock. */
+  @state() private _photoFailed = false;
 
   set hass(hass: HomeAssistant | undefined) {
     const old = this._hass;
@@ -149,6 +206,7 @@ export class DwainsWallTablet extends LitElement {
     window.addEventListener('location-changed', this._refresh);
     window.addEventListener('popstate', this._refresh);
     window.addEventListener(WALL_TABLET_CHANGED_EVENT, this._refresh);
+    window.addEventListener(WALL_TABLET_PREVIEW_EVENT, this._handlePreview);
     window.addEventListener('storage', this._handleStorage);
     this._refresh();
   }
@@ -158,9 +216,17 @@ export class DwainsWallTablet extends LitElement {
     window.removeEventListener('location-changed', this._refresh);
     window.removeEventListener('popstate', this._refresh);
     window.removeEventListener(WALL_TABLET_CHANGED_EVENT, this._refresh);
+    window.removeEventListener(WALL_TABLET_PREVIEW_EVENT, this._handlePreview);
     window.removeEventListener('storage', this._handleStorage);
     this._stop();
   }
+
+  /** "Show screensaver now" on the settings page; also works while the mode is off. */
+  private _handlePreview = (): void => {
+    if (!this._onDashboard()) return;
+    this._prefs = readWallTabletPrefs(this.dashSegment);
+    this._showScreensaver(true);
+  };
 
   private _onDashboard(): boolean {
     return Boolean(this.dashSegment) && dashboardSegmentFromPath(window.location.pathname) === this.dashSegment;
@@ -189,7 +255,10 @@ export class DwainsWallTablet extends LitElement {
       else this._stop();
     } else if (active && prefsChanged) {
       if (this._screensaver && prefs.screensaverMinutes === 0) this._hideScreensaver();
-      if (this._screensaver) this.requestUpdate();
+      if (this._screensaver) {
+        this.requestUpdate();
+        this._startPhotos();
+      }
       this._checkIdle();
     }
   };
@@ -448,8 +517,8 @@ export class DwainsWallTablet extends LitElement {
     this._date = formatLongDate(now, settings, serverTimeZone);
   }
 
-  private _showScreensaver(): void {
-    if (this._screensaver || !this._active) return;
+  private _showScreensaver(preview = false): void {
+    if (this._screensaver || (!this._active && !preview)) return;
     this._menuOpen = false;
     this._cancelHold();
     this._burnInStep = 0;
@@ -459,6 +528,7 @@ export class DwainsWallTablet extends LitElement {
     this._screensaver = true;
     window.addEventListener('keydown', this._handleScreensaverKey, true);
     this._scheduleTick();
+    this._startPhotos();
   }
 
   private _hideScreensaver = (): void => {
@@ -471,10 +541,101 @@ export class DwainsWallTablet extends LitElement {
       this._wakeTimer = undefined;
     }
     window.removeEventListener('keydown', this._handleScreensaverKey, true);
+    this._stopPhotos();
     this._screensaver = false;
     this._waking = false;
     this._weatherState = undefined;
   };
+
+  // ---- Screensaver photos -----------------------------------------------------
+
+  private _startPhotos(): void {
+    this._stopPhotos();
+    const source = screensaverSource(this._prefs);
+    if (source.kind === 'clock' || !this._hass) return;
+    const run = this._photoRun;
+    if (source.kind === 'image') void this._showImage(source.image, run);
+    else void this._runSlideshow(source.folder, run);
+  }
+
+  private _stopPhotos(): void {
+    this._photoRun += 1;
+    if (this._photoTimer !== undefined) {
+      window.clearTimeout(this._photoTimer);
+      this._photoTimer = undefined;
+    }
+    if (this._photoShown || this._photoFailed || this._photoLayers.some((layer) => layer.url)) {
+      this._photoLayers = [{ url: '', loads: 0 }, { url: '', loads: 0 }];
+      this._frontLayer = 0;
+      this._photoShown = false;
+      this._photoFailed = false;
+    }
+  }
+
+  private async _loadPhoto(image: string, run: number): Promise<boolean> {
+    const hass = this._hass;
+    if (!hass) return false;
+    try {
+      const url = await resolveImageUrl(hass, image);
+      await preloadImage(url);
+      if (run !== this._photoRun) return false;
+      this._presentPhoto(url);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /** Put a loaded photo on the hidden layer and fade to it. */
+  private _presentPhoto(url: string): void {
+    const target = this._photoShown ? 1 - this._frontLayer : this._frontLayer;
+    const layers: [PhotoLayer, PhotoLayer] = [this._photoLayers[0], this._photoLayers[1]];
+    layers[target] = { url, loads: layers[target]!.loads + 1 };
+    this._photoLayers = layers;
+    this._frontLayer = target;
+    this._photoShown = true;
+  }
+
+  private async _showImage(image: string, run: number): Promise<void> {
+    const shown = await this._loadPhoto(image, run);
+    if (!shown && run === this._photoRun) this._photoFailed = true;
+  }
+
+  private async _runSlideshow(folder: string, run: number): Promise<void> {
+    const hass = this._hass;
+    if (!hass) return;
+    const stale = folder !== this._playlistFolder ||
+      !this._playlistImages.length ||
+      Date.now() - this._playlistLoadedAt > PLAYLIST_MAX_AGE_MS;
+    if (stale) {
+      let images: string[] = [];
+      try {
+        images = await collectSlideshowImages((id) => browseMedia(hass, id), folder);
+      } catch {
+        images = [];
+      }
+      if (run !== this._photoRun) return;
+      this._playlistFolder = folder;
+      this._playlistImages = images;
+      this._playlistLoadedAt = Date.now();
+    }
+    if (!this._playlistImages.length) {
+      this._photoFailed = true;
+      return;
+    }
+
+    const playlist = createSlidePlaylist(this._playlistImages, this._prefs.slideshowShuffle);
+    const step = async (): Promise<void> => {
+      if (run !== this._photoRun) return;
+      const image = playlist.next();
+      const shown = image ? await this._loadPhoto(image, run) : false;
+      if (run !== this._photoRun) return;
+      // A photo that fails (removed, no connection) is skipped after a short wait.
+      const wait = shown ? this._prefs.slideSeconds * 1000 : PHOTO_RETRY_MS;
+      this._photoTimer = window.setTimeout(() => void step(), wait);
+    };
+    void step();
+  }
 
   /** Once a minute: update the clock and move it a little against burn-in. */
   private _scheduleTick(): void {
@@ -491,10 +652,12 @@ export class DwainsWallTablet extends LitElement {
     const content = this.renderRoot.querySelector<HTMLElement>('.ss-content');
     if (!content) return;
     this._burnInStep += 1;
+    // In the corner of a photo the clock only shifts a little.
+    const corner = content.classList.contains('corner');
     this._offset = burnInOffset(
       this._burnInStep,
-      burnInRange(window.innerWidth, content.offsetWidth, SCREENSAVER_MARGIN_PX),
-      burnInRange(window.innerHeight, content.offsetHeight, SCREENSAVER_MARGIN_PX)
+      corner ? CORNER_SHIFT_PX : burnInRange(window.innerWidth, content.offsetWidth, SCREENSAVER_MARGIN_PX),
+      corner ? CORNER_SHIFT_PX : burnInRange(window.innerHeight, content.offsetHeight, SCREENSAVER_MARGIN_PX)
     );
   }
 
@@ -646,36 +809,68 @@ export class DwainsWallTablet extends LitElement {
   }
 
   private _renderScreensaver() {
-    const weather = this._resolveWeather();
+    const prefs = this._prefs;
+    const source = screensaverSource(prefs);
+    // Photo layout: the photo fills the screen and the clock sits in a corner.
+    const photoLayout = source.kind !== 'clock' && !this._photoFailed;
+    const showClock = !photoLayout || prefs.photoClock;
+    const weather = showClock ? this._resolveWeather() : undefined;
     this._weatherState = weather;
     const temperature = weather ? this._weatherTemperature(weather) : '';
     const condition = weather && temperature ? this._weatherCondition(weather) : '';
+    const classes = [
+      'screensaver',
+      this._waking ? 'waking' : '',
+      photoLayout ? 'photo-layout' : '',
+      photoLayout && this._photoShown ? 'has-photo' : '',
+      photoLayout && prefs.photoFit === 'contain' ? 'fit-contain' : '',
+      source.kind === 'image' ? 'is-still' : '',
+    ].filter(Boolean).join(' ');
+    const slideSeconds = prefs.slideSeconds + PHOTO_FADE_SECONDS;
     return html`
       <div
-        class="screensaver ${this._waking ? 'waking' : ''}"
+        class=${classes}
         popover="manual"
         role="button"
         tabindex="-1"
         aria-label=${this._t('kiosk.screensaver_wake')}
-        data-dim=${String(this._prefs.dimLevel)}
-        style=${`--dd-wall-tablet-dim: ${this._prefs.dimLevel / 100};`}
+        data-dim=${photoLayout ? nothing : String(prefs.dimLevel)}
+        style=${`--dd-wall-tablet-dim: ${prefs.dimLevel / 100}; --dd-wall-tablet-photo-dim: ${prefs.photoDimLevel / 100}; --dd-wall-tablet-slide: ${slideSeconds}s;`}
         @pointerdown=${this._handleOverlayPointerDown}
         @pointerup=${this._handleOverlayPointerUp}
         @pointercancel=${this._handleOverlayPointerUp}
         @click=${this._handleOverlayClick}
         @contextmenu=${this._swallow}
       >
-        <div class="ss-content" style=${`transform: translate3d(${this._offset.x}px, ${this._offset.y}px, 0);`}>
-          <div class="ss-time">${this._time}</div>
-          <div class="ss-date">${this._date}</div>
-          ${weather && temperature ? html`
-            <div class="ss-weather">
-              <ha-icon icon=${getWeatherIcon(weather.state)}></ha-icon>
-              <span class="ss-temperature">${temperature}</span>
-              ${condition ? html`<span class="ss-condition">${condition}</span>` : nothing}
-            </div>
-          ` : nothing}
-        </div>
+        ${photoLayout ? html`
+          <div class="ss-photos" aria-hidden="true">
+            ${this._photoLayers.map((layer, index) => layer.url ? html`
+              <img
+                class="ss-photo zoom-${layer.loads % 2} ${index === this._frontLayer ? 'is-front' : ''}"
+                src=${layer.url}
+                alt=""
+                draggable="false"
+              />
+            ` : nothing)}
+          </div>
+          <div class="ss-shade ${showClock ? 'with-clock' : ''}" aria-hidden="true"></div>
+        ` : nothing}
+        ${showClock ? html`
+          <div
+            class="ss-content ${photoLayout ? 'corner' : ''}"
+            style=${`transform: translate3d(${this._offset.x}px, ${this._offset.y}px, 0);`}
+          >
+            <div class="ss-time">${this._time}</div>
+            <div class="ss-date">${this._date}</div>
+            ${weather && temperature ? html`
+              <div class="ss-weather">
+                <ha-icon icon=${getWeatherIcon(weather.state)}></ha-icon>
+                <span class="ss-temperature">${temperature}</span>
+                ${condition ? html`<span class="ss-condition">${condition}</span>` : nothing}
+              </div>
+            ` : nothing}
+          </div>
+        ` : nothing}
       </div>
     `;
   }
@@ -873,6 +1068,7 @@ export class DwainsWallTablet extends LitElement {
     }
 
     .ss-content {
+      position: relative;
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -881,6 +1077,103 @@ export class DwainsWallTablet extends LitElement {
       text-align: center;
       transition: transform 2s ease;
       will-change: transform;
+    }
+
+    /* ---- Screensaver photos ---- */
+    .screensaver.has-photo {
+      background: #000000;
+      color: #ffffff;
+    }
+
+    .ss-photos,
+    .ss-shade {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      pointer-events: none;
+    }
+
+    /* Two stacked photos: the new one fades in over the previous one. */
+    .ss-photo {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      opacity: 0;
+      transition: opacity 1.6s ease;
+      will-change: opacity, transform;
+      -webkit-user-drag: none;
+    }
+
+    .ss-photo.is-front {
+      opacity: 1;
+    }
+
+    .fit-contain .ss-photo {
+      object-fit: contain;
+    }
+
+    /* A slow zoom keeps a photo from standing still on the screen. Each layer
+       alternates between the two, which restarts the movement per photo. */
+    .screensaver:not(.fit-contain) .ss-photo.zoom-0 {
+      animation: dd-wall-tablet-zoom-in var(--dd-wall-tablet-slide, 32s) linear both;
+    }
+
+    .screensaver:not(.fit-contain) .ss-photo.zoom-1 {
+      animation: dd-wall-tablet-zoom-out var(--dd-wall-tablet-slide, 32s) linear both;
+    }
+
+    .screensaver.is-still:not(.fit-contain) .ss-photo {
+      animation: dd-wall-tablet-zoom-in 90s ease-in-out infinite alternate both;
+    }
+
+    .ss-shade {
+      background: rgba(0, 0, 0, var(--dd-wall-tablet-photo-dim, 0.2));
+      opacity: 0;
+      transition: opacity 1.6s ease;
+    }
+
+    .has-photo .ss-shade {
+      opacity: 1;
+    }
+
+    /* Extra shade behind the clock, so it stays readable on a bright photo. */
+    .ss-shade.with-clock {
+      background:
+        linear-gradient(0deg, rgba(0, 0, 0, 0.5) 0%, rgba(0, 0, 0, 0.14) 26%, rgba(0, 0, 0, 0) 44%),
+        rgba(0, 0, 0, var(--dd-wall-tablet-photo-dim, 0.2));
+    }
+
+    .ss-content.corner {
+      position: absolute;
+      left: clamp(28px, 4vw, 60px);
+      bottom: clamp(28px, 4vw, 60px);
+      align-items: flex-start;
+      gap: 4px;
+      max-width: calc(100vw - 2 * clamp(28px, 4vw, 60px));
+      text-align: left;
+      text-shadow: 0 1px 14px rgba(0, 0, 0, 0.5);
+    }
+
+    .corner .ss-time {
+      font-size: clamp(44px, 8vw, 104px);
+      font-weight: 400;
+    }
+
+    .corner .ss-date {
+      font-size: clamp(16px, 2.2vw, 26px);
+      opacity: 0.94;
+    }
+
+    .corner .ss-weather {
+      margin-top: 6px;
+      font-size: clamp(15px, 2vw, 22px);
+      opacity: 0.94;
+    }
+
+    .corner .ss-weather ha-icon {
+      --mdc-icon-size: clamp(20px, 2.6vw, 28px);
     }
 
     .ss-time {
@@ -920,11 +1213,29 @@ export class DwainsWallTablet extends LitElement {
       to { opacity: 1; }
     }
 
+    @keyframes dd-wall-tablet-zoom-in {
+      from { transform: scale(1); }
+      to { transform: scale(1.07) translate3d(-0.8%, -0.5%, 0); }
+    }
+
+    @keyframes dd-wall-tablet-zoom-out {
+      from { transform: scale(1.07) translate3d(0.8%, 0.5%, 0); }
+      to { transform: scale(1); }
+    }
+
     @media (prefers-reduced-motion: reduce) {
       .screensaver,
       .ss-content {
         animation: none;
         transition: none;
+      }
+
+      .ss-photo,
+      .screensaver:not(.fit-contain) .ss-photo.zoom-0,
+      .screensaver:not(.fit-contain) .ss-photo.zoom-1,
+      .screensaver.is-still:not(.fit-contain) .ss-photo {
+        animation: none;
+        transition: opacity 0.2s linear;
       }
     }
   `;
