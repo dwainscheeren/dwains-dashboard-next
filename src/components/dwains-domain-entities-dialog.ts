@@ -14,6 +14,7 @@ import { showConfirmDialog } from './utils/confirm-dialog';
 import { formatEntityStateWithUnit, formatValueWithUnit } from '../utils/unit-format';
 import './utils/dd-card-host';
 import { getEntityRegistry } from '../utils/entity-registry';
+import { closeDialogThenNavigate } from '../utils/dialog-history';
 
 export interface DomainEntitiesDialogParams {
   domain: string;
@@ -935,8 +936,13 @@ export class DwainsDomainEntitiesDialog extends LitElement {
 
   private _handleViewAll = (): void => {
     const action = this._params?.onViewAll;
-    this.closeDialog();
-    action?.();
+    if (!action) {
+      this.closeDialog();
+      return;
+    }
+    // "View all" navigates to another page. Home Assistant closes this dialog
+    // with history.back(), so wait for that step or it undoes the navigation.
+    closeDialogThenNavigate(this.localName, () => this.closeDialog(), action);
   };
 
   private _renderCustomEntities() {
