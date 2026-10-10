@@ -100,6 +100,7 @@ export class DdNextDeviceEntityCard extends LitElement {
           .unavailable=${unavailable}
           .selectOptions=${options}
           .selectedOption=${String(state.state)}
+          @dd-open=${this._showMoreInfo}
           @dd-select=${async (event: CustomEvent<{ option: string }>) => {
             try {
               await this.hass.callService(domain, 'select_option', { entity_id: this.entityId, option: event.detail.option });
@@ -274,7 +275,6 @@ export class DdNextCompactEntityTile extends LitElement {
   @property() public selectedOption = '';
 
   private _open = (): void => {
-    if (this.selectOptions !== undefined && !this.editing) return;
     this.dispatchEvent(new CustomEvent('dd-open', { bubbles: true, composed: true }));
   };
 
@@ -292,8 +292,8 @@ export class DdNextCompactEntityTile extends LitElement {
       <article
         class="tile ${this.variant}"
         style=${`--dd-entity-accent: ${this.accent};`}
-        role=${selecting ? nothing : 'button'}
-        tabindex=${selecting ? nothing : '0'}
+        role="button"
+        tabindex="0"
         aria-label=${this.name}
         @click=${this._open}
         @keydown=${this._keydown}
@@ -310,29 +310,31 @@ export class DdNextCompactEntityTile extends LitElement {
             ${this.status ? html`<div class="state" title=${this.status}>${this.status}</div>` : nothing}
           </div>
           <div class="actions">
-            ${selecting ? html`<ha-icon class="select-chevron" icon="mdi:chevron-down" aria-hidden="true"></ha-icon>` : nothing}
+            ${selecting ? html`
+              <span class="select-action">
+                <ha-icon class="select-chevron" icon="mdi:chevron-down" aria-hidden="true"></ha-icon>
+                <select
+                  class="select-control"
+                  aria-label=${this.name}
+                  .value=${this.selectedOption}
+                  ?disabled=${this.unavailable || !this.selectOptions?.length}
+                  @click=${(event: Event) => event.stopPropagation()}
+                  @keydown=${(event: Event) => event.stopPropagation()}
+                  @change=${(event: Event) => {
+                    event.stopPropagation();
+                    this.dispatchEvent(new CustomEvent('dd-select', {
+                      detail: { option: (event.currentTarget as HTMLSelectElement).value }, bubbles: true, composed: true,
+                    }));
+                  }}
+                >
+                  ${this.selectOptions?.map(option => html`<option value=${option} ?selected=${option === this.selectedOption}>${option}</option>`)}
+                </select>
+              </span>
+            ` : nothing}
             <slot name="actions"></slot>
           </div>
         </div>
         <div class="footer"><slot></slot></div>
-        ${selecting ? html`
-          <select
-            class="select-control"
-            aria-label=${this.name}
-            .value=${this.selectedOption}
-            ?disabled=${this.unavailable || !this.selectOptions?.length}
-            @click=${(event: Event) => event.stopPropagation()}
-            @keydown=${(event: Event) => event.stopPropagation()}
-            @change=${(event: Event) => {
-              event.stopPropagation();
-              this.dispatchEvent(new CustomEvent('dd-select', {
-                detail: { option: (event.currentTarget as HTMLSelectElement).value }, bubbles: true, composed: true,
-              }));
-            }}
-          >
-            ${this.selectOptions?.map(option => html`<option value=${option} ?selected=${option === this.selectedOption}>${option}</option>`)}
-          </select>
-        ` : nothing}
       </article>
     `;
   }
@@ -397,7 +399,7 @@ export class DdNextCompactEntityTile extends LitElement {
       opacity: .62;
     }
 
-    .tile:active {
+    .tile:active:not(:has(.select-control:active)) {
       transform: scale(.985);
     }
 
@@ -502,6 +504,16 @@ export class DdNextCompactEntityTile extends LitElement {
     .select-chevron {
       color: var(--secondary-text-color);
       --mdc-icon-size: 20px;
+    }
+
+    .select-action {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 34px;
+      height: 34px;
+      flex: 0 0 34px;
     }
 
     .select-control {

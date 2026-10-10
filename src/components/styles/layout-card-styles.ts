@@ -7903,14 +7903,14 @@ which also swallowed pointer events for the new handle. */
 
   /* Area cards: icon height roughly matches two stacked status badges. */
   .mobile-area-icon {
-    width: 56px !important;
-    height: 56px !important;
-    flex: 0 0 56px !important;
+    width: var(--mobile-area-icon-size, 56px) !important;
+    height: var(--mobile-area-icon-size, 56px) !important;
+    flex: 0 0 var(--mobile-area-icon-size, 56px) !important;
     border-radius: 15px !important;
   }
 
   .mobile-area-icon ha-icon {
-    --mdc-icon-size: 30px !important;
+    --mdc-icon-size: var(--mobile-area-icon-glyph-size, 30px) !important;
   }
 
   .mobile-area-card.has-picture .mobile-area-picture {

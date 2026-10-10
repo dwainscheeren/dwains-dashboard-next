@@ -920,7 +920,7 @@ export class DwainsBottomNav extends LitElement {
       display: grid;
       gap: 6px;
       min-height: 0;
-      padding: 0 4px 8px;
+      padding: 0 4px 4px;
       overflow-y: auto;
       overscroll-behavior: contain;
       scrollbar-width: none;

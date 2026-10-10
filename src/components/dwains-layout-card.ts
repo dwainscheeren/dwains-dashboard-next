@@ -14741,7 +14741,7 @@ with the
 
       .mobile-area-badges{
         display: grid !important;
-        grid-template-columns: repeat(var(--area-badge-columns, 2), max-content) !important;
+        grid-template-columns: repeat(2, max-content) !important;
         grid-auto-rows: 22px !important;
         justify-content: end !important;
         align-content: start !important;
@@ -18792,12 +18792,12 @@ copy{
         ${hasPicture ? html`
           <div class="mobile-area-picture" style=${`background-image: url('${area.picture}');`}></div>
         ` : nothing}
-        <div class="mobile-area-top">
+        <div class="mobile-area-top" style=${`--mobile-area-icon-size: ${compactBadges ? '34px' : '56px'}; --mobile-area-icon-glyph-size: ${compactBadges ? '20px' : '30px'};`}>
           <div class="mobile-area-icon">
             <ha-icon icon=${getAreaIcon(area)}></ha-icon>
           </div>
-          <div class="mobile-area-badges" style=${`--area-badge-columns: ${compactBadges ? 1 : 2};`}>
-            ${badges.slice(0, compactBadges ? 2 : 4).map(badge => html`
+          <div class="mobile-area-badges">
+            ${badges.slice(0, 4).map(badge => html`
               <span
                 class="mobile-area-badge ${badge.className}"
                 style=${`--area-badge-color: ${badge.color};`}

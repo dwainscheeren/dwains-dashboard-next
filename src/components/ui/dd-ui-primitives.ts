@@ -51,7 +51,8 @@ export class DdNextPopupShell extends LitElement {
     const modal = this.renderRoot.querySelector<HTMLDialogElement>('.modal');
     if (this.open && modal && !modal.open) {
       this._releasePageScroll ||= lockPopupPageScroll();
-      modal.showModal();
+      if (this.navigationMenu) modal.show();
+      else modal.showModal();
       const panel = this.renderRoot.querySelector<HTMLElement>('.panel');
       panel?.focus({ preventScroll: true });
       if (panel && this._animateMobile()) {
@@ -113,7 +114,6 @@ export class DdNextPopupShell extends LitElement {
     if (this._closing || this._animation?.playState === 'running' || !window.matchMedia('(max-width: 768px)').matches || event.touches.length !== 1) return;
     const path = event.composedPath();
     const panel = event.currentTarget as HTMLElement;
-    if (this.navigationMenu && !path.some(node => node instanceof HTMLElement && node.matches('.header, .drag-grip'))) return;
     for (const node of path) {
       if (node === panel) break;
       if (!(node instanceof HTMLElement)) continue;
@@ -202,16 +202,17 @@ export class DdNextPopupShell extends LitElement {
 
     return html`
       <dialog class="modal" aria-label=${this.titleText}
+        style=${`--dd-popup-hit-area: ${this.navigationMenu ? 'none' : 'auto'}; --dd-popup-scrim-bottom: ${this.navigationMenu ? 'calc(76px + env(safe-area-inset-bottom, 0px))' : '0px'};`}
         @click=${(event: Event) => event.stopPropagation()}
         @cancel=${(event: Event) => { event.preventDefault(); this._close(); }}>
       <div class="scrim" @pointerdown=${this._scrimPointerDown} @click=${this._scrimClick}></div>
       <section
         class="panel ${this.wide ? 'wide' : ''}"
         role="dialog"
-        aria-modal="true"
+        aria-modal=${this.navigationMenu ? 'false' : 'true'}
         aria-label=${this.titleText}
         tabindex="0"
-        style=${`--dd-popup-accent: ${this.accent}; --dd-popup-bottom: ${this.navigationMenu ? 'calc(76px + env(safe-area-inset-bottom, 0px))' : '0px'}; --dd-popup-max-height: ${this.navigationMenu ? 'min(64dvh, 560px)' : '88dvh'}; --dd-popup-inset: ${this.navigationMenu ? '16px' : '0px'}; --dd-popup-radius: ${this.navigationMenu ? '24px' : '24px 24px 0 0'};`}
+        style=${`--dd-popup-accent: ${this.accent}; --dd-popup-bottom: ${this.navigationMenu ? 'calc(76px + env(safe-area-inset-bottom, 0px))' : '0px'}; --dd-popup-body-bottom: ${this.navigationMenu ? '4px' : 'env(safe-area-inset-bottom, 0px)'}; --dd-popup-max-height: ${this.navigationMenu ? 'min(64dvh, 560px)' : '88dvh'}; --dd-popup-inset: ${this.navigationMenu ? '16px' : '0px'}; --dd-popup-radius: ${this.navigationMenu ? '24px' : '24px 24px 0 0'};`}
         @click=${{ handleEvent: this._panelClick, capture: true }}
         @keydown=${this._keydown}
         @touchstart=${{ handleEvent: this._touchStart, capture: true }}
@@ -263,10 +264,6 @@ export class DdNextPopupShell extends LitElement {
       -webkit-tap-highlight-color: transparent;
     }
 
-    :host([open]) {
-      pointer-events: auto;
-    }
-
     .modal {
       position: fixed;
       inset: 0;
@@ -281,6 +278,7 @@ export class DdNextPopupShell extends LitElement {
       color: inherit;
       overflow: clip;
       overscroll-behavior: none;
+      pointer-events: var(--dd-popup-hit-area);
     }
 
     .modal::backdrop { background: transparent; }
@@ -289,12 +287,15 @@ export class DdNextPopupShell extends LitElement {
     .scrim {
       position: absolute;
       inset: 0;
+      bottom: var(--dd-popup-scrim-bottom);
       background: rgba(0, 0, 0, .38);
       backdrop-filter: blur(2px);
       touch-action: none;
+      pointer-events: auto;
     }
 
     .panel {
+      pointer-events: auto;
       position: absolute;
       left: 50%;
       top: 50%;
@@ -502,7 +503,7 @@ export class DdNextPopupShell extends LitElement {
 
       .body {
         max-height: calc(88dvh - 94px);
-        padding-bottom: env(safe-area-inset-bottom, 0px);
+        padding-bottom: var(--dd-popup-body-bottom);
       }
     }
   `;
