@@ -127,6 +127,16 @@ export class DwainsCardHost extends HTMLElement {
             border-radius: 0 !important;
             box-shadow: none !important;
           }
+          ${this.classList.contains('person-map-card') ? `
+            :host, ha-card {
+              height: 100% !important;
+              min-height: 0 !important;
+            }
+            #root {
+              height: 100% !important;
+              padding-bottom: 0 !important;
+            }
+          ` : ''}
         `;
       }
       if (!root.contains(this._frameStyle)) root.appendChild(this._frameStyle);
