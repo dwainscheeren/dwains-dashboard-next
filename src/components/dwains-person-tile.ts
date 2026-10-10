@@ -25,8 +25,6 @@ export class DwainsDashboardNextPersonTile extends LitElement {
             type: 'map',
             entities: [this.entityId],
             default_zoom: 14,
-            aspect_ratio: '2.5:1',
-            auto_fit: true,
             hours_to_show: 0,
           }}
         ></dwains-dashboard-next-card-host>
