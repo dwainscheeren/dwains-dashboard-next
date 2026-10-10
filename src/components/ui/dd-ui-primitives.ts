@@ -52,10 +52,11 @@ export class DdNextPopupShell extends LitElement {
       this._releasePageScroll ||= lockPopupPageScroll();
       modal.showModal();
       const panel = this.renderRoot.querySelector<HTMLElement>('.panel');
+      panel?.focus({ preventScroll: true });
       if (panel && this._animateMobile()) {
         this._animation = panel.animate(
-          [{ transform: 'translateY(100%)' }, { transform: 'translateY(0)' }],
-          { duration: 200, easing: 'cubic-bezier(0.2, 0, 0, 1)' }
+          [{ transform: `translateY(${panel.getBoundingClientRect().height}px)` }, { transform: 'translateY(0)' }],
+          { duration: 360, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' }
         );
       }
     }
@@ -104,7 +105,7 @@ export class DdNextPopupShell extends LitElement {
 
   private _touchStart = (event: TouchEvent): void => {
     this._touch = undefined;
-    if (this._closing || !window.matchMedia('(max-width: 768px)').matches || event.touches.length !== 1) return;
+    if (this._closing || this._animation?.playState === 'running' || !window.matchMedia('(max-width: 768px)').matches || event.touches.length !== 1) return;
     const path = event.composedPath();
     const panel = event.currentTarget as HTMLElement;
     for (const node of path) {
@@ -155,7 +156,7 @@ export class DdNextPopupShell extends LitElement {
       if (this._animateMobile()) {
         this._animation = panel.animate(
           [{ transform: `translateY(${offset}px)` }, { transform: 'translateY(0)' }],
-          { duration: 200, easing: 'cubic-bezier(0.2, 0, 0, 1)' }
+          { duration: 250, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' }
         );
       }
     }
@@ -169,8 +170,8 @@ export class DdNextPopupShell extends LitElement {
       const transform = getComputedStyle(panel).transform;
       this._animation?.cancel();
       this._animation = panel.animate(
-        [{ transform }, { transform: 'translateY(100%)' }],
-        { duration: 200, easing: 'cubic-bezier(0.4, 0, 1, 1)', fill: 'forwards' }
+        [{ transform }, { transform: `translateY(${panel.getBoundingClientRect().height}px)` }],
+        { duration: 300, easing: 'cubic-bezier(0.4, 0, 0.2, 1)', fill: 'forwards' }
       );
       try {
         await this._animation.finished;
@@ -272,7 +273,7 @@ export class DdNextPopupShell extends LitElement {
       border: 0;
       background: transparent;
       color: inherit;
-      overflow: hidden;
+      overflow: clip;
       overscroll-behavior: none;
     }
 
@@ -295,7 +296,7 @@ export class DdNextPopupShell extends LitElement {
       max-height: min(86dvh, 760px);
       display: flex;
       flex-direction: column;
-      overflow: hidden;
+      overflow: clip;
       transform: translate(-50%, -50%);
       border: 1px solid color-mix(in srgb, var(--divider-color) 72%, transparent);
       border-radius: 14px;
@@ -438,6 +439,7 @@ export class DdNextPopupShell extends LitElement {
     @media (max-width: 768px) {
       .panel,
       .panel.wide {
+        position: fixed;
         left: 0;
         right: 0;
         top: auto;

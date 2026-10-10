@@ -207,6 +207,23 @@ function installMobileMoreInfoDialogSizing(): void {
       }
     `;
     root.appendChild(style);
+    // HA toggles the more-info fill/fullscreen state when its title is tapped.
+    // Keep mobile sheets anchored, while preserving buttons inside the title.
+    const keepMobileSheet = (event: Event): void => {
+      if (window.innerWidth > 768) return;
+      for (const node of event.composedPath()) {
+        if (node === root) break;
+        if (!(node instanceof HTMLElement)) continue;
+        if (node.matches('button, a, input, select, textarea, [role="button"], ha-icon-button, ha-icon-button-prev')) return;
+        if (node.matches('[slot="heading"], [slot="headerTitle"], .title')) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          return;
+        }
+      }
+    };
+    root.addEventListener('click', keepMobileSheet, { capture: true });
+    root.addEventListener('dblclick', keepMobileSheet, { capture: true });
   };
 
   const updateDialogViewport = (dialog: HTMLElement): void => {
@@ -259,7 +276,7 @@ function installMobileMoreInfoDialogSizing(): void {
             calc(var(--dd-native-dialog-viewport-height, 100dvh) - max(env(safe-area-inset-top, 0px), 12px))
           ) !important;
           box-sizing: border-box !important;
-          overflow: hidden !important;
+          overflow: clip !important;
           border-radius: 24px 24px 0 0 !important;
         }
 
