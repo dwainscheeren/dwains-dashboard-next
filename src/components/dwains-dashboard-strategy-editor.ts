@@ -162,6 +162,7 @@ let settingsRegistryRefreshPromise: Promise<SettingsRegistryData | undefined> | 
 
 @customElement("dwains-dashboard-next-strategy-editor")
 export class DwainsDashboardStrategyEditor extends LitElement {
+  @property({ type: Boolean }) public inlineBackNavigation = true;
   private _hass?: HomeAssistant;
   private _fetchDataPromise?: Promise<void>;
   private _registryData?: SettingsRegistryData;
