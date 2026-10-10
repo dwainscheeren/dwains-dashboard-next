@@ -19,6 +19,7 @@ export class DwainsDashboardNextPersonTile extends LitElement {
           class="person-map-card"
           eager
           refresh-layout
+          .mapCenter=${{ latitude: _latitude, longitude: _longitude }}
           strip-card-surface
           .hass=${this.hass}
           .config=${{

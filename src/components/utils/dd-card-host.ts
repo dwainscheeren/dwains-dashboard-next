@@ -15,6 +15,7 @@ export class DwainsCardHost extends HTMLElement {
   private _frameRequest = 0;
   private _layoutObserver?: ResizeObserver;
   private _layoutWidth = 0;
+  public mapCenter?: { latitude: number; longitude: number };
 
   static get observedAttributes() {
     return ['framed', 'strip-card-surface', 'refresh-layout'];
@@ -173,6 +174,24 @@ export class DwainsCardHost extends HTMLElement {
 
           map?.fitMap?.();
           map?._fitMap?.();
+          // Center the person's map on the actual state coordinates, not on
+          // HA's fallback center when no location markers are fitted yet.
+          const center = this.mapCenter;
+          if (center && Number.isFinite(center.latitude) && Number.isFinite(center.longitude)) {
+            const mapInstances = [
+              map?.map, map?._map,
+              map?.shadowRoot?.querySelector?.('ha-map')?.map,
+              map?.shadowRoot?.querySelector?.('ha-map')?._map,
+              (child as any).map, (child as any)._map,
+            ];
+            for (const instance of mapInstances) {
+              if (typeof instance?.setView === 'function') {
+                instance.invalidateSize?.();
+                instance.setView([center.latitude, center.longitude], 14, { animate: false });
+                break;
+              }
+            }
+          }
         }
 
         (child as any).fitMap?.();
