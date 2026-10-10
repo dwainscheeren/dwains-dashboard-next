@@ -3753,8 +3753,8 @@ export class DwainsLayoutCard extends LitElement {
 
       @media (max-width: 430px) {
         .mobile-entities-section.layout-grid .mobile-entity-tile-host{
-          min-height: 138px;
-          padding: 12px;
+          min-height: 0;
+          padding: 0;
         }
 
         .mobile-entities-section.layout-grid .mobile-entity-top{
@@ -15655,11 +15655,15 @@ copy{
         --mdc-icon-size: 19px;
       }
 
-      .mobile-entity-card,
-      .mobile-entities-section.layout-grid .mobile-entity-tile-host {
+      .mobile-entity-card {
         flex-basis: 180px;
         min-height: 141px;
         padding: 15px;
+      }
+
+      .mobile-entities-section.layout-grid .mobile-entity-tile-host {
+        min-height: 0;
+        padding: 0;
       }
 
       .mobile-entity-status {
@@ -16980,15 +16984,11 @@ copy{
 
     const count = this._persistentNotifications.length;
     const hasNotifications = count > 0;
-    const subtitle = hasNotifications
-      ? `${count} ${this._t(count === 1 ? 'home.notification' : 'home.notifications').toLocaleLowerCase()}`
-      : this._t('home.notifications_description');
 
     return html`
       <dd-next-popup-shell
         .open=${this._notificationsOpen}
-        .titleText=${this._t('home.notifications')}
-        .subtitle=${subtitle}
+        .titleText=${`${this._t('home.notifications')} (${count})`}
         icon="mdi:bell-outline"
         .accent=${getDomainColor('notification')}
         .closeLabel=${this._t('common.close')}
@@ -17006,15 +17006,6 @@ copy{
               <ha-icon icon="mdi:delete-sweep-outline"></ha-icon>
             </button>
           ` : nothing}
-          <button
-            class="notifications-icon-button refresh"
-            type="button"
-            title=${this._t('common.refresh')}
-            aria-label=${this._t('common.refresh')}
-            @click=${() => this._loadPersistentNotifications(true)}
-          >
-            <ha-icon icon="mdi:refresh"></ha-icon>
-          </button>
         </div>
 
         <div class="notifications-list">

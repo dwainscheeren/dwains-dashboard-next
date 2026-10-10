@@ -1,5 +1,5 @@
 import { LitElement, css, html, nothing } from 'lit';
-import { customElement, property } from 'lit/decorators.js';
+import { customElement, eventOptions, property } from 'lit/decorators.js';
 
 @customElement('dd-next-popup-shell')
 export class DdNextPopupShell extends LitElement {
@@ -10,6 +10,80 @@ export class DdNextPopupShell extends LitElement {
   @property() public accent = 'var(--primary-color)';
   @property() public closeLabel = 'Close';
   @property({ type: Boolean }) public wide = false;
+
+  private _touch?: { x: number; y: number; offset: number };
+  private _ignoreClickUntil = 0;
+
+  protected override updated(): void {
+    const modal = this.renderRoot.querySelector<HTMLDialogElement>('.modal');
+    if (this.open && modal && !modal.open) modal.showModal();
+  }
+
+  private _scrimPointerDown = (event: PointerEvent): void => {
+    // Keep the scrim in place through pointerup/click and prevent focus changes.
+    event.preventDefault();
+    event.stopPropagation();
+  };
+
+  private _scrimClick = (event: Event): void => {
+    event.preventDefault();
+    event.stopPropagation();
+    this._close();
+  };
+
+  private _panelClick = (event: Event): void => {
+    if (Date.now() < this._ignoreClickUntil) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }
+  };
+
+  private _touchStart = (event: TouchEvent): void => {
+    this._touch = undefined;
+    if (!window.matchMedia('(max-width: 768px)').matches || event.touches.length !== 1) return;
+    const path = event.composedPath();
+    const panel = event.currentTarget as HTMLElement;
+    for (const node of path) {
+      if (node === panel) break;
+      if (!(node instanceof HTMLElement)) continue;
+      if (node.matches('button, input, select, textarea, a, [role="button"], [contenteditable="true"]') || node.scrollTop > 0) return;
+    }
+    const touch = event.touches[0]!;
+    this._touch = { x: touch.clientX, y: touch.clientY, offset: 0 };
+  };
+
+  @eventOptions({ passive: false })
+  private _touchMove(event: TouchEvent): void {
+    if (!this._touch) return;
+    if (event.touches.length !== 1) {
+      this._touchEnd(event);
+      return;
+    }
+    const touch = event.touches[0]!;
+    const dy = touch.clientY - this._touch.y;
+    const dx = Math.abs(touch.clientX - this._touch.x);
+    if (!this._touch.offset && (dy < -8 || dx > 8 && dx > dy)) {
+      this._touch = undefined;
+      return;
+    }
+    if (!this._touch.offset && dy <= 8) return;
+    event.preventDefault();
+    event.stopPropagation();
+    this._touch.offset = Math.max(0, dy);
+    (event.currentTarget as HTMLElement).style.setProperty('--dd-popup-drag-y', `${this._touch.offset}px`);
+  }
+
+  private _touchEnd = (event: TouchEvent): void => {
+    const panel = event.currentTarget as HTMLElement;
+    const offset = this._touch?.offset || 0;
+    this._touch = undefined;
+    panel.style.removeProperty('--dd-popup-drag-y');
+    if (!offset) return;
+    event.preventDefault();
+    event.stopPropagation();
+    this._ignoreClickUntil = Date.now() + 400;
+    if (event.type === 'touchend' && offset >= Math.min(120, panel.clientHeight * .25)) this._close();
+  };
 
   private _close = (): void => {
     this.dispatchEvent(new CustomEvent('dd-close', { bubbles: true, composed: true }));
@@ -25,7 +99,10 @@ export class DdNextPopupShell extends LitElement {
     if (!this.open) return nothing;
 
     return html`
-      <div class="scrim" @click=${this._close}></div>
+      <dialog class="modal" aria-label=${this.titleText}
+        @click=${(event: Event) => event.stopPropagation()}
+        @cancel=${(event: Event) => { event.preventDefault(); this._close(); }}>
+      <div class="scrim" @pointerdown=${this._scrimPointerDown} @click=${this._scrimClick}></div>
       <section
         class="panel ${this.wide ? 'wide' : ''}"
         role="dialog"
@@ -33,9 +110,14 @@ export class DdNextPopupShell extends LitElement {
         aria-label=${this.titleText}
         tabindex="0"
         style=${`--dd-popup-accent: ${this.accent};`}
-        @click=${(event: Event) => event.stopPropagation()}
+        @click=${{ handleEvent: this._panelClick, capture: true }}
         @keydown=${this._keydown}
+        @touchstart=${this._touchStart}
+        @touchmove=${this._touchMove}
+        @touchend=${this._touchEnd}
+        @touchcancel=${this._touchEnd}
       >
+        <div class="drag-grip" aria-hidden="true"><span></span></div>
         <header class="header">
           <div class="heading">
             <span class="icon-tile" aria-hidden="true">
@@ -62,6 +144,7 @@ export class DdNextPopupShell extends LitElement {
         </header>
         <div class="body"><slot></slot></div>
       </section>
+      </dialog>
     `;
   }
 
@@ -79,11 +162,31 @@ export class DdNextPopupShell extends LitElement {
       pointer-events: auto;
     }
 
+    .modal {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100dvh;
+      max-width: none;
+      max-height: none;
+      margin: 0;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: inherit;
+      overflow: hidden;
+      overscroll-behavior: contain;
+    }
+
+    .modal::backdrop { background: transparent; }
+    .drag-grip { display: none; }
+
     .scrim {
       position: absolute;
       inset: 0;
       background: rgba(0, 0, 0, .38);
       backdrop-filter: blur(2px);
+      touch-action: none;
     }
 
     .panel {
@@ -228,9 +331,25 @@ export class DdNextPopupShell extends LitElement {
         width: 100vw;
         max-width: 100vw;
         max-height: 88dvh;
-        transform: none;
+        transform: translateY(var(--dd-popup-drag-y, 0px));
         border-width: 0;
         border-radius: 24px 24px 0 0;
+      }
+
+      .drag-grip {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 20px;
+        flex: 0 0 20px;
+        touch-action: none;
+      }
+
+      .drag-grip span {
+        width: 40px;
+        height: 4px;
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--secondary-text-color) 45%, transparent);
       }
 
       .header {
@@ -260,7 +379,7 @@ export class DdNextPopupShell extends LitElement {
       }
 
       .body {
-        max-height: calc(88dvh - 74px);
+        max-height: calc(88dvh - 94px);
         padding-bottom: env(safe-area-inset-bottom, 0px);
       }
     }

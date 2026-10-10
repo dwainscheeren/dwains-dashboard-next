@@ -1111,7 +1111,9 @@ export class DwainsDomainEntitiesDialog extends LitElement {
     }
 
     const deviceViewKey = this._params?.deviceViewKey;
-    const headerIcon = filterByUnitOfMeasurement === 'W'
+    const headerIcon = domain === 'person'
+      ? 'mdi:account-group'
+      : filterByUnitOfMeasurement === 'W'
       ? 'mdi:flash'
       : deviceViewKey === 'cover_openings'
         ? 'mdi:door-open'
