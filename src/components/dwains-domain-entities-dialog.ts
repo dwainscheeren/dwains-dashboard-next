@@ -758,56 +758,39 @@ export class DwainsDomainEntitiesDialog extends LitElement {
 
   
 
-    /* Adaptive desktop arrangement (variant A): compact rooms share two
-       columns, rooms with several entities occupy the full dialog width.
-       Keep all existing global, room and entity actions untouched. */
+    /* Home Information device groups follow the Devices view: one room per
+       row, with responsive columns for entity tiles. Keep the special
+       person, room-climate and energy presentations unchanged. */
     @media (min-width: 769px) {
-      .content.home-information-context.device-presentation-context:not(.domain-person) .area-sections-grid {
+      .content.home-information-context.device-presentation-context:not(.domain-person):not(.domain-sensor) .area-sections-grid {
         display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        grid-template-columns: minmax(0, 1fr) !important;
         gap: 12px !important;
-        align-items: start;
       }
-      .content.home-information-context.device-presentation-context:not(.domain-person) .shared-room-group,
-      .content.home-information-context.device-presentation-context:not(.domain-person) .shared-room-group.half-room,
-      .content.home-information-context.device-presentation-context:not(.domain-person) .shared-room-group.full-room {
+      .content.home-information-context.device-presentation-context:not(.domain-person):not(.domain-sensor) .shared-room-group {
         grid-column: 1 / -1 !important;
         min-width: 0;
       }
-      .content.home-information-context.device-presentation-context:not(.domain-person) .shared-room-group[data-entity-count="1"] {
-        grid-column: span 1 !important;
-      }
-      .content.home-information-context.device-presentation-context:not(.domain-person) .shared-room-group .entities-grid,
-      .content.home-information-context.device-presentation-context:not(.domain-person) .shared-room-group.half-room .entities-grid,
-      .content.home-information-context.device-presentation-context:not(.domain-person) .shared-room-group.full-room .entities-grid {
+      .content.home-information-context.device-presentation-context:not(.domain-person):not(.domain-sensor) .shared-room-group .entities-grid {
         display: grid;
-        grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+        grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
         gap: 10px !important;
       }
-      .content.home-information-context.device-presentation-context:not(.domain-person) .shared-room-group[data-entity-count="1"] .entities-grid {
-        grid-template-columns: minmax(0, 1fr) !important;
-      }
-      .content.home-information-context.device-presentation-context:not(.domain-person) .shared-room-group[data-entity-count="2"] .entities-grid {
-        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-      }
-      .content.home-information-context.device-presentation-context.domain-cover .shared-room-group .entities-grid,
-      .content.home-information-context.device-presentation-context.domain-climate .shared-room-group .entities-grid {
-        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-      }
-      .content.home-information-context.device-presentation-context.domain-cover .shared-room-group[data-entity-count="1"] .entities-grid,
-      .content.home-information-context.device-presentation-context.domain-climate .shared-room-group[data-entity-count="1"] .entities-grid {
-        grid-template-columns: minmax(0, 1fr) !important;
+    }
+    @media (min-width: 1450px) {
+      .content.home-information-context.device-presentation-context:not(.domain-person):not(.domain-sensor) .shared-room-group .entities-grid {
+        grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
       }
     }
-    @media (min-width: 601px) and (max-width: 768px) {
-      .content.home-information-context.device-presentation-context:not(.domain-person) .area-sections-grid {
+    @media (max-width: 768px) {
+      .content.home-information-context.device-presentation-context:not(.domain-person):not(.domain-sensor) .area-sections-grid {
         grid-template-columns: minmax(0, 1fr) !important;
       }
-      .content.home-information-context.device-presentation-context:not(.domain-person) .shared-room-group {
+      .content.home-information-context.device-presentation-context:not(.domain-person):not(.domain-sensor) .shared-room-group {
         grid-column: 1 / -1 !important;
       }
-      .content.home-information-context.device-presentation-context:not(.domain-person) .shared-room-group .entities-grid {
-        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+      .content.home-information-context.device-presentation-context:not(.domain-person):not(.domain-sensor) .shared-room-group .entities-grid {
+        grid-template-columns: minmax(0, 1fr) !important;
       }
     }
 
@@ -1356,7 +1339,7 @@ export class DwainsDomainEntitiesDialog extends LitElement {
           .accent=${this._entityColor(domain)}
           .compact=${compactRoom}
         >
-          ${toggleDomain ? html`
+          ${toggleDomain && group.entities.length > 1 ? html`
             <dd-next-room-actions
               slot="actions"
               mode="toggle"
