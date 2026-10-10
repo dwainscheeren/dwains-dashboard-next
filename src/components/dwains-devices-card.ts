@@ -16,7 +16,7 @@ import {
   sortAreas,
   type AreaStrategyGroup,
 } from '../utils/area-entities';
-import { getDomainIcon, getDeviceClassIcon, getDomainColor } from '../utils/icons';
+import { getDomainIcon, getDeviceClassIcon, getDomainColor, getAreaIcon } from '../utils/icons';
 import { getDomainName, getDeviceClassName } from '../utils/domain-names';
 import { findReplacementAssignment, resolveDeviceViewCardConfig } from '../utils/blueprint-replacements';
 import {
@@ -1363,8 +1363,8 @@ export class DwainsDevicesCard extends LitElement {
                     <dd-next-room-group
                       class="device-room-group ${compactRoom ? 'half-room' : 'full-room'}"
                       .name=${area.name}
-                      icon="mdi:floor-plan"
-                      .accent=${this._typeColor(domain)}
+                      .icon=${getAreaIcon(area)}
+                      .accent=${this._roomAccent(area)}
                       .compact=${compactRoom}
                     >
                       <span slot="actions">${this._renderDeviceRoomActions(domain, bucket.entities)}</span>
@@ -1457,6 +1457,15 @@ export class DwainsDevicesCard extends LitElement {
             `}
       </div>
     `;
+  }
+
+  private _roomAccent(area: AreaConfig): string {
+    // HA area registry does not expose a dedicated user-selectable color.
+    // Prefer any configured runtime room color, then use the normal room
+    // accent rather than the currently selected entity domain's color.
+    const room = this._hass?.areas?.[area.area_id] as
+      | { color?: string; icon_color?: string } | undefined;
+    return room?.icon_color || room?.color || 'var(--primary-color)';
   }
 
   private _renderEnergyAreaCard(area: PowerAreaSummary) {
