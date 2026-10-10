@@ -758,35 +758,56 @@ export class DwainsDomainEntitiesDialog extends LitElement {
 
   
 
-    /* Four equal desktop slots shared between room groups and their entity tiles.
-       A room consumes as many slots as its entities (up to four). */
-    @media (min-width: 1001px) {
+    /* Adaptive desktop arrangement (variant A): compact rooms share two
+       columns, rooms with several entities occupy the full dialog width.
+       Keep all existing global, room and entity actions untouched. */
+    @media (min-width: 769px) {
       .content.home-information-context.device-presentation-context:not(.domain-person) .area-sections-grid {
-        grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        gap: 12px !important;
+        align-items: start;
       }
-      .content.home-information-context.device-presentation-context:not(.domain-person) .shared-room-group {
-        grid-column: span 4 !important;
+      .content.home-information-context.device-presentation-context:not(.domain-person) .shared-room-group,
+      .content.home-information-context.device-presentation-context:not(.domain-person) .shared-room-group.half-room,
+      .content.home-information-context.device-presentation-context:not(.domain-person) .shared-room-group.full-room {
+        grid-column: 1 / -1 !important;
+        min-width: 0;
       }
       .content.home-information-context.device-presentation-context:not(.domain-person) .shared-room-group[data-entity-count="1"] {
         grid-column: span 1 !important;
       }
-      .content.home-information-context.device-presentation-context:not(.domain-person) .shared-room-group[data-entity-count="2"] {
-        grid-column: span 2 !important;
-      }
-      .content.home-information-context.device-presentation-context:not(.domain-person) .shared-room-group[data-entity-count="3"] {
-        grid-column: span 3 !important;
-      }
-      .content.home-information-context.device-presentation-context:not(.domain-person) .shared-room-group .entities-grid {
+      .content.home-information-context.device-presentation-context:not(.domain-person) .shared-room-group .entities-grid,
+      .content.home-information-context.device-presentation-context:not(.domain-person) .shared-room-group.half-room .entities-grid,
+      .content.home-information-context.device-presentation-context:not(.domain-person) .shared-room-group.full-room .entities-grid {
+        display: grid;
         grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+        gap: 10px !important;
       }
       .content.home-information-context.device-presentation-context:not(.domain-person) .shared-room-group[data-entity-count="1"] .entities-grid {
-        grid-template-columns: 1fr !important;
+        grid-template-columns: minmax(0, 1fr) !important;
       }
       .content.home-information-context.device-presentation-context:not(.domain-person) .shared-room-group[data-entity-count="2"] .entities-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
       }
-      .content.home-information-context.device-presentation-context:not(.domain-person) .shared-room-group[data-entity-count="3"] .entities-grid {
-        grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+      .content.home-information-context.device-presentation-context.domain-cover .shared-room-group .entities-grid,
+      .content.home-information-context.device-presentation-context.domain-climate .shared-room-group .entities-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+      }
+      .content.home-information-context.device-presentation-context.domain-cover .shared-room-group[data-entity-count="1"] .entities-grid,
+      .content.home-information-context.device-presentation-context.domain-climate .shared-room-group[data-entity-count="1"] .entities-grid {
+        grid-template-columns: minmax(0, 1fr) !important;
+      }
+    }
+    @media (min-width: 601px) and (max-width: 768px) {
+      .content.home-information-context.device-presentation-context:not(.domain-person) .area-sections-grid {
+        grid-template-columns: minmax(0, 1fr) !important;
+      }
+      .content.home-information-context.device-presentation-context:not(.domain-person) .shared-room-group {
+        grid-column: 1 / -1 !important;
+      }
+      .content.home-information-context.device-presentation-context:not(.domain-person) .shared-room-group .entities-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
       }
     }
 
