@@ -96,6 +96,7 @@ export class DdNextDeviceEntityCard extends LitElement {
           .hass=${this.hass}
           .entityId=${this.entityId}
           .displayName=${name}
+          .showMap=${!this.popup}
           role="button"
           tabindex="0"
           aria-label=${name}
@@ -886,9 +887,8 @@ export class DdNextRoomGroup extends LitElement {
 
     .title ha-icon {
       flex: 0 0 auto;
-      color: var(--secondary-text-color);
+      color: var(--primary-color);
       --mdc-icon-size: 20px;
-      opacity: .8;
     }
 
     .title span {
