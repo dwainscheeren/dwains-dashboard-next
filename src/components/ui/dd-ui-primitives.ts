@@ -1,10 +1,39 @@
 import { LitElement, css, html, nothing } from 'lit';
 import { customElement, eventOptions, property } from 'lit/decorators.js';
 
+let popupScrollLocks = 0;
+let restorePageScroll: (() => void) | undefined;
+
+function lockPopupPageScroll(): () => void {
+  if (popupScrollLocks++ === 0) {
+    const saved = [document.documentElement, document.body].flatMap(element =>
+      ['overflow', 'overscroll-behavior-y'].map(name => ({
+        element, name, value: element.style.getPropertyValue(name),
+        priority: element.style.getPropertyPriority(name),
+      }))
+    );
+    saved.forEach(({ element, name }) => element.style.setProperty(name, name === 'overflow' ? 'hidden' : 'none'));
+    restorePageScroll = () => saved.forEach(({ element, name, value, priority }) => {
+      if (value) element.style.setProperty(name, value, priority);
+      else element.style.removeProperty(name);
+    });
+  }
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    if (--popupScrollLocks === 0) {
+      restorePageScroll?.();
+      restorePageScroll = undefined;
+    }
+  };
+}
+
 @customElement('dd-next-popup-shell')
 export class DdNextPopupShell extends LitElement {
   @property({ type: Boolean, reflect: true }) public open = false;
   @property() public titleText = '';
+  @property({ type: Number }) public titleCount?: number;
   @property() public subtitle = '';
   @property() public icon = 'mdi:information-outline';
   @property() public accent = 'var(--primary-color)';
@@ -13,10 +42,45 @@ export class DdNextPopupShell extends LitElement {
 
   private _touch?: { x: number; y: number; offset: number };
   private _ignoreClickUntil = 0;
+  private _closing = false;
+  private _animation?: Animation;
+  private _releasePageScroll?: () => void;
 
   protected override updated(): void {
     const modal = this.renderRoot.querySelector<HTMLDialogElement>('.modal');
-    if (this.open && modal && !modal.open) modal.showModal();
+    if (this.open && modal && !modal.open) {
+      this._releasePageScroll ||= lockPopupPageScroll();
+      modal.showModal();
+      const panel = this.renderRoot.querySelector<HTMLElement>('.panel');
+      if (panel && this._animateMobile()) {
+        this._animation = panel.animate(
+          [{ transform: 'translateY(100%)' }, { transform: 'translateY(0)' }],
+          { duration: 200, easing: 'cubic-bezier(0.2, 0, 0, 1)' }
+        );
+      }
+    }
+    if (!this.open) {
+      this._animation?.cancel();
+      this._animation = undefined;
+      this._touch = undefined;
+      this._releasePageScroll?.();
+      this._releasePageScroll = undefined;
+    }
+  }
+
+  public override disconnectedCallback(): void {
+    this._animation?.cancel();
+    this._animation = undefined;
+    this._closing = false;
+    this._touch = undefined;
+    this._releasePageScroll?.();
+    this._releasePageScroll = undefined;
+    super.disconnectedCallback();
+  }
+
+  private _animateMobile(): boolean {
+    return window.matchMedia('(max-width: 768px)').matches &&
+      !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   }
 
   private _scrimPointerDown = (event: PointerEvent): void => {
@@ -40,19 +104,21 @@ export class DdNextPopupShell extends LitElement {
 
   private _touchStart = (event: TouchEvent): void => {
     this._touch = undefined;
-    if (!window.matchMedia('(max-width: 768px)').matches || event.touches.length !== 1) return;
+    if (this._closing || !window.matchMedia('(max-width: 768px)').matches || event.touches.length !== 1) return;
     const path = event.composedPath();
     const panel = event.currentTarget as HTMLElement;
     for (const node of path) {
       if (node === panel) break;
       if (!(node instanceof HTMLElement)) continue;
-      if (node.matches('button, input, select, textarea, a, [role="button"], [contenteditable="true"]') || node.scrollTop > 0) return;
+      // Tile/button taps remain usable; a downward swipe on them moves the sheet.
+      // Native text inputs and sliders keep their own gesture handling.
+      if (node.matches('input, select, textarea, [role="slider"], [contenteditable="true"]') || node.scrollTop > 0) return;
     }
     const touch = event.touches[0]!;
     this._touch = { x: touch.clientX, y: touch.clientY, offset: 0 };
   };
 
-  @eventOptions({ passive: false })
+  @eventOptions({ passive: false, capture: true })
   private _touchMove(event: TouchEvent): void {
     if (!this._touch) return;
     if (event.touches.length !== 1) {
@@ -69,6 +135,7 @@ export class DdNextPopupShell extends LitElement {
     if (!this._touch.offset && dy <= 8) return;
     event.preventDefault();
     event.stopPropagation();
+    this._animation?.cancel();
     this._touch.offset = Math.max(0, dy);
     (event.currentTarget as HTMLElement).style.setProperty('--dd-popup-drag-y', `${this._touch.offset}px`);
   }
@@ -77,16 +144,44 @@ export class DdNextPopupShell extends LitElement {
     const panel = event.currentTarget as HTMLElement;
     const offset = this._touch?.offset || 0;
     this._touch = undefined;
-    panel.style.removeProperty('--dd-popup-drag-y');
     if (!offset) return;
     event.preventDefault();
     event.stopPropagation();
     this._ignoreClickUntil = Date.now() + 400;
-    if (event.type === 'touchend' && offset >= Math.min(120, panel.clientHeight * .25)) this._close();
+    if (event.type === 'touchend' && offset >= Math.min(120, panel.clientHeight * .25)) {
+      void this._close();
+    } else {
+      panel.style.removeProperty('--dd-popup-drag-y');
+      if (this._animateMobile()) {
+        this._animation = panel.animate(
+          [{ transform: `translateY(${offset}px)` }, { transform: 'translateY(0)' }],
+          { duration: 200, easing: 'cubic-bezier(0.2, 0, 0, 1)' }
+        );
+      }
+    }
   };
 
-  private _close = (): void => {
+  private _close = async (): Promise<void> => {
+    if (this._closing) return;
+    this._closing = true;
+    const panel = this.renderRoot.querySelector<HTMLElement>('.panel');
+    if (panel && this._animateMobile()) {
+      const transform = getComputedStyle(panel).transform;
+      this._animation?.cancel();
+      this._animation = panel.animate(
+        [{ transform }, { transform: 'translateY(100%)' }],
+        { duration: 200, easing: 'cubic-bezier(0.4, 0, 1, 1)', fill: 'forwards' }
+      );
+      try {
+        await this._animation.finished;
+      } catch {
+        // The parent may remove a dialog while its close animation is running.
+        this._closing = false;
+        return;
+      }
+    }
     this.dispatchEvent(new CustomEvent('dd-close', { bubbles: true, composed: true }));
+    this._closing = false;
   };
 
   private _keydown = (event: KeyboardEvent): void => {
@@ -112,10 +207,10 @@ export class DdNextPopupShell extends LitElement {
         style=${`--dd-popup-accent: ${this.accent};`}
         @click=${{ handleEvent: this._panelClick, capture: true }}
         @keydown=${this._keydown}
-        @touchstart=${this._touchStart}
+        @touchstart=${{ handleEvent: this._touchStart, capture: true }}
         @touchmove=${this._touchMove}
-        @touchend=${this._touchEnd}
-        @touchcancel=${this._touchEnd}
+        @touchend=${{ handleEvent: this._touchEnd, capture: true, passive: false }}
+        @touchcancel=${{ handleEvent: this._touchEnd, capture: true, passive: false }}
       >
         <div class="drag-grip" aria-hidden="true"><span></span></div>
         <header class="header">
@@ -124,7 +219,10 @@ export class DdNextPopupShell extends LitElement {
               <ha-icon icon=${this.icon}></ha-icon>
             </span>
             <div class="copy">
-              <div class="title">${this.titleText}</div>
+              <div class="title">
+                <span class="title-text">${this.titleText}</span>
+                ${this.titleCount !== undefined ? html`<span class="title-count">(${this.titleCount})</span>` : nothing}
+              </div>
               ${this.subtitle ? html`<div class="subtitle">${this.subtitle}</div>` : nothing}
               <slot name="header-extra"></slot>
             </div>
@@ -175,7 +273,7 @@ export class DdNextPopupShell extends LitElement {
       background: transparent;
       color: inherit;
       overflow: hidden;
-      overscroll-behavior: contain;
+      overscroll-behavior: none;
     }
 
     .modal::backdrop { background: transparent; }
@@ -258,6 +356,9 @@ export class DdNextPopupShell extends LitElement {
 
     .title {
       max-width: 100%;
+      display: flex;
+      align-items: baseline;
+      gap: 7px;
       overflow: hidden;
       color: var(--primary-text-color);
       font-size: 20px;
@@ -265,6 +366,19 @@ export class DdNextPopupShell extends LitElement {
       line-height: 1.08;
       text-overflow: ellipsis;
       white-space: nowrap;
+    }
+
+    .title-text {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .title-count {
+      flex: 0 0 auto;
+      color: var(--secondary-text-color);
+      font-size: 12px;
+      font-weight: 650;
     }
 
     .subtitle {

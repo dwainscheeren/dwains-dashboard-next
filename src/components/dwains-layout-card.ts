@@ -16988,7 +16988,8 @@ copy{
     return html`
       <dd-next-popup-shell
         .open=${this._notificationsOpen}
-        .titleText=${`${this._t('home.notifications')} (${count})`}
+        .titleText=${this._t('home.notifications')}
+        .titleCount=${count}
         icon="mdi:bell-outline"
         .accent=${getDomainColor('notification')}
         .closeLabel=${this._t('common.close')}

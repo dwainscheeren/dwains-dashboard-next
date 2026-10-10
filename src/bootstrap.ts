@@ -184,6 +184,7 @@ function installDefaultDashboardRedirect(): void {
 function installMobileMoreInfoDialogSizing(): void {
   const hostStyleId = 'dd-next-mobile-more-info-host-sizing';
   const dialogStyleId = 'dd-next-mobile-ha-dialog-sizing';
+  const installedDialogs = new Set<HTMLElement>();
 
   const installMoreInfoHost = (element: Element): void => {
     const host = element as HTMLElement;
@@ -208,14 +209,23 @@ function installMobileMoreInfoDialogSizing(): void {
     root.appendChild(style);
   };
 
+  const updateDialogViewport = (dialog: HTMLElement): void => {
+    const viewport = window.visualViewport;
+    const height = viewport?.height || window.innerHeight;
+    const bottom = Math.max(0, window.innerHeight - height - (viewport?.offsetTop || 0));
+    // Update only geometry that changed; do not repeatedly resize an open dialog.
+    for (const [name, value] of [
+      ['--dd-native-dialog-viewport-height', `${height}px`],
+      ['--dd-native-dialog-bottom', `${bottom}px`],
+    ] as const) {
+      if (dialog.style.getPropertyValue(name) !== value) dialog.style.setProperty(name, value);
+    }
+  };
+
   const installHaDialog = (element: Element): void => {
     const dialog = element as HTMLElement;
-    dialog.style.setProperty('--mdc-dialog-min-height', '0', 'important');
-    dialog.style.setProperty('--ha-dialog-min-height', '0', 'important');
-    dialog.style.setProperty('--mdc-dialog-max-height', '88dvh', 'important');
-    dialog.style.setProperty('--ha-dialog-max-height', '88dvh', 'important');
-    dialog.style.setProperty('--vertical-align-dialog', 'flex-end', 'important');
-    dialog.style.setProperty('--dialog-surface-margin-top', 'auto', 'important');
+    installedDialogs.add(dialog);
+    updateDialogViewport(dialog);
 
     const root = dialog.shadowRoot;
     if (!root || root.getElementById(dialogStyleId)) return;
@@ -227,8 +237,8 @@ function installMobileMoreInfoDialogSizing(): void {
         :host {
           --mdc-dialog-min-height: 0 !important;
           --ha-dialog-min-height: 0 !important;
-          --mdc-dialog-max-height: 88dvh !important;
-          --ha-dialog-max-height: 88dvh !important;
+          --mdc-dialog-max-height: calc(var(--dd-native-dialog-viewport-height, 100dvh) * .88) !important;
+          --ha-dialog-max-height: calc(var(--dd-native-dialog-viewport-height, 100dvh) * .88) !important;
           --vertical-align-dialog: flex-end !important;
           --dialog-surface-margin-top: auto !important;
         }
@@ -236,19 +246,33 @@ function installMobileMoreInfoDialogSizing(): void {
         .mdc-dialog__container {
           align-items: flex-end !important;
           padding-top: max(env(safe-area-inset-top, 0px), 12px) !important;
+          padding-bottom: var(--dd-native-dialog-bottom, 0px) !important;
           box-sizing: border-box !important;
         }
 
-        .mdc-dialog__surface {
+        .mdc-dialog__surface,
+        wa-dialog::part(dialog) {
           height: auto !important;
           min-height: 0 !important;
-          max-height: 88dvh !important;
+          max-height: min(
+            calc(var(--dd-native-dialog-viewport-height, 100dvh) * .88),
+            calc(var(--dd-native-dialog-viewport-height, 100dvh) - max(env(safe-area-inset-top, 0px), 12px))
+          ) !important;
+          box-sizing: border-box !important;
           overflow: hidden !important;
           border-radius: 24px 24px 0 0 !important;
         }
 
+        wa-dialog::part(dialog) {
+          top: auto !important;
+          bottom: var(--dd-native-dialog-bottom, 0px) !important;
+          margin-top: auto !important;
+          margin-bottom: 0 !important;
+        }
+
         .mdc-dialog__content,
-        .content {
+        .content,
+        .body {
           min-height: 0 !important;
           overflow-y: auto !important;
           overscroll-behavior-y: contain !important;
@@ -285,6 +309,15 @@ function installMobileMoreInfoDialogSizing(): void {
 
   window.addEventListener('hass-more-info', rescanAfterOpen, true);
   window.addEventListener('resize', scheduleScan);
+  const updateInstalledViewports = () => {
+    if (window.innerWidth > 768) return;
+    installedDialogs.forEach(dialog => {
+      if (dialog.isConnected) updateDialogViewport(dialog);
+      else installedDialogs.delete(dialog);
+    });
+  };
+  window.visualViewport?.addEventListener('resize', updateInstalledViewports);
+  window.visualViewport?.addEventListener('scroll', updateInstalledViewports);
   scheduleScan();
 }
 
