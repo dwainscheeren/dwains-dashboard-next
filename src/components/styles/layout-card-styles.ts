@@ -7950,7 +7950,7 @@ which also swallowed pointer events for the new handle. */
     box-sizing: border-box !important;
     width: 100% !important;
     gap: 8px !important;
-    padding: 3px 18px 18px !important;
+    padding: 3px 18px 32px !important;
   }
 
   /* One-line mode: horizontal rail with content-sized cards. */
@@ -8253,7 +8253,7 @@ which also swallowed pointer events for the new handle. */
   .home-favorites-section.layout-grid .favorites-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
     gap: 10px !important;
-    padding: 2px 18px 16px !important;
+    padding: 3px 18px 32px !important;
   }
 
   /* Decorative Favorite icon: smaller, low-right under the title area. */

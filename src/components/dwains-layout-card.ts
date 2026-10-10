@@ -1633,14 +1633,14 @@ export class DwainsLayoutCard extends LitElement {
     }
 
     .welcome-notification-action{
-      width: auto;
+      width: 44px;
       padding: 0 4px;
       border: 0;
       font: inherit;
       font-size: 12px;
       cursor: pointer;
-      height: 42px;
-      border-radius: 0;
+      height: 44px;
+      border-radius: 999px;
       color: var(--secondary-text-color);
       background: transparent;
       box-shadow: none;
@@ -1898,7 +1898,7 @@ export class DwainsLayoutCard extends LitElement {
         flex: 0 0 auto;
       }
 
-      .welcome-action{
+      .welcome-action:not(.welcome-notification-action){
         width: 42px;
         height: 42px;
         border-radius: 999px;
@@ -5881,8 +5881,8 @@ export class DwainsLayoutCard extends LitElement {
       .mobile-area-rail{
         display: flex;
         gap: 10px;
-        margin-block: -12px -16px;
-        padding: 14px 18px 32px;
+        margin-block: 0 -16px;
+        padding: 3px 18px 32px;
         overflow-x: auto;
         scroll-padding: 18px;
         scroll-snap-type: x proximity;
@@ -5897,7 +5897,7 @@ export class DwainsLayoutCard extends LitElement {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 10px;
-        padding: 2px 18px 16px;
+        padding: 3px 18px 32px;
         overflow: visible;
         scroll-snap-type: none;
       }
@@ -6182,7 +6182,7 @@ export class DwainsLayoutCard extends LitElement {
             0 0 0 3px rgba(255, 255, 255, 0.08);
         }
 
-        .welcome-action {
+        .welcome-action:not(.welcome-notification-action) {
           background:
             linear-gradient(180deg,
               color-mix(in srgb, var(--card-background-color) 84%, #ffffff 8%),
@@ -6287,8 +6287,8 @@ export class DwainsLayoutCard extends LitElement {
         display: flex;
         grid-template-columns: none;
         gap: 10px;
-        margin-block: -12px -32px;
-        padding: 14px 18px 32px;
+        margin-block: 0 -32px;
+        padding: 3px 18px 32px;
         overflow-x: auto;
         scroll-padding: 18px;
         scroll-snap-type: x proximity;
@@ -14741,7 +14741,7 @@ with the
 
       .mobile-area-badges{
         display: grid !important;
-        grid-template-columns: repeat(2, max-content) !important;
+        grid-template-columns: repeat(var(--area-badge-columns, 2), max-content) !important;
         grid-auto-rows: 22px !important;
         justify-content: end !important;
         align-content: start !important;
@@ -15068,68 +15068,6 @@ copy{
         font-size: 11px !important;
       }
 
-      /* Make the select/input_select icon physically first{
-        display: flex !important;
-        flex-direction: row !important;
-        direction: ltr !important;
-        align-items: center !important;
-        justify-content: flex-start !important;
-        width: 100% !important;
-        min-width: 0 !important;
-        height: 46px !important;
-        min-height: 46px !important;
-        gap: 11px !important;
-      }
-    }
-
-
-    @media (min-width: 769px) {
-      /*
-       * Select/input_select: the wrapper was already in the correct left slot{
-        position: static !important;
-        inset: auto !important;
-        top: auto !important;
-        right: auto !important;
-        bottom: auto !important;
-        left: auto !important;
-        display: block !important;
-        width: 24px !important;
-        height: 24px !important;
-        min-width: 24px !important;
-        min-height: 24px !important;
-        margin: 0 !important;
-        padding: 0 !important;
-        transform: none !important;
-        translate: none !important;
-        align-self: auto !important;
-        justify-self: auto !important;
-        pointer-events: none !important;
-        --mdc-icon-size: 24px !important;
-      }
-    }
-
-
-    /*
-     * FINAL desktop room-header geometry.
-     * Keep this block at the end of the stylesheet so older room-header
-     * experiments above cannot override the current design again.
-     */
-    @media (min-width: 769px) {
-
-      /* Three compact pills: ~10% smaller{
-        grid-area: metrics !important;
-        width: 205px !important;
-        min-width: 205px !important;
-        height: 150px !important;
-        margin: 0 !important;
-        padding: 0 !important;
-        display: flex !important;
-        flex-direction: column !important;
-        align-items: stretch !important;
-        justify-content: center !important;
-        gap: 3px !important;
-        align-self: center !important;
-      }
     }
 
 
@@ -17042,6 +16980,7 @@ copy{
     return this._isMobile ? html`
       <dd-next-popup-shell
         .open=${this._mobileNavOpen}
+        .navigationMenu=${true}
         .titleText=${this._t('home.areas')}
         icon="mdi:view-grid-outline"
         .closeLabel=${this._t('common.close')}
@@ -18011,16 +17950,14 @@ copy{
               <div class="welcome-actions">
                 ${this._showNotificationsUi() ? html`
                   <button
-                    class="${this._isMobile ? 'welcome-notification-action' : 'welcome-action welcome-notification-action'}"
+                    class="welcome-action welcome-notification-action"
                     type="button"
                     title=${this._t('home.notifications')}
                     @click=${this._openNotifications}
                   >
-                    ${this._isMobile ? this._t('home.notifications') : html`<ha-icon icon="mdi:bell-outline"></ha-icon>`}
+                    <ha-icon icon="mdi:bell-outline"></ha-icon>
                     ${this._persistentNotifications.length
-                      ? this._isMobile
-                        ? ` (${this._persistentNotifications.length})`
-                        : html`<span class="welcome-action-badge">${this._persistentNotifications.length}</span>`
+                      ? html`<span class="welcome-action-badge">${this._persistentNotifications.length}</span>`
                       : nothing}
                   </button>
                 ` : nothing}
@@ -18824,14 +18761,14 @@ copy{
           ${repeat(
             renderedAreas,
             area => area.area_id,
-            area => this._renderMobileHomeAreaCard(area)
+            area => this._renderMobileHomeAreaCard(area, gridMode)
           )}
         </div>
       </section>
     `;
   }
 
-  private _renderMobileHomeAreaCard(area: AreaConfig) {
+  private _renderMobileHomeAreaCard(area: AreaConfig, gridMode = true) {
     const entities = this._getFilteredAreaEntities(area.area_id);
     const areaData = this._getCachedAreaData(area);
     const deviceCount = this._getAreaDeviceCount(area.area_id, entities);
@@ -18843,6 +18780,7 @@ copy{
     ].filter(Boolean).join(' • ');
     const meta = sensorSummary || (deviceCount === 1 ? '1 device' : `${deviceCount} devices`);
     const badges = this._getAreaStatusBadges(areaData);
+    const compactBadges = this._isMobile && !gridMode;
     const pictureContrastClass = hasPicture ? this._getPictureContrastClass(area.picture) : '';
 
     return html`
@@ -18858,8 +18796,8 @@ copy{
           <div class="mobile-area-icon">
             <ha-icon icon=${getAreaIcon(area)}></ha-icon>
           </div>
-          <div class="mobile-area-badges">
-            ${badges.slice(0, 4).map(badge => html`
+          <div class="mobile-area-badges" style=${`--area-badge-columns: ${compactBadges ? 1 : 2};`}>
+            ${badges.slice(0, compactBadges ? 2 : 4).map(badge => html`
               <span
                 class="mobile-area-badge ${badge.className}"
                 style=${`--area-badge-color: ${badge.color};`}
@@ -21257,7 +21195,7 @@ copy{
     return html`
       <dd-next-compact-entity-tile
         class="mobile-entity-tile-host ${classes}"
-        .variant=${hasInlineSelect ? "card" : "compact"}
+        variant="compact"
         .name=${name}
         .status=${statusText}
         .icon=${icon}
@@ -21265,6 +21203,9 @@ copy{
         .active=${active}
         .unavailable=${unavailable && !unknownIsNormal}
         .editing=${Boolean(editControls)}
+        .selectOptions=${hasInlineSelect ? this._mobileEntitySelectOptions(state) : undefined}
+        .selectedOption=${String(state.state)}
+        @dd-select=${(event: CustomEvent<{ option: string }>) => this._handleMobileSelectChange(event, state, domain)}
         @dd-open=${() => this._showMoreInfo(entity.entity_id)}
       >
         ${editControls ? html`
@@ -21325,7 +21266,6 @@ copy{
           ></dd-next-entity-actions>
         ` : nothing}
 
-        ${hasInlineSelect ? this._renderMobileEntitySelect(state, domain) : nothing}
       </dd-next-compact-entity-tile>
     `;
   }
@@ -21344,31 +21284,6 @@ copy{
 
   private _mobileEntityHasInlineSelect(domain: string, state: any): boolean {
     return ['select', 'input_select'].includes(domain) && Array.isArray(state?.attributes?.options);
-  }
-
-  private _renderMobileEntitySelect(state: any, domain: string) {
-    const options = this._mobileEntitySelectOptions(state);
-    const selected = String(state?.state || '');
-    const unavailable = ['unavailable', 'unknown'].includes(selected.toLowerCase()) || options.length === 0;
-
-    return html`
-      <label
-        class="mobile-entity-select"
-        @click=${(event: Event) => event.stopPropagation()}
-        @keydown=${(event: KeyboardEvent) => event.stopPropagation()}
-      >
-        <select
-          aria-label=${this._t('common.select_option')}
-          ?disabled=${unavailable}
-          @change=${(event: Event) => this._handleMobileSelectChange(event, state, domain)}
-        >
-          ${options.map(option => html`
-            <option value=${option} ?selected=${option === selected}>${option}</option>
-          `)}
-        </select>
-        <ha-icon class="mobile-select-chevron" icon="mdi:chevron-down"></ha-icon>
-      </label>
-    `;
   }
 
   private _mobileEntitySelectOptions(state: any): string[] {
@@ -21406,11 +21321,10 @@ copy{
     this._showMoreInfo(entityId);
   }
 
-  private async _handleMobileSelectChange(event: Event, state: any, domain: string): Promise<void> {
+  private async _handleMobileSelectChange(event: CustomEvent<{ option: string }>, state: any, domain: string): Promise<void> {
     event.stopPropagation();
-    const target = event.currentTarget as HTMLSelectElement | null;
     const entityId = state?.entity_id;
-    const option = target?.value;
+    const option = event.detail.option;
     if (!entityId || option === undefined) return;
 
     this._setOptimisticEntityState(entityId, option);

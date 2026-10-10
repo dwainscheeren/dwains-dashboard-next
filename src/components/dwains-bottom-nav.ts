@@ -452,6 +452,7 @@ export class DwainsBottomNav extends LitElement {
     return html`
       <dd-next-popup-shell
         .open=${this._pagesOpen}
+        .navigationMenu=${true}
         .titleText=${ddLocalize(this._hass, 'navigation.pages')}
         icon="mdi:puzzle"
         .closeLabel=${ddLocalize(this._hass, 'common.close')}

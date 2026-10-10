@@ -1156,6 +1156,7 @@ export class DwainsDevicesCard extends LitElement {
     return this._isMobile ? html`
       <dd-next-popup-shell
         .open=${this._mobileNavOpen}
+        .navigationMenu=${true}
         .titleText=${this._t('devices.title')}
         icon="mdi:format-list-bulleted-type"
         .closeLabel=${this._t('common.close')}

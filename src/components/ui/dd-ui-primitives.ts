@@ -39,6 +39,7 @@ export class DdNextPopupShell extends LitElement {
   @property() public accent = 'var(--primary-color)';
   @property() public closeLabel = 'Close';
   @property({ type: Boolean }) public wide = false;
+  @property({ type: Boolean }) public navigationMenu = false;
 
   private _touch?: { x: number; y: number; offset: number };
   private _ignoreClickUntil = 0;
@@ -55,7 +56,7 @@ export class DdNextPopupShell extends LitElement {
       panel?.focus({ preventScroll: true });
       if (panel && this._animateMobile()) {
         this._animation = panel.animate(
-          [{ transform: `translateY(${panel.getBoundingClientRect().height}px)` }, { transform: 'translateY(0)' }],
+          [{ transform: `translateY(${this._slideDistance(panel)}px)` }, { transform: 'translateY(0)' }],
           { duration: 360, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' }
         );
       }
@@ -84,6 +85,10 @@ export class DdNextPopupShell extends LitElement {
       !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   }
 
+  private _slideDistance(panel: HTMLElement): number {
+    return panel.getBoundingClientRect().height + Math.max(0, parseFloat(getComputedStyle(panel).bottom) || 0);
+  }
+
   private _scrimPointerDown = (event: PointerEvent): void => {
     // Keep the scrim in place through pointerup/click and prevent focus changes.
     event.preventDefault();
@@ -108,6 +113,7 @@ export class DdNextPopupShell extends LitElement {
     if (this._closing || this._animation?.playState === 'running' || !window.matchMedia('(max-width: 768px)').matches || event.touches.length !== 1) return;
     const path = event.composedPath();
     const panel = event.currentTarget as HTMLElement;
+    if (this.navigationMenu && !path.some(node => node instanceof HTMLElement && node.matches('.header, .drag-grip'))) return;
     for (const node of path) {
       if (node === panel) break;
       if (!(node instanceof HTMLElement)) continue;
@@ -170,7 +176,7 @@ export class DdNextPopupShell extends LitElement {
       const transform = getComputedStyle(panel).transform;
       this._animation?.cancel();
       this._animation = panel.animate(
-        [{ transform }, { transform: `translateY(${panel.getBoundingClientRect().height}px)` }],
+        [{ transform }, { transform: `translateY(${this._slideDistance(panel)}px)` }],
         { duration: 300, easing: 'cubic-bezier(0.4, 0, 0.2, 1)', fill: 'forwards' }
       );
       try {
@@ -205,7 +211,7 @@ export class DdNextPopupShell extends LitElement {
         aria-modal="true"
         aria-label=${this.titleText}
         tabindex="0"
-        style=${`--dd-popup-accent: ${this.accent};`}
+        style=${`--dd-popup-accent: ${this.accent}; --dd-popup-bottom: ${this.navigationMenu ? 'calc(76px + env(safe-area-inset-bottom, 0px))' : '0px'}; --dd-popup-max-height: ${this.navigationMenu ? 'min(64dvh, 560px)' : '88dvh'}; --dd-popup-inset: ${this.navigationMenu ? '16px' : '0px'}; --dd-popup-radius: ${this.navigationMenu ? '24px' : '24px 24px 0 0'};`}
         @click=${{ handleEvent: this._panelClick, capture: true }}
         @keydown=${this._keydown}
         @touchstart=${{ handleEvent: this._touchStart, capture: true }}
@@ -440,16 +446,16 @@ export class DdNextPopupShell extends LitElement {
       .panel,
       .panel.wide {
         position: fixed;
-        left: 0;
-        right: 0;
+        left: var(--dd-popup-inset);
+        right: var(--dd-popup-inset);
         top: auto;
-        bottom: 0;
-        width: 100vw;
-        max-width: 100vw;
-        max-height: 88dvh;
+        bottom: var(--dd-popup-bottom);
+        width: calc(100vw - 2 * var(--dd-popup-inset));
+        max-width: calc(100vw - 2 * var(--dd-popup-inset));
+        max-height: min(var(--dd-popup-max-height), calc(100dvh - var(--dd-popup-bottom) - 16px));
         transform: translateY(var(--dd-popup-drag-y, 0px));
         border-width: 0;
-        border-radius: 24px 24px 0 0;
+        border-radius: var(--dd-popup-radius);
       }
 
       .drag-grip {

@@ -5,7 +5,7 @@ import type { HomeAssistant } from '../../types/home-assistant';
 import type { DwainsDashboardConfig } from '../../types/strategy';
 import { getDomainColor, getDomainIcon, getDeviceClassIcon } from '../../utils/icons';
 import { formatEntityStateWithUnit, formatValueWithUnit } from '../../utils/unit-format';
-import { resolveDeviceViewCardConfig } from '../../utils/blueprint-replacements';
+import { findReplacementAssignment, resolveDeviceViewCardConfig } from '../../utils/blueprint-replacements';
 import { stripAreaNameFromEntityName } from '../../utils/entity-names';
 import '../utils/dd-card-host';
 import '../dwains-person-tile';
@@ -82,6 +82,34 @@ export class DdNextDeviceEntityCard extends LitElement {
     if (!state || !this.config) return nothing;
 
     const domain = this.entityId.split('.')[0] || 'unknown';
+    const replacement = ['select', 'input_select'].includes(domain)
+      ? findReplacementAssignment({ hass: this.hass, config: this.config, entity: this.entityId, surface: 'devices_cards' }) : undefined;
+    if (['select', 'input_select'].includes(domain) && (!replacement || replacement.enabled === false)) {
+      const rawName = this.displayName || state.attributes?.friendly_name || this.entityId;
+      const name = this.config.settings?.hide_area_name_in_entity_names === true
+        ? stripAreaNameFromEntityName(rawName, this.areaName) : rawName;
+      const unavailable = ['unknown', 'unavailable'].includes(String(state.state).toLowerCase());
+      const options = Array.isArray(state.attributes?.options) ? state.attributes.options.map(String) : [];
+      if (!unavailable && !options.includes(state.state)) options.unshift(state.state);
+      return html`
+        <dd-next-compact-entity-tile
+          .name=${name}
+          .status=${formatEntityStateWithUnit(this.hass, state)}
+          .icon=${getDomainIcon(domain)}
+          .accent=${getDomainColor(domain)}
+          .unavailable=${unavailable}
+          .selectOptions=${options}
+          .selectedOption=${String(state.state)}
+          @dd-select=${async (event: CustomEvent<{ option: string }>) => {
+            try {
+              await this.hass.callService(domain, 'select_option', { entity_id: this.entityId, option: event.detail.option });
+            } catch (err) {
+              console.warn(`Failed to select option for ${this.entityId}:`, err);
+            }
+          }}
+        ></dd-next-compact-entity-tile>
+      `;
+    }
     if (domain === 'person') {
       const rawName = this.displayName ||
         state.attributes?.friendly_name ||
@@ -242,8 +270,11 @@ export class DdNextCompactEntityTile extends LitElement {
   @property({ type: Boolean, reflect: true }) public active = false;
   @property({ type: Boolean, reflect: true }) public unavailable = false;
   @property({ type: Boolean, reflect: true }) public editing = false;
+  @property({ attribute: false }) public selectOptions?: string[];
+  @property() public selectedOption = '';
 
   private _open = (): void => {
+    if (this.selectOptions !== undefined && !this.editing) return;
     this.dispatchEvent(new CustomEvent('dd-open', { bubbles: true, composed: true }));
   };
 
@@ -256,12 +287,13 @@ export class DdNextCompactEntityTile extends LitElement {
   };
 
   protected override render() {
+    const selecting = this.selectOptions !== undefined && !this.editing;
     return html`
       <article
         class="tile ${this.variant}"
         style=${`--dd-entity-accent: ${this.accent};`}
-        role="button"
-        tabindex="0"
+        role=${selecting ? nothing : 'button'}
+        tabindex=${selecting ? nothing : '0'}
         aria-label=${this.name}
         @click=${this._open}
         @keydown=${this._keydown}
@@ -275,11 +307,32 @@ export class DdNextCompactEntityTile extends LitElement {
           </span>
           <div class="copy">
             <div class="name" title=${this.name}>${this.name}</div>
-            ${this.status ? html`<div class="state">${this.status}</div>` : nothing}
+            ${this.status ? html`<div class="state" title=${this.status}>${this.status}</div>` : nothing}
           </div>
-          <div class="actions"><slot name="actions"></slot></div>
+          <div class="actions">
+            ${selecting ? html`<ha-icon class="select-chevron" icon="mdi:chevron-down" aria-hidden="true"></ha-icon>` : nothing}
+            <slot name="actions"></slot>
+          </div>
         </div>
         <div class="footer"><slot></slot></div>
+        ${selecting ? html`
+          <select
+            class="select-control"
+            aria-label=${this.name}
+            .value=${this.selectedOption}
+            ?disabled=${this.unavailable || !this.selectOptions?.length}
+            @click=${(event: Event) => event.stopPropagation()}
+            @keydown=${(event: Event) => event.stopPropagation()}
+            @change=${(event: Event) => {
+              event.stopPropagation();
+              this.dispatchEvent(new CustomEvent('dd-select', {
+                detail: { option: (event.currentTarget as HTMLSelectElement).value }, bubbles: true, composed: true,
+              }));
+            }}
+          >
+            ${this.selectOptions?.map(option => html`<option value=${option} ?selected=${option === this.selectedOption}>${option}</option>`)}
+          </select>
+        ` : nothing}
       </article>
     `;
   }
@@ -293,6 +346,7 @@ export class DdNextCompactEntityTile extends LitElement {
     }
 
     .tile {
+      position: relative;
       width: 100%;
       min-width: 0;
       margin: 0;
@@ -443,6 +497,26 @@ export class DdNextCompactEntityTile extends LitElement {
       align-items: center;
       justify-content: flex-end;
       gap: 5px;
+    }
+
+    .select-chevron {
+      color: var(--secondary-text-color);
+      --mdc-icon-size: 20px;
+    }
+
+    .select-control {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      opacity: 0;
+      cursor: pointer;
+      font: inherit;
+    }
+
+    .tile:has(.select-control:focus-visible) {
+      outline: 2px solid var(--dd-entity-accent);
+      outline-offset: -2px;
     }
 
     .footer:empty {
