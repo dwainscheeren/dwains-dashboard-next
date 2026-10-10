@@ -5064,22 +5064,29 @@ export class DwainsDashboardStrategyEditor extends LitElement {
 
       .dd-native-editor-subpage-back {
         display: flex;
-        padding: 10px 16px 0;
+        align-items: center;
+        min-height: 30px;
+        max-width: 1060px;
+        margin: 0 auto 6px;
+        padding: 0 12px;
+        box-sizing: border-box;
       }
       .dd-native-back-button {
         display: inline-flex;
         align-items: center;
-        gap: 7px;
-        padding: 8px 12px;
+        gap: 5px;
+        min-height: 30px;
+        padding: 0;
         border: 0;
-        border-radius: 999px;
-        background: var(--secondary-background-color);
-        color: var(--primary-text-color);
+        background: transparent;
+        color: var(--secondary-text-color);
         cursor: pointer;
         font: inherit;
+        font-size: 12px;
         font-weight: 700;
+        letter-spacing: 0;
       }
-      .dd-native-back-button ha-icon { --mdc-icon-size: 20px; }
+      .dd-native-back-button ha-icon { --mdc-icon-size: 16px; }
       .settings-overview-hero {
         display: flex;
         align-items: center;
