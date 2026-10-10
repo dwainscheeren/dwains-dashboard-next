@@ -48,6 +48,8 @@ export class DdNextPopupShell extends LitElement {
   private _releasePageScroll?: () => void;
 
   protected override updated(): void {
+    // Navigation stays above the menu scrim; ordinary popups keep their modal layer.
+    this.style.setProperty('--dd-popup-layer', this.navigationMenu ? '141' : '1040');
     const modal = this.renderRoot.querySelector<HTMLDialogElement>('.modal');
     if (this.open && modal && !modal.open) {
       this._releasePageScroll ||= lockPopupPageScroll();
@@ -202,7 +204,7 @@ export class DdNextPopupShell extends LitElement {
 
     return html`
       <dialog class="modal" aria-label=${this.titleText}
-        style=${`--dd-popup-hit-area: ${this.navigationMenu ? 'none' : 'auto'}; --dd-popup-scrim-bottom: ${this.navigationMenu ? 'calc(76px + env(safe-area-inset-bottom, 0px))' : '0px'};`}
+        style=${`--dd-popup-hit-area: ${this.navigationMenu ? 'none' : 'auto'};`}
         @click=${(event: Event) => event.stopPropagation()}
         @cancel=${(event: Event) => { event.preventDefault(); this._close(); }}>
       <div class="scrim" @pointerdown=${this._scrimPointerDown} @click=${this._scrimClick}></div>
@@ -221,11 +223,11 @@ export class DdNextPopupShell extends LitElement {
         @touchcancel=${{ handleEvent: this._touchEnd, capture: true, passive: false }}
       >
         <div class="drag-grip" aria-hidden="true"><span></span></div>
-        <header class="header">
+        <header class="header" style=${this.navigationMenu ? '--dd-popup-header-height: 42px; --dd-popup-header-padding: 0 12px 8px; --dd-popup-header-divider: none; --dd-popup-title-size: 18px; --dd-popup-title-weight: 850; --dd-popup-title-line-height: 1.1; --dd-popup-close-size: 34px; --dd-popup-close-border: 1px solid color-mix(in srgb, var(--divider-color) 72%, transparent); --dd-popup-close-icon-size: 21px;' : ''}>
           <div class="heading">
-            <span class="icon-tile" aria-hidden="true">
+            ${this.navigationMenu ? nothing : html`<span class="icon-tile" aria-hidden="true">
               <ha-icon icon=${this.icon}></ha-icon>
-            </span>
+            </span>`}
             <div class="copy">
               <div class="title">
                 <span class="title-text">${this.titleText}</span>
@@ -258,7 +260,7 @@ export class DdNextPopupShell extends LitElement {
     :host {
       position: fixed;
       inset: 0;
-      z-index: 1040;
+      z-index: var(--dd-popup-layer, 1040);
       display: block;
       pointer-events: none;
       -webkit-tap-highlight-color: transparent;
@@ -287,7 +289,6 @@ export class DdNextPopupShell extends LitElement {
     .scrim {
       position: absolute;
       inset: 0;
-      bottom: var(--dd-popup-scrim-bottom);
       background: rgba(0, 0, 0, .38);
       backdrop-filter: blur(2px);
       touch-action: none;
@@ -318,8 +319,8 @@ export class DdNextPopupShell extends LitElement {
     }
 
     .header {
-      min-height: 72px;
-      padding: 12px 18px;
+      min-height: var(--dd-popup-header-height, 72px);
+      padding: var(--dd-popup-header-padding, 12px 18px);
       box-sizing: border-box;
       display: flex;
       align-items: center;
@@ -327,7 +328,7 @@ export class DdNextPopupShell extends LitElement {
       gap: 12px;
       flex: 0 0 auto;
       background: var(--card-background-color);
-      box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--divider-color) 65%, transparent);
+      box-shadow: var(--dd-popup-header-divider, inset 0 -1px 0 color-mix(in srgb, var(--divider-color) 65%, transparent));
     }
 
     .heading {
@@ -369,9 +370,9 @@ export class DdNextPopupShell extends LitElement {
       gap: 7px;
       overflow: hidden;
       color: var(--primary-text-color);
-      font-size: 20px;
-      font-weight: 900;
-      line-height: 1.08;
+      font-size: var(--dd-popup-title-size, 20px);
+      font-weight: var(--dd-popup-title-weight, 900);
+      line-height: var(--dd-popup-title-line-height, 1.08);
       text-overflow: ellipsis;
       white-space: nowrap;
     }
@@ -413,10 +414,10 @@ export class DdNextPopupShell extends LitElement {
     }
 
     .icon-button {
-      width: 38px;
-      height: 38px;
+      width: var(--dd-popup-close-size, 38px);
+      height: var(--dd-popup-close-size, 38px);
       padding: 0;
-      border: 0;
+      border: var(--dd-popup-close-border, 0);
       border-radius: 999px;
       display: inline-flex;
       align-items: center;
@@ -432,7 +433,7 @@ export class DdNextPopupShell extends LitElement {
     }
 
     .icon-button ha-icon {
-      --mdc-icon-size: 20px;
+      --mdc-icon-size: var(--dd-popup-close-icon-size, 20px);
     }
 
     .body {
@@ -476,8 +477,8 @@ export class DdNextPopupShell extends LitElement {
       }
 
       .header {
-        min-height: 74px;
-        padding: 14px 14px 12px;
+        min-height: var(--dd-popup-header-height, 74px);
+        padding: var(--dd-popup-header-padding, 14px 14px 12px);
       }
 
       .icon-tile {
@@ -492,7 +493,7 @@ export class DdNextPopupShell extends LitElement {
       }
 
       .title {
-        font-size: 20px;
+        font-size: var(--dd-popup-title-size, 20px);
       }
 
       .copy {

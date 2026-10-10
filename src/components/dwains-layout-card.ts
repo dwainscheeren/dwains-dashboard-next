@@ -2464,8 +2464,8 @@ export class DwainsLayoutCard extends LitElement {
     .layout-container.sidebar-collapsed .mobile-area-top{
       display: flex;
       align-items: flex-start;
-      justify-content: space-between;
-      gap: 8px;
+      justify-content: var(--mobile-area-top-justify, space-between);
+      gap: var(--mobile-area-top-gap, 8px);
     }
 
     .layout-container.sidebar-collapsed .mobile-area-icon{
@@ -5994,8 +5994,8 @@ export class DwainsLayoutCard extends LitElement {
       .mobile-area-top{
         display: flex;
         align-items: flex-start;
-        justify-content: space-between;
-        gap: 8px;
+        justify-content: var(--mobile-area-top-justify, space-between);
+        gap: var(--mobile-area-top-gap, 8px);
       }
 
       .mobile-area-icon{
@@ -18792,7 +18792,7 @@ copy{
         ${hasPicture ? html`
           <div class="mobile-area-picture" style=${`background-image: url('${area.picture}');`}></div>
         ` : nothing}
-        <div class="mobile-area-top" style=${`--mobile-area-icon-size: ${compactBadges ? '34px' : '56px'}; --mobile-area-icon-glyph-size: ${compactBadges ? '20px' : '30px'};`}>
+        <div class="mobile-area-top" style=${`--mobile-area-icon-size: ${compactBadges ? '38px' : '56px'}; --mobile-area-icon-glyph-size: ${compactBadges ? '22px' : '30px'}; --mobile-area-top-justify: ${compactBadges ? 'flex-start' : 'space-between'}; --mobile-area-top-gap: ${compactBadges ? '4px' : '8px'};`}>
           <div class="mobile-area-icon">
             <ha-icon icon=${getAreaIcon(area)}></ha-icon>
           </div>
