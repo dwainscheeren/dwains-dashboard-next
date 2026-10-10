@@ -55,7 +55,7 @@ More desktop, mobile, light-mode and dark-mode screenshots are available in the 
 
 ## Status
 
-Fork version: `1.11.114`
+Fork version: `1.11.115`
 
 ## Community And Support
 
