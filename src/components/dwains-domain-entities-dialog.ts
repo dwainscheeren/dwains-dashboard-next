@@ -758,6 +758,38 @@ export class DwainsDomainEntitiesDialog extends LitElement {
 
   
 
+    /* Four equal desktop slots shared between room groups and their entity tiles.
+       A room consumes as many slots as its entities (up to four). */
+    @media (min-width: 1001px) {
+      .content.home-information-context.device-presentation-context:not(.domain-person) .area-sections-grid {
+        grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+      }
+      .content.home-information-context.device-presentation-context:not(.domain-person) .shared-room-group {
+        grid-column: span 4 !important;
+      }
+      .content.home-information-context.device-presentation-context:not(.domain-person) .shared-room-group[data-entity-count="1"] {
+        grid-column: span 1 !important;
+      }
+      .content.home-information-context.device-presentation-context:not(.domain-person) .shared-room-group[data-entity-count="2"] {
+        grid-column: span 2 !important;
+      }
+      .content.home-information-context.device-presentation-context:not(.domain-person) .shared-room-group[data-entity-count="3"] {
+        grid-column: span 3 !important;
+      }
+      .content.home-information-context.device-presentation-context:not(.domain-person) .shared-room-group .entities-grid {
+        grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+      }
+      .content.home-information-context.device-presentation-context:not(.domain-person) .shared-room-group[data-entity-count="1"] .entities-grid {
+        grid-template-columns: 1fr !important;
+      }
+      .content.home-information-context.device-presentation-context:not(.domain-person) .shared-room-group[data-entity-count="2"] .entities-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+      }
+      .content.home-information-context.device-presentation-context:not(.domain-person) .shared-room-group[data-entity-count="3"] .entities-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+      }
+    }
+
     /* One mobile contract for all domain/entity dialogs.
        The shared popup shell owns viewport height, safe-area and scrolling. */
     @media (max-width: 600px) {
@@ -1297,6 +1329,7 @@ export class DwainsDomainEntitiesDialog extends LitElement {
       return html`
         <dd-next-room-group
           class="shared-room-group ${compactRoom ? 'half-room' : 'full-room'}"
+          data-entity-count=${Math.min(group.entities.length, 4)}
           .name=${group.areaName}
           icon="mdi:floor-plan"
           .accent=${this._entityColor(domain)}
