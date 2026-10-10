@@ -940,7 +940,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
             <ha-icon icon="mdi:arrow-left"></ha-icon>
             <span>${this._t('common.back')}</span>
           </button>
-        </div>
+        </div>` : nothing}
         <div class="settings-detail-content dd-flat-content">
           ${this._renderSettingsPageContent(page)}
         </div>
