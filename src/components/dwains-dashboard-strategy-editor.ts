@@ -936,9 +936,9 @@ export class DwainsDashboardStrategyEditor extends LitElement {
         ${this.inlineBackNavigation ? html`<div class="dd-native-editor-subpage-back">
           <button type="button" class="dd-native-back-button"
             @click=${this._backToSettingsOverview}
+            title=${this._t('common.back')}
             aria-label=${this._t('common.back')}>
             <ha-icon icon="mdi:arrow-left"></ha-icon>
-            <span>${this._t('common.back')}</span>
           </button>
         </div>` : nothing}
         <div class="settings-detail-content dd-flat-content">
@@ -5074,17 +5074,17 @@ export class DwainsDashboardStrategyEditor extends LitElement {
       .dd-native-back-button {
         display: inline-flex;
         align-items: center;
-        gap: 5px;
-        min-height: 30px;
+        justify-content: center;
+        width: 30px;
+        height: 30px;
         padding: 0;
         border: 0;
-        background: transparent;
-        color: var(--secondary-text-color);
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--secondary-background-color) 74%, var(--card-background-color));
+        color: var(--primary-text-color);
         cursor: pointer;
         font: inherit;
-        font-size: 12px;
-        font-weight: 700;
-        letter-spacing: 0;
+        -webkit-tap-highlight-color: transparent;
       }
       .dd-native-back-button ha-icon { --mdc-icon-size: 16px; }
       .settings-overview-hero {

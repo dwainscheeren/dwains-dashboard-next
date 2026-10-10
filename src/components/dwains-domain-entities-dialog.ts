@@ -777,7 +777,10 @@ export class DwainsDomainEntitiesDialog extends LitElement {
         gap: 10px !important;
       }
     }
-    @media (min-width: 1450px) {
+    @media (min-width: 2000px) {
+      dd-next-popup-shell.room-columns {
+        --dd-popup-wide-width: 1280px;
+      }
       .content.home-information-context.device-presentation-context:not(.domain-person):not(.domain-sensor) .shared-room-group .entities-grid {
         grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
       }
@@ -1127,6 +1130,7 @@ export class DwainsDomainEntitiesDialog extends LitElement {
       <dd-next-popup-shell
         open
         wide
+        class=${this._params?.homeInformation && this._params?.homeInformationPresentation === 'devices' && !['person', 'sensor'].includes(domain) ? 'room-columns' : ''}
         .titleText=${domainTitle}
         .icon=${headerIcon}
         .accent=${headerColor}
@@ -1523,6 +1527,7 @@ export class DwainsDomainEntitiesDialog extends LitElement {
           .hass=${this.hass}
           .entityId=${entity.entity_id}
           .displayName=${name}
+          .showMap=${false}
           role="button"
           tabindex="0"
           aria-label=${name}

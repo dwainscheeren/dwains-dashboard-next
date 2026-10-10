@@ -11,6 +11,7 @@ export class DwainsDashboardNextPersonTile extends LitElement {
   @property({ attribute: false }) public hass!: HomeAssistant;
   @property({ attribute: false }) public entityId = '';
   @property({ attribute: false }) public displayName = '';
+  @property({ type: Boolean }) public showMap = true;
 
   private _renderLocationPreview(_latitude: number, _longitude: number, name: string) {
     return html`
@@ -41,7 +42,7 @@ export class DwainsDashboardNextPersonTile extends LitElement {
     const entityPicture = state.attributes?.entity_picture;
     const latitude = Number(state.attributes?.latitude);
     const longitude = Number(state.attributes?.longitude);
-    const hasLocation = Number.isFinite(latitude) && Number.isFinite(longitude);
+    const hasLocation = this.showMap && Number.isFinite(latitude) && Number.isFinite(longitude);
     const active = String(state.state || '').toLowerCase() === 'home';
     const unavailable = ['unavailable', 'unknown'].includes(String(state.state || '').toLowerCase());
     const icon = this.hass?.entities?.[this.entityId]?.icon ||

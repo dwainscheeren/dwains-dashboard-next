@@ -105,7 +105,7 @@ export class DdNextPopupShell extends LitElement {
     }
 
     .panel.wide {
-      width: min(900px, calc(100vw - 32px));
+      width: min(var(--dd-popup-wide-width, 900px), calc(100vw - 32px));
     }
 
     .header {
