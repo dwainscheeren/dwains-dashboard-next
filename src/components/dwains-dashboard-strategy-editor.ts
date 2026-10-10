@@ -933,7 +933,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
 
     return html`
       <div class="editor-container dd-flat-settings">
-        <div class="dd-native-editor-subpage-back">
+        ${this.inlineBackNavigation ? html`<div class="dd-native-editor-subpage-back">
           <button type="button" class="dd-native-back-button"
             @click=${this._backToSettingsOverview}
             aria-label=${this._t('common.back')}>
