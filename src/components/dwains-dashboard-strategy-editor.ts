@@ -162,6 +162,7 @@ let settingsRegistryRefreshPromise: Promise<SettingsRegistryData | undefined> | 
 
 @customElement("dwains-dashboard-next-strategy-editor")
 export class DwainsDashboardStrategyEditor extends LitElement {
+  @property({ type: Boolean }) public inlineBackNavigation = true;
   private _hass?: HomeAssistant;
   private _fetchDataPromise?: Promise<void>;
   private _registryData?: SettingsRegistryData;
@@ -932,14 +933,14 @@ export class DwainsDashboardStrategyEditor extends LitElement {
 
     return html`
       <div class="editor-container dd-flat-settings">
-        <div class="dd-native-editor-subpage-back">
+        ${this.inlineBackNavigation ? html`<div class="dd-native-editor-subpage-back">
           <button type="button" class="dd-native-back-button"
             @click=${this._backToSettingsOverview}
             aria-label=${this._t('common.back')}>
             <ha-icon icon="mdi:arrow-left"></ha-icon>
             <span>${this._t('common.back')}</span>
           </button>
-        </div>
+        </div>` : nothing}
         <div class="settings-detail-content dd-flat-content">
           ${this._renderSettingsPageContent(page)}
         </div>

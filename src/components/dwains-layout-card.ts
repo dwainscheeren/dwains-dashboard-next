@@ -22836,7 +22836,7 @@ copy{
           @dwains-dashboard-next-device-settings-changed=${this._handleDeviceSettingsChanged}
           @dd-settings-page-changed=${this._handleSettingsPageChanged}
         >
-          <dwains-dashboard-next-strategy-editor></dwains-dashboard-next-strategy-editor>
+          <dwains-dashboard-next-strategy-editor .inlineBackNavigation=${false}></dwains-dashboard-next-strategy-editor>
         </div>
         <div class="settings-page-bottom-actions">
           <button type="button" class="settings-secondary" @click=${this._settingsSecondaryAction}>
