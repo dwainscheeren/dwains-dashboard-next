@@ -774,8 +774,7 @@ export class DwainsDomainEntitiesDialog extends LitElement {
         grid-column: 1 / -1 !important;
         min-width: 0;
       }
-      .content.home-information-context.device-presentation-context:not(.domain-person) .shared-room-group[data-entity-count="1"],
-      .content.home-information-context.device-presentation-context:not(.domain-person) .shared-room-group[data-entity-count="2"] {
+      .content.home-information-context.device-presentation-context:not(.domain-person) .shared-room-group[data-entity-count="1"] {
         grid-column: span 1 !important;
       }
       .content.home-information-context.device-presentation-context:not(.domain-person) .shared-room-group .entities-grid,
