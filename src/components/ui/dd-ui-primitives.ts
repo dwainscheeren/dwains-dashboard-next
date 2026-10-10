@@ -29,125 +29,6 @@ function lockPopupPageScroll(): () => void {
   };
 }
 
-export function createPopupDragHandlers(options: {
-  panel: (event: TouchEvent) => HTMLElement | null;
-  close: () => void | Promise<void>;
-  blocked?: () => boolean;
-  beforeDrag?: () => void;
-  headerOnly?: boolean;
-  captureNative?: boolean;
-  nativeTransform?: boolean;
-}) {
-  let touch: { x: number; y: number; offset: number } | undefined;
-  let animation: Animation | undefined;
-  let activePanel: HTMLElement | null = null;
-  let closing = false;
-  let ignoreClickUntil = 0;
-  const originalStyles = new WeakMap<HTMLElement, Array<{ name: string; value: string; priority: string }>>();
-  const clearOffset = (panel: HTMLElement) => {
-    for (const { name, value, priority } of originalStyles.get(panel) || []) {
-      if (value) panel.style.setProperty(name, value, priority);
-      else panel.style.removeProperty(name);
-    }
-    panel.style.removeProperty('--dd-popup-drag-y');
-  };
-  const handlers = {
-    start(event: TouchEvent): void {
-      touch = undefined;
-      if (!window.matchMedia('(max-width: 768px)').matches) return;
-      // A second gesture must not fall through to HA while a sheet snaps back.
-      if (options.captureNative && (closing || animation?.playState === 'running')) {
-        event.stopPropagation();
-        return;
-      }
-      if (closing || options.blocked?.() || animation?.playState === 'running' ||
-          !window.matchMedia('(max-width: 768px)').matches || event.touches.length !== 1) return;
-      const panel = options.panel(event);
-      if (!panel) return;
-      let header = options.headerOnly && event.touches[0]!.clientY < panel.getBoundingClientRect().top + 90;
-      for (const node of event.composedPath()) {
-        if (node === panel) break;
-        if (!(node instanceof HTMLElement)) continue;
-        if (node.matches('input, select, textarea, [role="slider"], [contenteditable="true"]') || node.scrollTop > 0) return;
-        if (options.headerOnly && node.matches('button, a, [role="button"], ha-icon-button, ha-icon-button-prev')) return;
-        if (node.matches('ha-dialog-header, .header, .handle-wrapper, .heading, .title, .mobile-area-picker-head, .mobile-device-picker-head, .pages-heading, [slot="heading"], [slot="headerTitle"]')) header = true;
-      }
-      if (options.headerOnly && !header || panel.scrollTop > 0 && !header) return;
-      activePanel = panel;
-      clearOffset(panel);
-      originalStyles.set(panel, (options.nativeTransform ? ['transition', 'transform'] : ['transition']).map(name => ({
-        name, value: panel.style.getPropertyValue(name), priority: panel.style.getPropertyPriority(name),
-      })));
-      const point = event.touches[0]!;
-      touch = { x: point.clientX, y: point.clientY, offset: 0 };
-      if (options.captureNative) event.stopPropagation();
-    },
-    move(event: TouchEvent): void {
-      if (!touch) return;
-      if (event.touches.length !== 1) { handlers.end(event); return; }
-      const point = event.touches[0]!;
-      const dy = point.clientY - touch.y;
-      const dx = Math.abs(point.clientX - touch.x);
-      if (!touch.offset && (dy < -8 || dx > 8 && dx > dy)) {
-        if (options.captureNative) { event.preventDefault(); event.stopPropagation(); }
-        else touch = undefined;
-        return;
-      }
-      if (!touch.offset && dy <= 8) return;
-      const panel = options.panel(event);
-      if (!panel) return;
-      event.preventDefault();
-      event.stopPropagation();
-      options.beforeDrag?.();
-      animation?.cancel();
-      touch.offset = Math.max(0, dy);
-      panel.style.setProperty('transition', 'none');
-      panel.style.setProperty('--dd-popup-drag-y', `${touch.offset}px`);
-      if (options.nativeTransform) panel.style.setProperty('transform', `translateY(${touch.offset}px)`);
-    },
-    async end(event: TouchEvent): Promise<void> {
-      const offset = touch?.offset || 0;
-      const tracked = !!touch;
-      touch = undefined;
-      if (tracked && options.captureNative) event.stopPropagation();
-      if (!offset) {
-        const panel = tracked ? options.panel(event) : null;
-        if (panel) clearOffset(panel);
-        return;
-      }
-      const panel = options.panel(event);
-      if (!panel) return;
-      event.preventDefault();
-      event.stopPropagation();
-      ignoreClickUntil = Date.now() + 400;
-      if (event.type === 'touchend' && offset >= Math.min(120, panel.clientHeight * .25)) {
-        closing = true;
-        try { await options.close(); }
-        finally { clearOffset(panel); closing = false; }
-      } else {
-        clearOffset(panel);
-        if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-          animation = panel.animate(
-            [{ transform: `translateY(${offset}px)` }, { transform: 'translateY(0)' }],
-            { duration: 250, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' }
-          );
-        }
-      }
-    },
-    click(event: Event): void {
-      if (Date.now() < ignoreClickUntil) { event.preventDefault(); event.stopImmediatePropagation(); }
-    },
-    cancel(): void {
-      touch = undefined;
-      animation?.cancel();
-      animation = undefined;
-      if (activePanel) clearOffset(activePanel);
-      activePanel = null;
-    },
-  };
-  return handlers;
-}
-
 @customElement('dd-next-popup-shell')
 export class DdNextPopupShell extends LitElement {
   @property({ type: Boolean, reflect: true }) public open = false;
@@ -159,6 +40,8 @@ export class DdNextPopupShell extends LitElement {
   @property() public closeLabel = 'Close';
   @property({ type: Boolean }) public wide = false;
 
+  private _touch?: { x: number; y: number; offset: number };
+  private _ignoreClickUntil = 0;
   private _closing = false;
   private _animation?: Animation;
   private _releasePageScroll?: () => void;
@@ -180,7 +63,7 @@ export class DdNextPopupShell extends LitElement {
     if (!this.open) {
       this._animation?.cancel();
       this._animation = undefined;
-      this._drag.cancel();
+      this._touch = undefined;
       this._releasePageScroll?.();
       this._releasePageScroll = undefined;
     }
@@ -190,7 +73,7 @@ export class DdNextPopupShell extends LitElement {
     this._animation?.cancel();
     this._animation = undefined;
     this._closing = false;
-    this._drag.cancel();
+    this._touch = undefined;
     this._releasePageScroll?.();
     this._releasePageScroll = undefined;
     super.disconnectedCallback();
@@ -213,21 +96,71 @@ export class DdNextPopupShell extends LitElement {
     this._close();
   };
 
-  private _panelClick = (event: Event): void => this._drag.click(event);
+  private _panelClick = (event: Event): void => {
+    if (Date.now() < this._ignoreClickUntil) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }
+  };
 
-  private _drag = createPopupDragHandlers({
-    panel: event => event.currentTarget as HTMLElement,
-    close: () => this._close(),
-    blocked: () => this._closing || this._animation?.playState === 'running',
-    beforeDrag: () => this._animation?.cancel(),
-  });
-
-  private _touchStart = (event: TouchEvent): void => this._drag.start(event);
+  private _touchStart = (event: TouchEvent): void => {
+    this._touch = undefined;
+    if (this._closing || this._animation?.playState === 'running' || !window.matchMedia('(max-width: 768px)').matches || event.touches.length !== 1) return;
+    const path = event.composedPath();
+    const panel = event.currentTarget as HTMLElement;
+    for (const node of path) {
+      if (node === panel) break;
+      if (!(node instanceof HTMLElement)) continue;
+      // Tile/button taps remain usable; a downward swipe on them moves the sheet.
+      // Native text inputs and sliders keep their own gesture handling.
+      if (node.matches('input, select, textarea, [role="slider"], [contenteditable="true"]') || node.scrollTop > 0) return;
+    }
+    const touch = event.touches[0]!;
+    this._touch = { x: touch.clientX, y: touch.clientY, offset: 0 };
+  };
 
   @eventOptions({ passive: false, capture: true })
-  private _touchMove(event: TouchEvent): void { this._drag.move(event); }
+  private _touchMove(event: TouchEvent): void {
+    if (!this._touch) return;
+    if (event.touches.length !== 1) {
+      this._touchEnd(event);
+      return;
+    }
+    const touch = event.touches[0]!;
+    const dy = touch.clientY - this._touch.y;
+    const dx = Math.abs(touch.clientX - this._touch.x);
+    if (!this._touch.offset && (dy < -8 || dx > 8 && dx > dy)) {
+      this._touch = undefined;
+      return;
+    }
+    if (!this._touch.offset && dy <= 8) return;
+    event.preventDefault();
+    event.stopPropagation();
+    this._animation?.cancel();
+    this._touch.offset = Math.max(0, dy);
+    (event.currentTarget as HTMLElement).style.setProperty('--dd-popup-drag-y', `${this._touch.offset}px`);
+  }
 
-  private _touchEnd = (event: TouchEvent): void => { void this._drag.end(event); };
+  private _touchEnd = (event: TouchEvent): void => {
+    const panel = event.currentTarget as HTMLElement;
+    const offset = this._touch?.offset || 0;
+    this._touch = undefined;
+    if (!offset) return;
+    event.preventDefault();
+    event.stopPropagation();
+    this._ignoreClickUntil = Date.now() + 400;
+    if (event.type === 'touchend' && offset >= Math.min(120, panel.clientHeight * .25)) {
+      void this._close();
+    } else {
+      panel.style.removeProperty('--dd-popup-drag-y');
+      if (this._animateMobile()) {
+        this._animation = panel.animate(
+          [{ transform: `translateY(${offset}px)` }, { transform: 'translateY(0)' }],
+          { duration: 250, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' }
+        );
+      }
+    }
+  };
 
   private _close = async (): Promise<void> => {
     if (this._closing) return;

@@ -43,7 +43,7 @@ import { makeDialogManager } from './utils/make-dialog-manager';
 import './dwains-dashboard-strategy-editor';
 import './utils/dd-card-host';
 import './utils/dd-tile-host';
-import { createPopupDragHandlers } from './ui/dd-ui-primitives';
+import './ui/dd-ui-primitives';
 import './ui/dd-entity-tiles';
 import { fireEvent } from './utils/fire-event';
 import { ddLocale, ddLocalize, ddLocalizePlural } from '../utils/localize';
@@ -200,10 +200,6 @@ export class DwainsLayoutCard extends LitElement {
   @state() private _currentTime = '';
   @state() private _currentDate = '';
   @state() private _mobileNavOpen = false;
-  private _menuDrag = createPopupDragHandlers({
-    panel: event => event.currentTarget as HTMLElement,
-    close: () => this._closeMobileNav(),
-  });
   @state() private _editMode = false;
   @state() private _notificationsOpen = false;
   @state() private _persistentNotifications: PersistentNotification[] = [];
@@ -1637,9 +1633,14 @@ export class DwainsLayoutCard extends LitElement {
     }
 
     .welcome-notification-action{
-      width: 38px;
+      width: auto;
+      padding: 0 4px;
+      border: 0;
+      font: inherit;
+      font-size: 12px;
+      cursor: pointer;
       height: 42px;
-      border-radius: 10px;
+      border-radius: 0;
       color: var(--secondary-text-color);
       background: transparent;
       box-shadow: none;
@@ -1918,7 +1919,9 @@ export class DwainsLayoutCard extends LitElement {
         margin-top: 16px;
         overflow: visible;
         flex-wrap: wrap;
-        padding-bottom: 2px;
+        padding: 12px 12px 24px;
+        margin-inline: -12px;
+        margin-bottom: -22px;
         scrollbar-width: none;
       }
 
@@ -4204,15 +4207,16 @@ export class DwainsLayoutCard extends LitElement {
     /* Mobile Styles */
     @media (max-width: 768px) {
       .sidebar{
-        position: fixed;
-        right: 0;
-        top: 0;
-        width: 280px;
+        position: static;
+        width: 100%;
         flex-basis: auto;
-        height: 100%;
-        transform: translateX(100%);
-        z-index: 121;
-        box-shadow: -4px 0 12px rgba(0, 0, 0, 0.15);
+        height: auto;
+        max-height: none;
+        overflow: visible;
+        scrollbar-gutter: auto;
+        border: 0;
+        background: transparent;
+        transition: none;
       }
 
       .sidebar-resize-handle{
@@ -4233,9 +4237,7 @@ export class DwainsLayoutCard extends LitElement {
         margin-bottom: 8px;
       }
 
-      .sidebar.open{
-        transform: translateX(0);
-      }
+
 
       .mobile-nav-overlay{
         position: fixed;
@@ -9003,42 +9005,11 @@ which could overlap
         z-index: 2;
       }
 
-      .layout-container > .sidebar,
-.sidebar{
-        position: fixed !important;
-        left: 16px !important;
-        right: 16px !important;
-        top: auto !important;
-        bottom: calc(76px + env(safe-area-inset-bottom, 0px)) !important;
-        width: auto !important;
-        height: auto !important;
-        max-height: min(72vh, 620px);
-        padding: 12px;
-        overflow-y: auto;
-        border-radius: 12px;
-        border: 1px solid rgba(0, 0, 0, 0.08);
-        background: rgba(255, 255, 255, 0.94);
-        box-shadow: 0 22px 48px rgba(0, 0, 0, 0.24);
-        backdrop-filter: blur(20px);
-        transform: translate3d(0, calc(100% + 140px), 0);
-        transition: transform 0.36s cubic-bezier(0.22, 1, 0.36, 1);
-        z-index: 141;
-      }
 
-      .layout-container > .sidebar.open,
-.sidebar.open{
-        transform: translate3d(0, var(--dd-popup-drag-y, 0px), 0);
-      }
 
-      .sidebar::before{
-        content: "";
-        width: 42px;
-        height: 4px;
-        margin: 0 auto 10px;
-        display: block;
-        border-radius: 999px;
-        background: rgba(0, 0, 0, 0.14);
-      }
+
+
+
 
       .mobile-area-picker-head{
         min-height: 42px;
@@ -9528,21 +9499,9 @@ which could overlap
       }
 
       :host([data-theme-dark]){
-        .layout-container > .sidebar,
-        .sidebar {
-          border-color: rgba(255, 255, 255, 0.1);
-          background:
-            linear-gradient(180deg, rgba(37, 40, 48, 0.96), rgba(18, 20, 25, 0.94)),
-            color-mix(in srgb, var(--card-background-color) 92%, #000000);
-          box-shadow:
-            0 24px 58px rgba(0, 0, 0, 0.58),
-            inset 0 1px 0 rgba(255, 255, 255, 0.06);
-          color: var(--primary-text-color);
-        }
 
-        .sidebar::before {
-          background: rgba(255, 255, 255, 0.18);
-        }
+
+
 
         .sidebar .floor-header h3 {
           color: color-mix(in srgb, var(--primary-text-color) 58%, transparent);
@@ -9630,8 +9589,7 @@ which could overlap
         }
       }
 
-      .home-view,
-.home-content-area{
+      .home-content-area{
         max-width: 100% !important;
         overflow-x: hidden !important;
       }
@@ -11367,15 +11325,7 @@ vertically centered badge contents. */
       }
 
       /* Area picker sheet: compact chrome and enough clearance above the bottom navigation. */
-      .layout-container > .sidebar,
-.sidebar{
-        left: 16px !important;
-        right: 16px !important;
-        bottom: calc(76px + env(safe-area-inset-bottom, 0px)) !important;
-        max-height: min(64vh, 560px) !important;
-        padding: 10px !important;
-        border-radius: 12px !important;
-      }
+
 
       .mobile-area-picker-head{
         min-height: 34px !important;
@@ -11392,9 +11342,7 @@ vertically centered badge contents. */
         height: 34px !important;
       }
 
-      .sidebar::before{
-        display: block !important;
-      }
+
 
       .sidebar .area-list{
         gap: 4px !important;
@@ -16037,7 +15985,6 @@ copy{
   }
 
   disconnectedCallback() {
-    this._menuDrag.cancel();
     super.disconnectedCallback();
     window.removeEventListener('dwains-dashboard-next-toggle-area-nav', this._handleAreaNavToggle);
     window.removeEventListener('dwains-dashboard-next-mobile-nav-sheet', this._handleMobileNavSheet as EventListener);
@@ -16866,7 +16813,6 @@ copy{
         class=${classMap(layoutClasses)}
         style=${`--area-sidebar-width: ${this._areaSidebarWidth}px;`}
       >
-        ${this._renderMobileOverlay()}
         ${this._renderSidebar()}
         ${!this._isMobile ? this._renderSidebarResizeHandle() : nothing}
         <div class="main-content">
@@ -16924,16 +16870,6 @@ copy{
     `;
   }
 
-  private _renderMobileOverlay() {
-    if (!this._isMobile) return nothing;
-
-    return html`
-      <div
-        class="mobile-nav-overlay ${this._mobileNavOpen ? 'open' : ''}"
-        @click=${this._closeMobileNav}
-      ></div>
-    `;
-  }
 
   private _homeNowPlayingEnabled(): boolean {
     const settings = this.config?.settings;
@@ -17079,28 +17015,8 @@ copy{
     const showNotifications = this._showNotificationsUi();
     const hasNotifications = showNotifications && this._persistentNotifications.length > 0;
 
-    return html`
-      <nav
-        @touchstart=${{ handleEvent: (event: TouchEvent) => this._menuDrag.start(event), capture: true }}
-        @touchmove=${{ handleEvent: (event: TouchEvent) => this._menuDrag.move(event), capture: true, passive: false }}
-        @touchend=${{ handleEvent: (event: TouchEvent) => { void this._menuDrag.end(event); }, capture: true, passive: false }}
-        @touchcancel=${{ handleEvent: (event: TouchEvent) => { void this._menuDrag.end(event); }, capture: true, passive: false }}
-        @click=${{ handleEvent: (event: Event) => this._menuDrag.click(event), capture: true }}
-        class=${classMap(classes)} @scroll=${this._handleSidebarScroll}>
-        ${this._isMobile ? html`
-          <div class="mobile-area-picker-head">
-            <div class="mobile-area-picker-title">${this._t('home.areas')}</div>
-            <button
-              class="mobile-area-picker-close"
-              type="button"
-              title=${this._t('common.close')}
-              aria-label=${this._t('common.close')}
-              @click=${this._closeMobileNav}
-            >
-              <ha-icon icon="mdi:close"></ha-icon>
-            </button>
-          </div>
-        ` : nothing}
+    const content = html`
+      <nav class=${classMap(classes)} @scroll=${this._handleSidebarScroll}>
         <div class="area-list">
           <div
             class="area-button home-button ${this._selectedView === 'home' ? 'selected' : ''} ${hasNotifications ? 'has-notifications' : ''}"
@@ -17123,6 +17039,15 @@ copy{
         </div>
       </nav>
     `;
+    return this._isMobile ? html`
+      <dd-next-popup-shell
+        .open=${this._mobileNavOpen}
+        .titleText=${this._t('home.areas')}
+        icon="mdi:view-grid-outline"
+        .closeLabel=${this._t('common.close')}
+        @dd-close=${this._closeMobileNav}
+      >${content}</dd-next-popup-shell>
+    ` : content;
   }
 
   private _renderHomeNotificationShortcut() {
@@ -18086,14 +18011,16 @@ copy{
               <div class="welcome-actions">
                 ${this._showNotificationsUi() ? html`
                   <button
-                    class="welcome-action welcome-notification-action"
+                    class="${this._isMobile ? 'welcome-notification-action' : 'welcome-action welcome-notification-action'}"
                     type="button"
                     title=${this._t('home.notifications')}
                     @click=${this._openNotifications}
                   >
-                    <ha-icon icon="mdi:bell-outline"></ha-icon>
+                    ${this._isMobile ? this._t('home.notifications') : html`<ha-icon icon="mdi:bell-outline"></ha-icon>`}
                     ${this._persistentNotifications.length
-                      ? html`<span class="welcome-action-badge">${this._persistentNotifications.length}</span>`
+                      ? this._isMobile
+                        ? ` (${this._persistentNotifications.length})`
+                        : html`<span class="welcome-action-badge">${this._persistentNotifications.length}</span>`
                       : nothing}
                   </button>
                 ` : nothing}

@@ -27,7 +27,7 @@ import {
   wallTabletHaMenuPeek,
 } from '../utils/wall-tablet';
 import { ensureWallTablet } from './dwains-wall-tablet';
-import { createPopupDragHandlers } from './ui/dd-ui-primitives';
+import './ui/dd-ui-primitives';
 
 interface NavItem {
   path: string;
@@ -96,10 +96,6 @@ export class DwainsBottomNav extends LitElement {
   @state() private _pages: PageItem[] = [];
   @state() private _pagesOpen = false;
   @state() private _restrictedMenuOpen = false;
-  private _pagesDrag = createPopupDragHandlers({
-    panel: event => event.currentTarget as HTMLElement,
-    close: () => this._closePages(),
-  });
   private _settings?: DwainsDashboardSettings;
 
   set hass(hass: any) {
@@ -137,7 +133,6 @@ export class DwainsBottomNav extends LitElement {
   }
 
   disconnectedCallback(): void {
-    this._pagesDrag.cancel();
     super.disconnectedCallback();
     window.removeEventListener('location-changed', this._sync);
     window.removeEventListener('popstate', this._sync);
@@ -455,31 +450,13 @@ export class DwainsBottomNav extends LitElement {
   private _renderPagesSheet() {
     if (this._pages.length <= 1) return nothing;
     return html`
-      <button
-        class="pages-backdrop ${this._pagesOpen ? 'open' : ''}"
-        aria-label=${ddLocalize(this._hass, 'common.close')}
-        @click=${this._closePages}
-      ></button>
-      <section
-        @touchstart=${{ handleEvent: (event: TouchEvent) => this._pagesDrag.start(event), capture: true }}
-        @touchmove=${{ handleEvent: (event: TouchEvent) => this._pagesDrag.move(event), capture: true, passive: false }}
-        @touchend=${{ handleEvent: (event: TouchEvent) => { void this._pagesDrag.end(event); }, capture: true, passive: false }}
-        @touchcancel=${{ handleEvent: (event: TouchEvent) => { void this._pagesDrag.end(event); }, capture: true, passive: false }}
-        @click=${{ handleEvent: (event: Event) => this._pagesDrag.click(event), capture: true }}
-        class="pages-sheet ${this._pagesOpen ? 'open' : ''}" aria-hidden=${this._pagesOpen ? 'false' : 'true'}>
-        <div class="pages-handle" aria-hidden="true"></div>
-        <div class="pages-heading">
-          <span>${ddLocalize(this._hass, 'navigation.pages')}</span>
-          <button
-            class="pages-close"
-            type="button"
-            title=${ddLocalize(this._hass, 'common.close')}
-            aria-label=${ddLocalize(this._hass, 'common.close')}
-            @click=${this._closePages}
-          >
-            <ha-icon icon="mdi:close"></ha-icon>
-          </button>
-        </div>
+      <dd-next-popup-shell
+        .open=${this._pagesOpen}
+        .titleText=${ddLocalize(this._hass, 'navigation.pages')}
+        icon="mdi:puzzle"
+        .closeLabel=${ddLocalize(this._hass, 'common.close')}
+        @dd-close=${this._closePages}
+      >
         <div class="pages-list">
           ${this._pages.map((page) => {
             const active = this._active === page.path;
@@ -498,7 +475,7 @@ export class DwainsBottomNav extends LitElement {
             `;
           })}
         </div>
-      </section>
+      </dd-next-popup-shell>
     `;
   }
 
@@ -1515,11 +1492,12 @@ function _setNativeHeaderElementsHidden(
  * het hoofdmenu vanuit een losse linker knop opent.
  */
 function _setDrawerPlacement(placement: 'start' | 'end'): void {
-  _deepFindAll('wa-drawer').forEach((wa) => {
-    if (wa.getAttribute('placement') !== placement) {
-      wa.setAttribute('placement', placement);
-    }
-  });
+  // Only the shell sidebar belongs on the left; native bottom sheets also
+  // use wa-drawer and must retain their own placement during periodic syncs.
+  const main = _deepFind('home-assistant-main');
+  const sidebar = main?.shadowRoot?.querySelector('ha-drawer');
+  const wa = sidebar?.shadowRoot?.querySelector('wa-drawer');
+  if (wa && wa.getAttribute('placement') !== placement) wa.setAttribute('placement', placement);
 }
 
 // ---- DD-sectie in het HA-zijmenu ------------------------------------------
@@ -1999,23 +1977,4 @@ function _shadowHosts(): Element[] {
     });
   }
   return hosts;
-}
-
-/** Zoek alle elementen met de gegeven tag, dwars door shadow-roots heen. */
-function _deepFindAll(tag: string): Element[] {
-  const found: Element[] = [];
-  const seen = new Set<Element>();
-  const queue: (Document | ShadowRoot)[] = [document];
-  while (queue.length) {
-    const root = queue.shift()!;
-    root.querySelectorAll(tag).forEach((el) => found.push(el));
-    root.querySelectorAll('*').forEach((el) => {
-      const sr = (el as Element).shadowRoot;
-      if (sr && !seen.has(el)) {
-        seen.add(el);
-        queue.push(sr);
-      }
-    });
-  }
-  return found;
 }

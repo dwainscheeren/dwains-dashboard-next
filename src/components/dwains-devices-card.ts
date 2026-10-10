@@ -36,7 +36,7 @@ import { formatEntityStateWithUnit, formatValueWithUnit } from '../utils/unit-fo
 import { stripAreaNameFromEntityName } from '../utils/entity-names';
 import './utils/dd-card-host';
 import './dwains-person-tile';
-import { createPopupDragHandlers } from './ui/dd-ui-primitives';
+import './ui/dd-ui-primitives';
 import { renderCompactDeviceTile } from './ui/dd-entity-tiles';
 
 const NEW_DEVICES_KEY = '__new_devices__';
@@ -89,10 +89,6 @@ export class DwainsDevicesCard extends LitElement {
   @state() private _selectedDomain: string | null = null;
   @state() private _isMobile = false;
   @state() private _mobileNavOpen = false;
-  private _menuDrag = createPopupDragHandlers({
-    panel: event => event.currentTarget as HTMLElement,
-    close: () => this._closeMobileNav(),
-  });
   private _pendingDomainSelection: string | null = null;
 
   private _resizeHandler = () => this._checkMobile();
@@ -175,7 +171,6 @@ export class DwainsDevicesCard extends LitElement {
   }
 
   disconnectedCallback() {
-    this._menuDrag.cancel();
     super.disconnectedCallback();
     window.removeEventListener('resize', this._resizeHandler);
     window.removeEventListener('dwains-dashboard-next-toggle-devices-nav', this._handleDevicesNavToggle);
@@ -966,8 +961,7 @@ export class DwainsDevicesCard extends LitElement {
     if (domains.length === 0 && !showNewDevicesMenu && !showMaintenanceMenu && !showEnergyMenu) {
       return html`
         <div class="layout-container">
-          ${this._renderMobileOverlay()}
-          <div class="main-content">
+            <div class="main-content">
             <div class="content-area">
               <div class="device-view">
                 <div class="empty">${this._t('devices.empty')}</div>
@@ -999,7 +993,6 @@ export class DwainsDevicesCard extends LitElement {
 
     return html`
       <div class="layout-container">
-        ${this._renderMobileOverlay()}
         ${this._renderSidebar(data, domains, newDevices, showNewDevicesMenu, maintenance, showMaintenanceMenu, showEnergyMenu)}
         <div class="main-content">
           <div class="content-area">
@@ -1018,15 +1011,6 @@ export class DwainsDevicesCard extends LitElement {
     `;
   }
 
-  private _renderMobileOverlay() {
-    if (!this._isMobile) return nothing;
-    return html`
-      <div
-        class="mobile-nav-overlay ${this._mobileNavOpen ? 'open' : ''}"
-        @click=${this._closeMobileNav}
-      ></div>
-    `;
-  }
 
   private _renderSidebar(
     data: Map<string, Map<string, { area: AreaConfig; entities: EntityConfig[] }>>,
@@ -1043,28 +1027,9 @@ export class DwainsDevicesCard extends LitElement {
     };
     const energySummary = this._energySummary();
 
-    return html`
-      <nav
-        @touchstart=${{ handleEvent: (event: TouchEvent) => this._menuDrag.start(event), capture: true }}
-        @touchmove=${{ handleEvent: (event: TouchEvent) => this._menuDrag.move(event), capture: true, passive: false }}
-        @touchend=${{ handleEvent: (event: TouchEvent) => { void this._menuDrag.end(event); }, capture: true, passive: false }}
-        @touchcancel=${{ handleEvent: (event: TouchEvent) => { void this._menuDrag.end(event); }, capture: true, passive: false }}
-        @click=${{ handleEvent: (event: Event) => this._menuDrag.click(event), capture: true }}
-        class=${classMap(classes)}>
-        ${this._isMobile ? html`
-          <div class="mobile-device-picker-head">
-            <div class="mobile-device-picker-title">${this._t('devices.title')}</div>
-            <button
-              class="mobile-device-picker-close"
-              type="button"
-              title=${this._t('common.close')}
-              aria-label=${this._t('common.close')}
-              @click=${this._closeMobileNav}
-            >
-              <ha-icon icon="mdi:close"></ha-icon>
-            </button>
-          </div>
-        ` : html`<div class="sidebar-title">${this._t('devices.title')}</div>`}
+    const content = html`
+      <nav class=${classMap(classes)}>
+        ${!this._isMobile ? html`<div class="sidebar-title">${this._t('devices.title')}</div>` : nothing}
         <div class="area-list">
           <button
             class="area-button overview ${this._selectedDomain === DEVICES_OVERVIEW_KEY ? 'selected' : ''}"
@@ -1188,6 +1153,15 @@ export class DwainsDevicesCard extends LitElement {
         </div>
       </nav>
     `;
+    return this._isMobile ? html`
+      <dd-next-popup-shell
+        .open=${this._mobileNavOpen}
+        .titleText=${this._t('devices.title')}
+        icon="mdi:format-list-bulleted-type"
+        .closeLabel=${this._t('common.close')}
+        @dd-close=${this._closeMobileNav}
+      >${content}</dd-next-popup-shell>
+    ` : content;
   }
 
   private _renderDevicesOverview(
@@ -3335,7 +3309,7 @@ export class DwainsDevicesCard extends LitElement {
 
 
 
-  
+
 
     /* Single mobile contract for the Devices view. */
     @media (max-width: 768px) {
@@ -3353,43 +3327,22 @@ export class DwainsDevicesCard extends LitElement {
               text-align: left;
             }
 
-      .layout-container > .sidebar,
-            .sidebar {
-              position: fixed !important;
-              left: 16px !important;
-              right: 16px !important;
-              top: auto !important;
-              bottom: calc(76px + env(safe-area-inset-bottom, 0px)) !important;
-              width: auto !important;
-              height: auto !important;
-              max-height: min(64vh, 560px);
-              padding: 10px;
-              overflow-y: auto;
-              border-radius: 12px;
-              border: 1px solid rgba(0, 0, 0, 0.08);
-              background: rgba(255, 255, 255, 0.94);
-              box-shadow: 0 22px 48px rgba(0, 0, 0, 0.24);
-              backdrop-filter: blur(20px);
-              transform: translate3d(0, calc(100% + 140px), 0);
-              transition: transform 0.36s cubic-bezier(0.22, 1, 0.36, 1);
-              z-index: 141;
-            }
+      .sidebar {
+        position: static;
+        width: 100%;
+        flex-basis: auto;
+        height: auto;
+        max-height: none;
+        overflow: visible;
+        scrollbar-gutter: auto;
+        border: 0;
+        background: transparent;
+        transition: none;
+      }
       
-            .layout-container > .sidebar.open,
-            .sidebar.open {
-              transform: translate3d(0, var(--dd-popup-drag-y, 0px), 0);
-            }
+
       
-            .sidebar::before {
-              content: '';
-              display: block;
-              flex: 0 0 4px;
-              width: 42px;
-              height: 4px;
-              margin: 2px auto 10px;
-              border-radius: 999px;
-              background: color-mix(in srgb, var(--primary-text-color) 20%, transparent);
-            }
+
       
             .mobile-nav-overlay {
               position: fixed;
@@ -3538,21 +3491,9 @@ export class DwainsDevicesCard extends LitElement {
             }
       
             :host([data-theme-dark]) {
-              .layout-container > .sidebar,
-              .sidebar {
-                border-color: rgba(255, 255, 255, 0.1);
-                background:
-                  linear-gradient(180deg, rgba(37, 40, 48, 0.96), rgba(18, 20, 25, 0.94)),
-                  color-mix(in srgb, var(--card-background-color) 92%, #000000);
-                box-shadow:
-                  0 24px 58px rgba(0, 0, 0, 0.58),
-                  inset 0 1px 0 rgba(255, 255, 255, 0.06);
-                color: var(--primary-text-color);
-              }
+
       
-              .sidebar::before {
-                background: rgba(255, 255, 255, 0.18);
-              }
+
       
               .sidebar-title {
                 color: color-mix(in srgb, var(--primary-text-color) 60%, transparent);
