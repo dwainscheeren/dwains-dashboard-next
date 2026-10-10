@@ -2,6 +2,7 @@ import { DwainsDashboardStrategy } from './strategies/dashboard-strategy';
 import { DwainsViewStrategy } from './strategies/view-strategy';
 
 import { DD_NEXT_VERSION } from './version';
+import { createPopupDragHandlers } from './components/ui/dd-ui-primitives';
 
 console.log('Dwains Dashboard Next - Loading...');
 console.log(`%cDwains Dashboard Next ${DD_NEXT_VERSION}`, 'background:#3a7;color:#fff;padding:2px 8px;border-radius:6px;font-weight:bold');
@@ -224,6 +225,40 @@ function installMobileMoreInfoDialogSizing(): void {
     };
     root.addEventListener('click', keepMobileSheet, { capture: true });
     root.addEventListener('dblclick', keepMobileSheet, { capture: true });
+    let surface: HTMLElement | null = null;
+    const drag = createPopupDragHandlers({
+      panel: event => {
+        if (event.type === 'touchstart') {
+          surface = event.composedPath().find(node => node instanceof HTMLElement &&
+            node.matches('.mdc-dialog__surface, [part~="dialog"]')) as HTMLElement || null;
+        }
+        return surface;
+      },
+      headerOnly: true,
+      captureNative: true,
+      nativeTransform: true,
+      close: async () => {
+        const info = host as HTMLElement & { closeDialog?: () => void; updateComplete?: Promise<unknown> };
+        if (!info.closeDialog) return;
+        let outgoing: Animation | undefined;
+        if (surface && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+          outgoing = surface.animate(
+            [{ transform: getComputedStyle(surface).transform },
+             { transform: `translateY(${surface.getBoundingClientRect().height}px)` }],
+            { duration: 300, easing: 'cubic-bezier(0.4, 0, 0.2, 1)', fill: 'forwards' }
+          );
+          try { await outgoing.finished; } catch { return; }
+        }
+        info.closeDialog();
+        await info.updateComplete;
+        outgoing?.cancel();
+      },
+    });
+    root.addEventListener('touchstart', event => drag.start(event as TouchEvent), { capture: true });
+    root.addEventListener('touchmove', event => drag.move(event as TouchEvent), { capture: true, passive: false });
+    root.addEventListener('touchend', event => { void drag.end(event as TouchEvent); }, { capture: true, passive: false });
+    root.addEventListener('touchcancel', event => { void drag.end(event as TouchEvent); }, { capture: true, passive: false });
+    root.addEventListener('click', event => drag.click(event), { capture: true });
   };
 
   const updateDialogViewport = (dialog: HTMLElement): void => {

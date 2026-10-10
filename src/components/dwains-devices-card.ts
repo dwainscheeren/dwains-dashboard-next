@@ -36,7 +36,7 @@ import { formatEntityStateWithUnit, formatValueWithUnit } from '../utils/unit-fo
 import { stripAreaNameFromEntityName } from '../utils/entity-names';
 import './utils/dd-card-host';
 import './dwains-person-tile';
-import './ui/dd-ui-primitives';
+import { createPopupDragHandlers } from './ui/dd-ui-primitives';
 import { renderCompactDeviceTile } from './ui/dd-entity-tiles';
 
 const NEW_DEVICES_KEY = '__new_devices__';
@@ -89,6 +89,10 @@ export class DwainsDevicesCard extends LitElement {
   @state() private _selectedDomain: string | null = null;
   @state() private _isMobile = false;
   @state() private _mobileNavOpen = false;
+  private _menuDrag = createPopupDragHandlers({
+    panel: event => event.currentTarget as HTMLElement,
+    close: () => this._closeMobileNav(),
+  });
   private _pendingDomainSelection: string | null = null;
 
   private _resizeHandler = () => this._checkMobile();
@@ -171,6 +175,7 @@ export class DwainsDevicesCard extends LitElement {
   }
 
   disconnectedCallback() {
+    this._menuDrag.cancel();
     super.disconnectedCallback();
     window.removeEventListener('resize', this._resizeHandler);
     window.removeEventListener('dwains-dashboard-next-toggle-devices-nav', this._handleDevicesNavToggle);
@@ -1039,7 +1044,13 @@ export class DwainsDevicesCard extends LitElement {
     const energySummary = this._energySummary();
 
     return html`
-      <nav class=${classMap(classes)}>
+      <nav
+        @touchstart=${{ handleEvent: (event: TouchEvent) => this._menuDrag.start(event), capture: true }}
+        @touchmove=${{ handleEvent: (event: TouchEvent) => this._menuDrag.move(event), capture: true, passive: false }}
+        @touchend=${{ handleEvent: (event: TouchEvent) => { void this._menuDrag.end(event); }, capture: true, passive: false }}
+        @touchcancel=${{ handleEvent: (event: TouchEvent) => { void this._menuDrag.end(event); }, capture: true, passive: false }}
+        @click=${{ handleEvent: (event: Event) => this._menuDrag.click(event), capture: true }}
+        class=${classMap(classes)}>
         ${this._isMobile ? html`
           <div class="mobile-device-picker-head">
             <div class="mobile-device-picker-title">${this._t('devices.title')}</div>
@@ -3359,18 +3370,25 @@ export class DwainsDevicesCard extends LitElement {
               background: rgba(255, 255, 255, 0.94);
               box-shadow: 0 22px 48px rgba(0, 0, 0, 0.24);
               backdrop-filter: blur(20px);
-              transform: translate3d(0, calc(100% + 140px), 0) !important;
-              transition: transform 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
+              transform: translate3d(0, calc(100% + 140px), 0);
+              transition: transform 0.36s cubic-bezier(0.22, 1, 0.36, 1);
               z-index: 141;
             }
       
             .layout-container > .sidebar.open,
             .sidebar.open {
-              transform: translate3d(0, 0, 0) !important;
+              transform: translate3d(0, var(--dd-popup-drag-y, 0px), 0);
             }
       
             .sidebar::before {
-              display: none;
+              content: '';
+              display: block;
+              flex: 0 0 4px;
+              width: 42px;
+              height: 4px;
+              margin: 2px auto 10px;
+              border-radius: 999px;
+              background: color-mix(in srgb, var(--primary-text-color) 20%, transparent);
             }
       
             .mobile-nav-overlay {

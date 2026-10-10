@@ -27,6 +27,7 @@ import {
   wallTabletHaMenuPeek,
 } from '../utils/wall-tablet';
 import { ensureWallTablet } from './dwains-wall-tablet';
+import { createPopupDragHandlers } from './ui/dd-ui-primitives';
 
 interface NavItem {
   path: string;
@@ -95,6 +96,10 @@ export class DwainsBottomNav extends LitElement {
   @state() private _pages: PageItem[] = [];
   @state() private _pagesOpen = false;
   @state() private _restrictedMenuOpen = false;
+  private _pagesDrag = createPopupDragHandlers({
+    panel: event => event.currentTarget as HTMLElement,
+    close: () => this._closePages(),
+  });
   private _settings?: DwainsDashboardSettings;
 
   set hass(hass: any) {
@@ -132,6 +137,7 @@ export class DwainsBottomNav extends LitElement {
   }
 
   disconnectedCallback(): void {
+    this._pagesDrag.cancel();
     super.disconnectedCallback();
     window.removeEventListener('location-changed', this._sync);
     window.removeEventListener('popstate', this._sync);
@@ -454,7 +460,14 @@ export class DwainsBottomNav extends LitElement {
         aria-label=${ddLocalize(this._hass, 'common.close')}
         @click=${this._closePages}
       ></button>
-      <section class="pages-sheet ${this._pagesOpen ? 'open' : ''}" aria-hidden=${this._pagesOpen ? 'false' : 'true'}>
+      <section
+        @touchstart=${{ handleEvent: (event: TouchEvent) => this._pagesDrag.start(event), capture: true }}
+        @touchmove=${{ handleEvent: (event: TouchEvent) => this._pagesDrag.move(event), capture: true, passive: false }}
+        @touchend=${{ handleEvent: (event: TouchEvent) => { void this._pagesDrag.end(event); }, capture: true, passive: false }}
+        @touchcancel=${{ handleEvent: (event: TouchEvent) => { void this._pagesDrag.end(event); }, capture: true, passive: false }}
+        @click=${{ handleEvent: (event: Event) => this._pagesDrag.click(event), capture: true }}
+        class="pages-sheet ${this._pagesOpen ? 'open' : ''}" aria-hidden=${this._pagesOpen ? 'false' : 'true'}>
+        <div class="pages-handle" aria-hidden="true"></div>
         <div class="pages-heading">
           <span>${ddLocalize(this._hass, 'navigation.pages')}</span>
           <button
@@ -870,19 +883,19 @@ export class DwainsBottomNav extends LitElement {
       opacity: 0;
       visibility: hidden;
       pointer-events: none;
-      transform: translateY(18px) scale(0.98);
+      transform: translateY(calc(100% + 100px));
       transform-origin: bottom center;
       transition:
-        opacity 0.24s cubic-bezier(0.22, 1, 0.36, 1),
-        transform 0.24s cubic-bezier(0.22, 1, 0.36, 1),
-        visibility 0.24s ease;
+        opacity 0.36s cubic-bezier(0.22, 1, 0.36, 1),
+        transform 0.36s cubic-bezier(0.22, 1, 0.36, 1),
+        visibility 0.36s ease;
     }
 
     .pages-sheet.open {
       opacity: 1;
       visibility: visible;
       pointer-events: auto;
-      transform: translateY(0) scale(1);
+      transform: translateY(var(--dd-popup-drag-y, 0px));
     }
 
     .pages-handle {

@@ -43,7 +43,7 @@ import { makeDialogManager } from './utils/make-dialog-manager';
 import './dwains-dashboard-strategy-editor';
 import './utils/dd-card-host';
 import './utils/dd-tile-host';
-import './ui/dd-ui-primitives';
+import { createPopupDragHandlers } from './ui/dd-ui-primitives';
 import './ui/dd-entity-tiles';
 import { fireEvent } from './utils/fire-event';
 import { ddLocale, ddLocalize, ddLocalizePlural } from '../utils/localize';
@@ -200,6 +200,10 @@ export class DwainsLayoutCard extends LitElement {
   @state() private _currentTime = '';
   @state() private _currentDate = '';
   @state() private _mobileNavOpen = false;
+  private _menuDrag = createPopupDragHandlers({
+    panel: event => event.currentTarget as HTMLElement,
+    close: () => this._closeMobileNav(),
+  });
   @state() private _editMode = false;
   @state() private _notificationsOpen = false;
   @state() private _persistentNotifications: PersistentNotification[] = [];
@@ -610,12 +614,10 @@ export class DwainsLayoutCard extends LitElement {
       contain: layout style paint;
     }
 
-    .mobile-home-section,
-.home-camera-section,
+    .home-camera-section,
 .home-status-section,
 .home-todos-section,
 .home-custom-cards-section,
-.home-favorites-section,
 .home-summaries-section,
 .mobile-domain-group{
       content-visibility: auto;
@@ -1914,7 +1916,8 @@ export class DwainsLayoutCard extends LitElement {
         justify-content: flex-start;
         gap: 8px;
         margin-top: 16px;
-        overflow-x: auto;
+        overflow: visible;
+        flex-wrap: wrap;
         padding-bottom: 2px;
         scrollbar-width: none;
       }
@@ -5876,7 +5879,8 @@ export class DwainsLayoutCard extends LitElement {
       .mobile-area-rail{
         display: flex;
         gap: 10px;
-        padding: 2px 18px 16px;
+        margin-block: -12px -16px;
+        padding: 14px 18px 32px;
         overflow-x: auto;
         scroll-padding: 18px;
         scroll-snap-type: x proximity;
@@ -6266,7 +6270,7 @@ export class DwainsLayoutCard extends LitElement {
         max-width: 100%;
         margin: 0 -10px 44px;
         padding: 0;
-        overflow-x: clip;
+        overflow: visible;
       }
 
       .home-favorites-section .favorites-header{
@@ -6281,7 +6285,8 @@ export class DwainsLayoutCard extends LitElement {
         display: flex;
         grid-template-columns: none;
         gap: 10px;
-        padding: 2px 18px 0;
+        margin-block: -12px -32px;
+        padding: 14px 18px 32px;
         overflow-x: auto;
         scroll-padding: 18px;
         scroll-snap-type: x proximity;
@@ -9015,14 +9020,14 @@ which could overlap
         background: rgba(255, 255, 255, 0.94);
         box-shadow: 0 22px 48px rgba(0, 0, 0, 0.24);
         backdrop-filter: blur(20px);
-        transform: translate3d(0, calc(100% + 140px), 0) !important;
-        transition: transform 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
+        transform: translate3d(0, calc(100% + 140px), 0);
+        transition: transform 0.36s cubic-bezier(0.22, 1, 0.36, 1);
         z-index: 141;
       }
 
       .layout-container > .sidebar.open,
 .sidebar.open{
-        transform: translate3d(0, 0, 0) !important;
+        transform: translate3d(0, var(--dd-popup-drag-y, 0px), 0);
       }
 
       .sidebar::before{
@@ -9637,7 +9642,7 @@ which could overlap
         max-width: 100% !important;
         margin: 0 -10px 44px !important;
         padding: 0 !important;
-        overflow-x: hidden !important;
+        overflow: visible !important;
       }
 
       .home-view .home-favorites-section .favorites-grid{
@@ -11388,7 +11393,7 @@ vertically centered badge contents. */
       }
 
       .sidebar::before{
-        display: none !important;
+        display: block !important;
       }
 
       .sidebar .area-list{
@@ -16032,6 +16037,7 @@ copy{
   }
 
   disconnectedCallback() {
+    this._menuDrag.cancel();
     super.disconnectedCallback();
     window.removeEventListener('dwains-dashboard-next-toggle-area-nav', this._handleAreaNavToggle);
     window.removeEventListener('dwains-dashboard-next-mobile-nav-sheet', this._handleMobileNavSheet as EventListener);
@@ -17074,7 +17080,13 @@ copy{
     const hasNotifications = showNotifications && this._persistentNotifications.length > 0;
 
     return html`
-      <nav class=${classMap(classes)} @scroll=${this._handleSidebarScroll}>
+      <nav
+        @touchstart=${{ handleEvent: (event: TouchEvent) => this._menuDrag.start(event), capture: true }}
+        @touchmove=${{ handleEvent: (event: TouchEvent) => this._menuDrag.move(event), capture: true, passive: false }}
+        @touchend=${{ handleEvent: (event: TouchEvent) => { void this._menuDrag.end(event); }, capture: true, passive: false }}
+        @touchcancel=${{ handleEvent: (event: TouchEvent) => { void this._menuDrag.end(event); }, capture: true, passive: false }}
+        @click=${{ handleEvent: (event: Event) => this._menuDrag.click(event), capture: true }}
+        class=${classMap(classes)} @scroll=${this._handleSidebarScroll}>
         ${this._isMobile ? html`
           <div class="mobile-area-picker-head">
             <div class="mobile-area-picker-title">${this._t('home.areas')}</div>
