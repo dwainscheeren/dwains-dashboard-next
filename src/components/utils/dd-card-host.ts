@@ -13,6 +13,8 @@ export class DwainsCardHost extends HTMLElement {
   private _frameObserver?: MutationObserver;
   private _frameStyle?: HTMLStyleElement;
   private _frameRequest = 0;
+  private _layoutObserver?: ResizeObserver;
+  private _layoutWidth = 0;
 
   static get observedAttributes() {
     return ['framed', 'strip-card-surface', 'refresh-layout'];
@@ -58,6 +60,9 @@ export class DwainsCardHost extends HTMLElement {
   disconnectedCallback() {
     this._renderRequest += 1;
     this._clearFrameChild();
+    this._layoutObserver?.disconnect();
+    this._layoutObserver = undefined;
+    this._layoutWidth = 0;
     this._observer?.disconnect();
     this._observer = undefined;
     this._hasRendered = false;
@@ -171,6 +176,18 @@ export class DwainsCardHost extends HTMLElement {
     requestAnimationFrame(() => requestAnimationFrame(refresh));
     window.setTimeout(refresh, 160);
     window.setTimeout(refresh, 500);
+
+    // Native HA maps can initialize before the popup finishes sizing.
+    // Refit only when the host actually changes width (not on map tile updates).
+    if (!this._layoutObserver && typeof ResizeObserver !== 'undefined') {
+      this._layoutObserver = new ResizeObserver((entries) => {
+        const width = entries[0]?.contentRect.width ?? 0;
+        if (width <= 0 || Math.abs(width - this._layoutWidth) < 1) return;
+        this._layoutWidth = width;
+        requestAnimationFrame(refresh);
+      });
+      this._layoutObserver.observe(this);
+    }
   }
 
   private _renderWhenVisible() {
