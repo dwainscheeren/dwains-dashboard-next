@@ -2462,7 +2462,8 @@ export class DwainsLayoutCard extends LitElement {
     }
 
     .layout-container.sidebar-collapsed .mobile-area-top{
-      display: flex;
+      display: var(--mobile-area-top-display, flex);
+      grid-template-columns: minmax(0, 1fr) max-content;
       align-items: flex-start;
       justify-content: var(--mobile-area-top-justify, space-between);
       gap: var(--mobile-area-top-gap, 8px);
@@ -5992,7 +5993,8 @@ export class DwainsLayoutCard extends LitElement {
       }
 
       .mobile-area-top{
-        display: flex;
+        display: var(--mobile-area-top-display, flex);
+        grid-template-columns: minmax(0, 1fr) max-content;
         align-items: flex-start;
         justify-content: var(--mobile-area-top-justify, space-between);
         gap: var(--mobile-area-top-gap, 8px);
@@ -14741,7 +14743,7 @@ with the
 
       .mobile-area-badges{
         display: grid !important;
-        grid-template-columns: repeat(2, max-content) !important;
+        grid-template-columns: repeat(2, var(--mobile-area-badge-width, max-content)) !important;
         grid-auto-rows: 22px !important;
         justify-content: end !important;
         align-content: start !important;
@@ -14751,9 +14753,11 @@ with the
       }
 
       .mobile-area-badge{
+        box-sizing: border-box;
+        width: var(--mobile-area-badge-width, auto) !important;
         min-width: 22px !important;
         height: 22px !important;
-        padding: 0 6px !important;
+        padding: var(--mobile-area-badge-padding, 0 6px) !important;
         gap: 3px !important;
         font-size: 10px !important;
       }
@@ -15653,10 +15657,10 @@ copy{
       }
 
       .house-power-statistics-card {
-        min-height: 86px !important;
-        height: 86px !important;
+        min-height: 112px !important;
+        height: auto !important;
         margin-top: 8px !important;
-        overflow: hidden !important;
+        overflow: visible !important;
       }
 
       .house-power-dialog-area {
@@ -18053,14 +18057,6 @@ copy{
           </button>
           <span class="mobile-section-title-label">${this._t('home.house_information')}</span>
         </div>
-        <button
-          class="mobile-section-action"
-          type="button"
-          @click=${this._openMobileDeviceSwitcher}
-        >
-          <span>${this._t('common.see_all')}</span>
-          <ha-icon icon="mdi:chevron-right"></ha-icon>
-        </button>
       </div>
     `;
 
@@ -18746,16 +18742,6 @@ copy{
             `}
             <span class="mobile-section-title-label">${this._t('home.areas')}</span>
           </div>
-          ${desktopCollapsed ? nothing : html`
-            <button
-              class="mobile-section-action"
-              type="button"
-              @click=${this._openMobileAreaSwitcher}
-            >
-              <span>${this._t('common.see_all')}</span>
-              <ha-icon icon="mdi:chevron-right"></ha-icon>
-            </button>
-          `}
         </div>
         <div class="mobile-area-rail">
           ${repeat(
@@ -18792,7 +18778,7 @@ copy{
         ${hasPicture ? html`
           <div class="mobile-area-picture" style=${`background-image: url('${area.picture}');`}></div>
         ` : nothing}
-        <div class="mobile-area-top" style=${`--mobile-area-icon-size: ${compactBadges ? '38px' : '56px'}; --mobile-area-icon-glyph-size: ${compactBadges ? '22px' : '30px'}; --mobile-area-top-justify: ${compactBadges ? 'flex-start' : 'space-between'}; --mobile-area-top-gap: ${compactBadges ? '4px' : '8px'};`}>
+        <div class="mobile-area-top" style=${`--mobile-area-icon-size: ${compactBadges ? '100%' : '56px'}; --mobile-area-icon-height: ${compactBadges ? 'auto' : '56px'}; --mobile-area-icon-glyph-size: ${compactBadges ? '24px' : '30px'}; --mobile-area-top-display: ${compactBadges ? 'grid' : 'flex'}; --mobile-area-top-justify: ${compactBadges ? 'flex-start' : 'space-between'}; --mobile-area-top-gap: ${compactBadges ? '4px' : '8px'}; --mobile-area-badge-width: ${compactBadges ? '36px' : 'max-content'}; --mobile-area-badge-padding: ${compactBadges ? '0 4px' : '0 6px'};`}>
           <div class="mobile-area-icon">
             <ha-icon icon=${getAreaIcon(area)}></ha-icon>
           </div>
@@ -22279,37 +22265,6 @@ copy{
 
   private _handleOpenHomeEvent = () => {
     this._selectView('home');
-  };
-
-  private _openMobileAreaSwitcher = async () => {
-    if (!this._isMobile) return;
-    if (!(await this._confirmDiscardSettings())) return;
-    this._setSettingsHistoryState(false);
-    this._selectedView = 'home';
-    this._selectedArea = null;
-    this._resetAreaHeaderScrollState(false);
-    this._editMode = false;
-    this._rememberAreaEditMode(null);
-    this._updateUrlArea(null);
-    this._clearSettingsEditState();
-    window.dispatchEvent(new CustomEvent('dwains-dashboard-next-mobile-nav-sheet', {
-      detail: { kind: 'areas' },
-    }));
-    this._mobileNavOpen = true;
-  };
-
-  private _openMobileDeviceSwitcher = () => {
-    if (!this._isMobile) return;
-
-    this._navigateToDeviceDomain(null);
-
-    [160, 360, 700].forEach((delay) => {
-      window.setTimeout(() => {
-        window.dispatchEvent(new CustomEvent('dwains-dashboard-next-toggle-devices-nav', {
-          detail: { open: true },
-        }));
-      }, delay);
-    });
   };
 
   private _openDeviceDomain(domain: string): void {

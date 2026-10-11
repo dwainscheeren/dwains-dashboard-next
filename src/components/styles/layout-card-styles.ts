@@ -7901,10 +7901,11 @@ which also swallowed pointer events for the new handle. */
     overflow: visible !important;
   }
 
-  /* Area cards: icon height roughly matches two stacked status badges. */
+  /* Collapsed area icons fill the space left by the fixed badge grid. */
   .mobile-area-icon {
     width: var(--mobile-area-icon-size, 56px) !important;
-    height: var(--mobile-area-icon-size, 56px) !important;
+    height: var(--mobile-area-icon-height, var(--mobile-area-icon-size, 56px)) !important;
+    aspect-ratio: 1;
     flex: 0 0 var(--mobile-area-icon-size, 56px) !important;
     border-radius: 15px !important;
   }
