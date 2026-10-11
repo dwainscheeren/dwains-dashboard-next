@@ -529,21 +529,21 @@ export class DwainsBlueprintDialog extends LitElement {
     for (const [key, def] of Object.entries(this._parsed.meta.input || {})) {
       const value = this._values[key];
       if (def.type === 'entity-picker' && def.default === undefined && !value) {
-        this._error = this._german ? 'Bitte zuerst eine Entität für „' + this._label(def, key) + '“ auswählen.' : 'Select an entity for “' + this._label(def, key) + '” first.';
+        this._error = this._t('blueprint.select_entity_first', { name: this._label(def, key) });
         return;
       }
       if (def.type !== 'entity-list') continue;
       const entries = Array.isArray(value) ? value : [];
       if (!entries.length || entries.some((item: any) => !item.entity)) {
-        this._error = this._german ? 'Bitte mindestens einen vollständigen Eintrag hinzufügen.' : 'Add at least one complete entry.';
+        this._error = this._t('blueprint.complete_entry_required');
         return;
       }
       if (def.suggest === 'coin' && new Set(entries.map((item: any) => item.entity)).size !== entries.length) {
-        this._error = this._german ? 'Ein Coin-Wertsensor darf nur einmal vorkommen.' : 'Each coin value sensor can only be used once.';
+        this._error = this._t('blueprint.duplicate_value_sensor');
         return;
       }
       if (def.suggest === 'coin' && entries.some((item: any) => !item.price_entity || !item.amount_entity)) {
-        this._error = this._german ? 'Für jeden Coin werden ein Wert-, Preis- und Bestandssensor benötigt.' : 'Each coin needs a value, price and holdings sensor.';
+        this._error = this._t('blueprint.coin_sensors_required');
         return;
       }
     }
@@ -956,16 +956,16 @@ export class DwainsBlueprintDialog extends LitElement {
     return html`<div class="entity-list">
       ${items.map((item: any, index: number) => html`<div class="entity-list-row">
         <div class="entity-list-header">
-          <input class="dd-input entity-name-input" aria-label=${this._german ? 'Name' : 'Name'} placeholder=${this._german ? 'Name' : 'Name'} .value=${item.name || ''} @input=${(e: any) => update(index, 'name', e.target.value)} />
-          <ha-button appearance="plain" size="s" @click=${() => this._setValue(key, items.filter((_: any, i: number) => i !== index))}>${this._german ? 'Entfernen' : 'Remove'}</ha-button>
+          <input class="dd-input entity-name-input" aria-label=${this._t('strategy.name')} placeholder=${this._t('strategy.name')} .value=${item.name || ''} @input=${(e: any) => update(index, 'name', e.target.value)} />
+          <ha-button appearance="plain" size="s" @click=${() => this._setValue(key, items.filter((_: any, i: number) => i !== index))}>${this._t('common.remove')}</ha-button>
         </div>
-        <div class="field"><label>${this._german ? (def.suggest === "coin" ? "Wertsensor" : "Entität") : (def.suggest === "coin" ? "Value sensor" : "Entity")}</label><div class="field-desc">${def.suggest === "coin" ? "e.g. sensor.wallet_value_bitcoin" : "e.g. sensor.waste_paper"}</div><ha-entity-picker .hass=${this.hass} .value=${item.entity || ''} @value-changed=${(e: any) => update(index, 'entity', e.detail.value)}></ha-entity-picker></div>
-        ${def.suggest === 'coin' ? html`<div class="field"><label>${this._german ? 'Kurssensor' : 'Price sensor'}</label><div class="field-desc">e.g. sensor.cryptoinfo_bitcoin_eur</div><ha-entity-picker .hass=${this.hass} .value=${item.price_entity || ''} @value-changed=${(e: any) => update(index, 'price_entity', e.detail.value)}></ha-entity-picker></div><div class="field"><label>${this._german ? 'Bestandssensor' : 'Holdings sensor'}</label><div class="field-desc">e.g. sensor.wallet_volume_bitcoin</div><ha-entity-picker .hass=${this.hass} .value=${item.amount_entity || ''} @value-changed=${(e: any) => update(index, 'amount_entity', e.detail.value)}></ha-entity-picker></div>` : nothing}
-        ${def.suggest === 'waste' ? html`<div class="field"><label>${this._german ? 'Bild' : 'Image'} <span style="font-size:12px;color:var(--secondary-text-color)">(${this._german ? 'optional' : 'optional'})</span></label><div class="field-desc">e.g. /local/waste/paper.png</div><input class="dd-input" placeholder="/local/waste/paper.png" .value=${item.image || ''} @input=${(e: any) => update(index, 'image', e.target.value)} />${item.image && /^(\/local\/|\/media\/|https?:\/\/)/.test(item.image) ? html`<img src=${item.image} alt=${item.name || ''} style="height:88px;max-width:100%;object-fit:contain;align-self:start;border-radius:8px" @error=${(e:any)=>{ e.target.style.display='none'; }} />` : nothing}</div>` : nothing}
-        <div class="field"><label>${this._german ? "Icon" : "Icon"} <span style="font-size:12px;color:var(--secondary-text-color);font-weight:400">(${this._german ? "optional" : "optional"})</span></label><ha-icon-picker .hass=${this.hass} .value=${item.icon || ''} @value-changed=${(e: any) => update(index, 'icon', e.detail.value)}></ha-icon-picker></div>
+        <div class="field"><label>${this._t(def.suggest === 'coin' ? 'blueprint.value_sensor' : 'blueprint.entity')}</label><div class="field-desc">${this._t('common.example', { value: def.suggest === 'coin' ? 'sensor.wallet_value_bitcoin' : 'sensor.waste_paper' })}</div><ha-entity-picker .hass=${this.hass} .value=${item.entity || ''} @value-changed=${(e: any) => update(index, 'entity', e.detail.value)}></ha-entity-picker></div>
+        ${def.suggest === 'coin' ? html`<div class="field"><label>${this._t('blueprint.price_sensor')}</label><div class="field-desc">${this._t('common.example', { value: 'sensor.cryptoinfo_bitcoin_eur' })}</div><ha-entity-picker .hass=${this.hass} .value=${item.price_entity || ''} @value-changed=${(e: any) => update(index, 'price_entity', e.detail.value)}></ha-entity-picker></div><div class="field"><label>${this._t('blueprint.holdings_sensor')}</label><div class="field-desc">${this._t('common.example', { value: 'sensor.wallet_volume_bitcoin' })}</div><ha-entity-picker .hass=${this.hass} .value=${item.amount_entity || ''} @value-changed=${(e: any) => update(index, 'amount_entity', e.detail.value)}></ha-entity-picker></div>` : nothing}
+        ${def.suggest === 'waste' ? html`<div class="field"><label>${this._t('common.image')} <span style="font-size:12px;color:var(--secondary-text-color)">(${this._t('settings.optional')})</span></label><div class="field-desc">${this._t('common.example', { value: '/local/waste/paper.png' })}</div><input class="dd-input" placeholder="/local/waste/paper.png" .value=${item.image || ''} @input=${(e: any) => update(index, 'image', e.target.value)} />${item.image && /^(\/local\/|\/media\/|https?:\/\/)/.test(item.image) ? html`<img src=${item.image} alt=${item.name || ''} style="height:88px;max-width:100%;object-fit:contain;align-self:start;border-radius:8px" @error=${(e:any)=>{ e.target.style.display='none'; }} />` : nothing}</div>` : nothing}
+        <div class="field"><label>${this._t('common.icon')} <span style="font-size:12px;color:var(--secondary-text-color);font-weight:400">(${this._t('settings.optional')})</span></label><ha-icon-picker .hass=${this.hass} .value=${item.icon || ''} @value-changed=${(e: any) => update(index, 'icon', e.detail.value)}></ha-icon-picker></div>
       </div>`)}
-      <ha-button appearance="outlined" @click=${() => this._setValue(key, [...items, { name: '', icon: '', entity: '' }])}>${this._german ? (def.suggest === "waste" ? "Müllart hinzufügen" : "Coin hinzufügen") : (def.suggest === "waste" ? "Add waste type" : "Add coin")}</ha-button>
-      ${suggestions.length ? html`<div class="field-desc">${this._german ? 'Vorschläge aus Home Assistant:' : 'Suggested Home Assistant entities:'}</div>
+      <ha-button appearance="outlined" @click=${() => this._setValue(key, [...items, { name: '', icon: '', entity: '' }])}>${this._t(def.suggest === 'waste' ? 'blueprint.add_waste' : 'blueprint.add_coin')}</ha-button>
+      ${suggestions.length ? html`<div class="field-desc">${this._t('blueprint.suggestions')}</div>
         <div class="entity-list-suggestions">${suggestions.slice(0, 32).map(entry => { const item = typeof entry === 'string' ? { entity: entry, name: this.hass.states[entry]?.attributes?.friendly_name || (entry.split('.')[1] || entry).replace(/_/g, ' '), icon: '' } : entry; return html`<ha-button appearance="plain" size="s" @click=${() => this._setValue(key, [...items, item])}>${item.name}</ha-button>`; })}</div>` : nothing}
     </div>`;
   }

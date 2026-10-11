@@ -82,7 +82,12 @@ export function ddLocalizePlural(
   vars?: Record<string, string | number>
 ): string {
   const category = getPluralRules(ddLocale(hass)).select(count);
-  return ddLocalize(hass, `${key}.${category === 'one' ? 'one' : 'other'}`, {
+  const dictionary = TRANSLATIONS[ddLang(hass)] as Record<string, string> | undefined;
+  const categoryKey = `${key}.${category}`;
+  const resolvedKey = dictionary?.[categoryKey] !== undefined
+    ? categoryKey
+    : `${key}.${category === 'one' ? 'one' : 'other'}`;
+  return ddLocalize(hass, resolvedKey, {
     count,
     ...vars,
   });

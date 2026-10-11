@@ -307,7 +307,7 @@ export class DwainsReplacementManagerDialog extends LitElement {
       (surface) => Boolean(this._replacements[surface]?.by_domain?.[target])
     );
     if (alreadyAssigned && target !== this._params?.initialDomain) {
-      this._error = `${getDomainName(this.hass, target)} – ${this._t('common.active')}`;
+      this._error = this._t('replacement.already_assigned', { domain: getDomainName(this.hass, target) });
       return;
     }
 

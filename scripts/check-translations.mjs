@@ -12,6 +12,7 @@ const localeFiles = fs
     return left.localeCompare(right);
   });
 const placeholderPattern = /\{[a-zA-Z0-9_]+\}/g;
+const errors = [];
 
 function readLocale(file) {
   const source = fs.readFileSync(path.join(localesDir, file), 'utf8');
@@ -19,6 +20,7 @@ function readLocale(file) {
   const values = new Map();
   const visit = (node) => {
     if (ts.isPropertyAssignment(node) && ts.isStringLiteralLike(node.name) && ts.isStringLiteralLike(node.initializer)) {
+      if (values.has(node.name.text)) errors.push(`${file}: duplicate ${node.name.text}`);
       values.set(node.name.text, node.initializer.text);
     }
     ts.forEachChild(node, visit);
@@ -29,7 +31,26 @@ function readLocale(file) {
 
 const dictionaries = Object.fromEntries(localeFiles.map((file) => [file, readLocale(file)]));
 const english = dictionaries['en.ts'];
-const errors = [];
+const sourceLiterals = new Set();
+const dynamicPatterns = [];
+const escapePattern = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const keyPrefix = /^[a-z_][a-z0-9_.-]*\.[a-z0-9_.-]*$/i;
+
+function literalChoices(node) {
+  if (ts.isStringLiteralLike(node)) return [node.text];
+  return ts.isConditionalExpression(node)
+    ? [...literalChoices(node.whenTrue), ...literalChoices(node.whenFalse)]
+    : [];
+}
+
+function concatenatedPrefix(node) {
+  if (ts.isStringLiteralLike(node)) return node.text;
+  if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.PlusToken) {
+    const left = concatenatedPrefix(node.left);
+    return left === undefined ? undefined : left + (concatenatedPrefix(node.right) || '');
+  }
+  return undefined;
+}
 
 function sourceFilesIn(directory) {
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
@@ -53,14 +74,23 @@ const translationCalls = new Map([
 ]);
 
 for (const file of sourceFilesIn(path.resolve('src'))) {
+  if (file.startsWith(localesDir + path.sep)) continue;
   const source = fs.readFileSync(file, 'utf8');
   const sourceFile = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true);
   const visit = (node) => {
+    if (ts.isStringLiteralLike(node)) sourceLiterals.add(node.text);
+    if (ts.isTemplateExpression(node)) {
+      const parts = [node.head.text, ...node.templateSpans.map(span => span.literal.text)];
+      if (keyPrefix.test(parts[0])) dynamicPatterns.push(new RegExp('^' + parts.map(escapePattern).join('.*') + '$'));
+    }
+    if (ts.isBinaryExpression(node)) {
+      const prefix = concatenatedPrefix(node);
+      if (prefix && keyPrefix.test(prefix)) dynamicPatterns.push(new RegExp('^' + escapePattern(prefix) + '.*$'));
+    }
     if (ts.isCallExpression(node)) {
       const call = translationCalls.get(calledFunctionName(node.expression));
       const argument = call ? node.arguments[call.keyIndex] : undefined;
-      if (call && argument && ts.isStringLiteralLike(argument)) {
-        const key = argument.text;
+      if (call && argument) for (const key of literalChoices(argument)) {
         const exists = call.plural
           ? english.has(`${key}.one`) && english.has(`${key}.other`)
           : english.has(key);
@@ -88,7 +118,25 @@ for (const file of localeFiles) {
     if (expected.join('|') !== actual.join('|')) errors.push(`${file}: placeholders differ for ${key}`);
   }
   for (const key of dictionary.keys()) {
-    if (!english.has(key)) errors.push(`${file}: unknown ${key}`);
+    if (english.has(key)) continue;
+    const pluralBase = key.replace(/\.(zero|two|few|many)$/, '');
+    const fallback = english.get(`${pluralBase}.other`);
+    if (pluralBase === key || fallback === undefined || !english.has(`${pluralBase}.one`)) {
+      errors.push(`${file}: unknown ${key}`);
+      continue;
+    }
+    const value = dictionary.get(key);
+    if (!value?.trim()) errors.push(`${file}: empty ${key}`);
+    const expected = [...fallback.matchAll(placeholderPattern)].map(match => match[0]).sort();
+    const actual = [...value.matchAll(placeholderPattern)].map(match => match[0]).sort();
+    if (expected.join('|') !== actual.join('|')) errors.push(`${file}: placeholders differ for ${key}`);
+  }
+}
+
+for (const key of english.keys()) {
+  const base = key.replace(/\.(one|other)$/, '');
+  if (!sourceLiterals.has(key) && !sourceLiterals.has(base) && !dynamicPatterns.some(pattern => pattern.test(key))) {
+    errors.push(`en.ts: unused translation key ${key}`);
   }
 }
 
@@ -97,4 +145,4 @@ if (errors.length) {
   process.exit(1);
 }
 
-console.log(`${localeFiles.length} locales complete (${english.size} keys each).`);
+console.log(`${localeFiles.length} locales complete (${english.size} shared keys, optional language-specific plurals validated).`);

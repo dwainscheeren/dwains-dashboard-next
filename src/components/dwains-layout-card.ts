@@ -17489,27 +17489,21 @@ copy{
 
   private _statusCardTitle(domain: DomainCount): string {
     if (domain.domain === 'cover' && domain.statusKind === 'window') {
-      const label = this._statusPair('status.window_open');
-      return domain.count === 1 ? label.singular : label.plural;
+      return this._statusLabel('status.window_open', domain.count);
     }
     if (domain.domain === 'cover' && domain.statusKind === 'door') {
-      const label = this._statusPair('status.door_open');
-      return domain.count === 1 ? label.singular : label.plural;
+      return this._statusLabel('status.door_open', domain.count);
     }
     if (domain.domain === 'cover' && domain.statusKind === 'gate') {
-      const german = String(this.hass?.language || this.hass?.locale?.language || '').toLowerCase().startsWith('de');
-      return german
-        ? (domain.count === 1 ? 'Tor offen' : 'Tore offen')
-        : (domain.count === 1 ? 'Gate open' : 'Gates open');
+      return this._statusLabel('status.gate_open', domain.count);
     }
     if (domain.domain === 'cover' && domain.statusKind === 'shading') {
-      const german = String(this.hass?.language || this.hass?.locale?.language || '').toLowerCase().startsWith('de');
-      return german ? 'Beschattung geschlossen' : 'Shading closed';
+      return this._t('status.shading_closed');
     }
     if (domain.domain === 'cover') return domain.name;
     const activeLabel = this._statusCardActiveLabel(domain);
     if (activeLabel) {
-      return domain.count === 1 ? activeLabel.singular : activeLabel.plural;
+      return activeLabel;
     }
     return domain.name;
   }
@@ -17520,40 +17514,33 @@ copy{
     return localized.startsWith(prefix) ? localized.slice(prefix.length).trim() : localized;
   }
 
-  private _statusPair(key: string, plural = true): { singular: string; plural: string } {
-    return {
-      singular: this._statusLabel(key, 1, plural),
-      plural: this._statusLabel(key, 2, plural),
-    };
-  }
-
-  private _statusCardActiveLabel(domain: DomainCount): { singular: string; plural: string } | undefined {
+  private _statusCardActiveLabel(domain: DomainCount): string | undefined {
     if (domain.domain === 'person') return undefined;
 
-    if (domain.domain === 'light') return this._statusPair('status.light_on');
-    if (domain.domain === 'switch') return this._statusPair('status.switch_on');
-    if (domain.domain === 'cover') return this._statusPair('status.cover_open');
-    if (domain.domain === 'fan') return this._statusPair('status.fan_on');
-    if (domain.domain === 'lock') return this._statusPair('status.lock_unlocked');
-    if (domain.domain === 'climate') return this._statusPair('status.climate_active');
-    if (domain.domain === 'media_player') return this._statusPair('status.media_playing');
-    if (domain.domain === 'vacuum') return this._statusPair('status.vacuum_cleaning');
-    if (domain.domain === 'alarm_control_panel') return this._statusPair('status.alarm_armed');
+    if (domain.domain === 'light') return this._statusLabel('status.light_on', domain.count);
+    if (domain.domain === 'switch') return this._statusLabel('status.switch_on', domain.count);
+    if (domain.domain === 'cover') return this._statusLabel('status.cover_open', domain.count);
+    if (domain.domain === 'fan') return this._statusLabel('status.fan_on', domain.count);
+    if (domain.domain === 'lock') return this._statusLabel('status.lock_unlocked', domain.count);
+    if (domain.domain === 'climate') return this._statusLabel('status.climate_active', domain.count);
+    if (domain.domain === 'media_player') return this._statusLabel('status.media_playing', domain.count);
+    if (domain.domain === 'vacuum') return this._statusLabel('status.vacuum_cleaning', domain.count);
+    if (domain.domain === 'alarm_control_panel') return this._statusLabel('status.alarm_armed', domain.count);
 
     if (domain.domain === 'binary_sensor') {
       switch (domain.deviceClass) {
-        case 'door': return this._statusPair('status.door_open');
-        case 'window': return this._statusPair('status.window_open');
-        case 'opening': return this._statusPair('status.opening_open');
-        case 'motion': return this._statusPair('status.motion_detected', false);
-        case 'smoke': return this._statusPair('status.smoke_detected', false);
-        case 'gas': return this._statusPair('status.gas_detected', false);
-        case 'moisture': return this._statusPair('status.moisture_detected', false);
-        case 'occupancy': return this._statusPair('status.occupancy_detected', false);
-        case 'presence': return this._statusPair('status.presence_detected', false);
-        case 'tamper': return this._statusPair('status.tamper_detected', false);
-        case 'vibration': return this._statusPair('status.vibration_detected', false);
-        case 'safety': return this._statusPair('status.safety_active', false);
+        case 'door': return this._statusLabel('status.door_open', domain.count);
+        case 'window': return this._statusLabel('status.window_open', domain.count);
+        case 'opening': return this._statusLabel('status.opening_open', domain.count);
+        case 'motion': return this._statusLabel('status.motion_detected', domain.count, false);
+        case 'smoke': return this._statusLabel('status.smoke_detected', domain.count, false);
+        case 'gas': return this._statusLabel('status.gas_detected', domain.count, false);
+        case 'moisture': return this._statusLabel('status.moisture_detected', domain.count, false);
+        case 'occupancy': return this._statusLabel('status.occupancy_detected', domain.count, false);
+        case 'presence': return this._statusLabel('status.presence_detected', domain.count, false);
+        case 'tamper': return this._statusLabel('status.tamper_detected', domain.count, false);
+        case 'vibration': return this._statusLabel('status.vibration_detected', domain.count, false);
+        case 'safety': return this._statusLabel('status.safety_active', domain.count, false);
         default: return undefined;
       }
     }
@@ -18427,7 +18414,7 @@ copy{
                   </div>
                   ${this._renderHousePowerStatisticsGraph(
                     this._housePowerStatisticsEntities(area.entities, 6),
-                    `${area.name} power history`
+                    this._t('devices.area_power_history', { area: area.name })
                   )}
                   <div class="house-power-dialog-entities">
                     ${area.entities.map(entity => {
@@ -18764,7 +18751,7 @@ copy{
       areaData.humidity,
       areaData.wattage
     ].filter(Boolean).join(' • ');
-    const meta = sensorSummary || (deviceCount === 1 ? '1 device' : `${deviceCount} devices`);
+    const meta = sensorSummary || this._tp('common.device', deviceCount);
     const badges = this._getAreaStatusBadges(areaData);
     const compactBadges = this._isMobile && !gridMode;
     const pictureContrastClass = hasPicture ? this._getPictureContrastClass(area.picture) : '';
@@ -21079,12 +21066,6 @@ copy{
   }
 
   private _mobileGroupName(key: string): string {
-    const german = String(this.hass?.language || this.hass?.locale?.language || '').toLowerCase().startsWith('de');
-    if (key === 'cover_openings') return german ? 'Fenster & Türen' : 'Windows & doors';
-    if (key === 'cover_shading') return german ? 'Beschattung' : 'Shading';
-    if (key === 'cover_gates') return german ? 'Tore' : 'Gates';
-    if (key === 'motion') return german ? 'Bewegung & Präsenz' : 'Motion & presence';
-    if (key === 'safety') return german ? 'Sicherheit & Warnmelder' : 'Safety & alarms';
     return getDomainName(this.hass, key);
   }
 
@@ -21539,7 +21520,7 @@ copy{
     if (domain === 'light') {
       const lightState = String(state.state || '').toLowerCase();
       if (lightState === 'on' || lightState === 'off') {
-        const status = lightState === 'on' ? 'An' : 'Aus';
+        const status = this._t(lightState === 'on' ? 'common.on' : 'common.off');
         const brightness = state.attributes?.brightness;
         if (typeof brightness === 'number' && Number.isFinite(brightness)) {
           return `${status} · ${formatValueWithUnit(Math.round((brightness / 255) * 100), '%')}`;
@@ -21613,12 +21594,11 @@ copy{
     const value = Math.round(diffSeconds / unitSeconds);
 
     try {
-      const language = (this.hass as any)?.locale?.language || navigator.language || undefined;
+      const language = ddLocale(this.hass);
       return new Intl.RelativeTimeFormat(language, { numeric: 'auto' }).format(value, unit);
     } catch {
-      if (absSeconds < 60) return 'just now';
-      const count = Math.abs(value);
-      return `${count} ${unit}${count === 1 ? '' : 's'} ${value < 0 ? 'ago' : 'from now'}`;
+      if (absSeconds < 60) return this._t('common.just_now');
+      return new Date(timestamp).toLocaleString();
     }
   }
 
@@ -21784,7 +21764,7 @@ copy{
       result.unshift({
         domain: 'wattage',
         count: 0,
-        name: 'Power usage',
+        name: this._t('devices.energy'),
         value: totalWattage,
         icon: 'mdi:flash'
       });
@@ -22865,15 +22845,11 @@ copy{
   }
 
   private _houseInfoDeviceViewLabel(): string {
-    return String(this.hass?.language || '').toLowerCase().startsWith('de')
-      ? 'Geräteansicht öffnen'
-      : 'Open device view';
+    return this._t('navigation.open_devices');
   }
 
   private _houseInfoEnergyViewLabel(): string {
-    return String(this.hass?.language || '').toLowerCase().startsWith('de')
-      ? 'Energiesensoren anzeigen'
-      : 'View energy sensors';
+    return this._t('navigation.view_energy_sensors');
   }
 
   private _showHouseStatusEntities(domain: DomainCount) {

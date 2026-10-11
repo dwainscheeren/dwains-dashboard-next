@@ -1141,7 +1141,7 @@ export class DwainsDomainEntitiesDialog extends LitElement {
       >
         ${this._params?.onViewAll ? html`
           <button slot="header-extra" class="dialog-header-destination" type="button" @click=${this._handleViewAll}>
-            <span>${this._params.viewAllLabel || 'Open device view'}</span>
+            <span>${this._params.viewAllLabel || this._t('navigation.open_devices')}</span>
             <ha-icon icon="mdi:chevron-right"></ha-icon>
           </button>
         ` : nothing}

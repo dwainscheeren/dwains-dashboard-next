@@ -744,15 +744,6 @@ export class DwainsDevicesCard extends LitElement {
     if (key === MAINTENANCE_KEY) return this._t('devices.maintenance');
     if (key === ENERGY_KEY) return this._t('devices.energy');
     if (key === DEVICES_OVERVIEW_KEY) return this._t('navigation.overview');
-    if (key === 'cover_openings') {
-      return String(this._hass?.language || '').toLowerCase().startsWith('de') ? 'Fenster & Türen' : 'Windows & doors';
-    }
-    if (key === 'cover_shading') {
-      return String(this._hass?.language || '').toLowerCase().startsWith('de') ? 'Beschattung' : 'Shading';
-    }
-    if (key === 'cover_gates') {
-      return String(this._hass?.language || '').toLowerCase().startsWith('de') ? 'Tore' : 'Gates';
-    }
     if (key.startsWith('binary_sensor.')) {
       return getDeviceClassName(this._hass, key.slice('binary_sensor.'.length));
     }
@@ -1481,7 +1472,7 @@ export class DwainsDevicesCard extends LitElement {
 
         ${this._renderEnergyStatisticsGraph(
           this._energyStatisticsEntities(area.entities, 6),
-          `${area.name} power history`
+          this._t('devices.area_power_history', { area: area.name })
         )}
 
         <div class="energy-entity-list">

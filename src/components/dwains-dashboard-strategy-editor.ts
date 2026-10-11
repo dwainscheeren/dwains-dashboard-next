@@ -3507,12 +3507,6 @@ export class DwainsDashboardStrategyEditor extends LitElement {
   }
 
   private _getGroupTitle(group: string): string {
-    const german = ddLocale(this.hass).toLowerCase().startsWith('de');
-    if (group === 'cover_openings') return german ? 'Fenster & Türen' : 'Windows & doors';
-    if (group === 'cover_shading') return german ? 'Beschattung' : 'Shading';
-    if (group === 'cover_gates') return german ? 'Tore' : 'Gates';
-    if (group === 'motion') return german ? 'Bewegung & Präsenz' : 'Motion & presence';
-    if (group === 'safety') return german ? 'Sicherheit & Warnmelder' : 'Safety & alarms';
     return getDomainName(this.hass, group);
   }
 
