@@ -3,6 +3,7 @@ import { nodeResolve } from '@rollup/plugin-node-resolve';
 import commonjs from '@rollup/plugin-commonjs';
 import terser from '@rollup/plugin-terser';
 import { readFileSync } from 'node:fs';
+import { preventEntryImports } from './scripts/prevent-entry-imports.mjs';
 
 const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8'));
 
@@ -23,7 +24,7 @@ const versionStamp = () => {
   return {
     name: 'version-stamp',
     transform(code, id) {
-      if (!id.endsWith('/src/version.ts')) return null;
+      if (!id.endsWith('/src/version.ts') && !id.endsWith('/src/index.ts')) return null;
       return {
         code: code.replace('__DD_NEXT_VERSION__', String(pkg.version)),
         map: null
@@ -84,6 +85,7 @@ export default {
     }),
     production && minifyCssLiterals(),
     buildStamp(),
+    preventEntryImports(),
     production && terser({
       format: {
         comments: false

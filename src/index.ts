@@ -2,8 +2,12 @@
 // afterwards. Home Assistant waits at most 5 seconds for a custom strategy to
 // be registered; with nothing to load first, that also fits on slow wall
 // tablets and devices that get Home Assistant's legacy frontend.
-import { DD_NEXT_VERSION } from './version';
 import { loadPart } from './utils/load-part';
+
+// Keep the entry's version separate from the editor's version module. Sharing
+// it lets Rollup make hashed editor chunks import this fixed-name entry, which
+// may still be cached from a previous release. The build stamps both copies.
+const DD_NEXT_VERSION = '__DD_NEXT_VERSION__';
 
 console.log(`%cDwains Dashboard Next ${DD_NEXT_VERSION}`, 'background:#3a7;color:#fff;padding:2px 8px;border-radius:6px;font-weight:bold');
 

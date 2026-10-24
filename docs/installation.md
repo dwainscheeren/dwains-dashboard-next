@@ -42,6 +42,15 @@ After installation, create the dashboard from the native Home Assistant dashboar
 
 ## Troubleshooting
 
+### Configuration editor reports a missing export named 'D'
+
+Update to **1.12.2 or newer** in HACS and fully reload Home Assistant. This fixes
+an editor dependency that could mix files from different releases after an update.
+If the old error remains, clear cached files for the affected Home Assistant
+address and reopen it. Different hostnames, such as `homeassistant.local` and a
+custom DNS name, can have separate caches. You do not need to recreate the
+dashboard or change its configuration.
+
 ### "Error loading the dashboard strategy"
 
 Home Assistant shows this when it cannot start the dashboard, for example "Timeout waiting for strategy element ll-strategy-dashboard-dwains-dashboard-next to be registered" or "Dwains Dashboard Next could not load its files".
