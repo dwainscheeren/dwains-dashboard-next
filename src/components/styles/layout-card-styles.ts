@@ -1693,6 +1693,8 @@ export const layoutCardStyles = css`
     }
 
     .home-todos-grid {
+      /* The phone layout adds side padding; keep it inside the 100% width. */
+      box-sizing: border-box;
       width: 100%;
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr));
@@ -1718,6 +1720,8 @@ export const layoutCardStyles = css`
     }
 
     .home-custom-cards-grid {
+      /* The phone layout adds side padding; keep it inside the 100% width. */
+      box-sizing: border-box;
       width: 100%;
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr));
