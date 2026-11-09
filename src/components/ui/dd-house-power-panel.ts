@@ -7,9 +7,11 @@ import type { DwainsDashboardConfig } from '../../types/strategy';
 import { TRANSLATIONS_LOADED_EVENT } from '../../i18n';
 import { subscribeEnergyPowerConfig } from '../../utils/energy-prefs';
 import {
-  pickEnergySourceStatisticsEntities,
+  hasUntrackedPowerShare,
   pickPowerStatisticsEntities,
   powerSharePercentage,
+  showsPowerMeasuredInAreas,
+  wholeHousePowerGraphEntities,
   type StatisticsGraphEntity,
 } from '../../utils/home-information';
 import { getDomainColor } from '../../utils/icons';
@@ -128,9 +130,7 @@ export class DwainsHousePowerPanel extends LitElement {
     }
 
     const topArea = summary.areas[0];
-    const wholeHouseGraph = summary.basis === 'energy'
-      ? pickEnergySourceStatisticsEntities(summary.sources, this.hass?.states)
-      : pickPowerStatisticsEntities(summary.areas.flatMap((area) => area.entities), WHOLE_HOUSE_GRAPH_ENTITIES);
+    const wholeHouseGraph = wholeHousePowerGraphEntities(summary, this.hass?.states, WHOLE_HOUSE_GRAPH_ENTITIES);
 
     return html`
       <div class="overview-grid">
@@ -142,7 +142,7 @@ export class DwainsHousePowerPanel extends LitElement {
             <div class="overview-copy">
               <h2>${this._t('devices.whole_house')}</h2>
               <p>${energyBasisLabel(this.hass, summary)}</p>
-              ${summary.basis === 'energy' && summary.roomSensorCount
+              ${showsPowerMeasuredInAreas(summary)
                 ? html`<p>${this._t('devices.power_measured_in_rooms', { value: formatPowerWatts(summary.roomTotalWatts) })}</p>`
                 : nothing}
             </div>
@@ -212,11 +212,21 @@ export class DwainsHousePowerPanel extends LitElement {
     `;
   }
 
+  /** "Untracked part of 3.2 kW" for an upstream device, else nothing. */
+  private _untrackedLabel(entity: PowerEntitySummary): string | undefined {
+    return hasUntrackedPowerShare(entity)
+      ? this._t('devices.power_untracked_of', { value: formatPowerWatts(entity.measuredWatts) })
+      : undefined;
+  }
+
   private _renderEntityMini(entity: PowerEntitySummary, areaTotalWatts: number) {
+    const untracked = this._untrackedLabel(entity);
     return html`
       <button
         class="entity-mini"
         type="button"
+        title=${untracked ? `${entity.name}: ${untracked}` : entity.name}
+        aria-label=${untracked ? `${entity.name}, ${entity.formatted}, ${untracked}` : `${entity.name}, ${entity.formatted}`}
         style=${`--power-width: ${powerSharePercentage(entity.watts, areaTotalWatts)}%`}
         @click=${() => this._showMoreInfo(entity.entityId)}
       >
@@ -239,7 +249,7 @@ export class DwainsHousePowerPanel extends LitElement {
         </span>
         <span class="entity-copy">
           <strong>${entity.name}</strong>
-          <small>${entity.areaName}</small>
+          <small>${this._untrackedLabel(entity) ?? entity.areaName}</small>
           <span class="entity-bar" aria-hidden="true"><span></span></span>
         </span>
         <span class="entity-value">${entity.formatted}</span>

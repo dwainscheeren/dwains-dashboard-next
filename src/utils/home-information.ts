@@ -1,5 +1,5 @@
 import type { HomeAssistant } from '../types/home-assistant';
-import type { PowerEntitySummary, PowerSourceSummary } from './power-usage';
+import type { HousePowerUsageSummary, PowerEntitySummary, PowerSourceSummary } from './power-usage';
 
 // Pure helpers for the Home information popups (people, climate and device
 // groups) and the house power panel. The dialogs only render what these return.
@@ -162,15 +162,19 @@ const STATISTICS_STATE_CLASSES: ReadonlySet<string> = new Set(['measurement', 't
 
 /**
  * The power sensors to draw in a statistics graph: only sensors with long
- * term statistics, the highest readings first, at most `limit`.
+ * term statistics, the highest readings first, at most `limit`. A graph
+ * draws the reading, so an upstream device is ranked by its reading
+ * (`measuredWatts`), not by the untracked part it adds to its room.
  */
 export function pickPowerStatisticsEntities(
-  entities: readonly Pick<PowerEntitySummary, 'entityId' | 'name' | 'watts' | 'stateClass'>[],
+  entities: readonly (Pick<PowerEntitySummary, 'entityId' | 'name' | 'watts' | 'stateClass'> &
+    Partial<Pick<PowerEntitySummary, 'measuredWatts'>>)[],
   limit: number
 ): StatisticsGraphEntity[] {
+  const reading = (entity: { watts: number; measuredWatts?: number }) => entity.measuredWatts ?? entity.watts;
   return entities
     .filter((entity) => STATISTICS_STATE_CLASSES.has(entity.stateClass || ''))
-    .sort((a, b) => b.watts - a.watts)
+    .sort((a, b) => reading(b) - reading(a))
     .slice(0, Math.max(0, limit))
     .map((entity) => ({ entity: entity.entityId, name: entity.name }));
 }
@@ -192,6 +196,43 @@ export function pickEnergySourceStatisticsEntities(
     if (STATISTICS_STATE_CLASSES.has(stateClass)) picked.push({ entity: source.entityId, name: source.name });
   }
   return picked;
+}
+
+/**
+ * True for an upstream device in the energy settings whose downstream
+ * sensors are counted too: it only adds its untracked part to its room.
+ */
+export function hasUntrackedPowerShare(entity: Pick<PowerEntitySummary, 'watts' | 'measuredWatts'>): boolean {
+  return Math.round(entity.measuredWatts - entity.watts) >= 1;
+}
+
+/**
+ * True when the whole house card should say how much is measured in the
+ * areas: the total comes from the energy settings, or a main meter that is
+ * in no room adds its untracked part to it.
+ */
+export function showsPowerMeasuredInAreas(
+  summary: Pick<HousePowerUsageSummary, 'basis' | 'roomSensorCount' | 'totalWatts' | 'roomTotalWatts'>
+): boolean {
+  if (summary.roomSensorCount <= 0) return false;
+  return summary.basis === 'energy' || Math.round(summary.totalWatts - summary.roomTotalWatts) >= 1;
+}
+
+/**
+ * Lines of the whole house graph: the energy settings sensors when the total
+ * comes from them, otherwise the biggest power sensors, a main meter that is
+ * in no room included.
+ */
+export function wholeHousePowerGraphEntities(
+  summary: Pick<HousePowerUsageSummary, 'basis' | 'sources' | 'areas' | 'outsideAreaEntities'>,
+  states: HomeAssistant['states'] | undefined,
+  limit: number
+): StatisticsGraphEntity[] {
+  if (summary.basis === 'energy') return pickEnergySourceStatisticsEntities(summary.sources, states);
+  return pickPowerStatisticsEntities(
+    [...summary.outsideAreaEntities, ...summary.areas.flatMap((area) => area.entities)],
+    limit
+  );
 }
 
 /** Width of a share bar: the share of the total, at least 4% so it stays visible. */

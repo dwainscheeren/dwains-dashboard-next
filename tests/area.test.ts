@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   clearAreaDataCache,
   clearAreaDataCacheForArea,
@@ -23,7 +23,8 @@ import {
   stripAreaFromEntityName,
 } from '../src/utils/area-entities';
 import { NARROW_NBSP } from '../src/utils/unit-format';
-import type { HassEntity } from '../src/types/home-assistant';
+import { loadEnergyPowerConfig, resetEnergyPowerConfigCache } from '../src/utils/energy-prefs';
+import type { HassEntity, HomeAssistant } from '../src/types/home-assistant';
 import { entityState, hassWithStates } from './helpers';
 
 const u = (value: string, unit: string) => `${value}${NARROW_NBSP}${unit}`;
@@ -108,6 +109,43 @@ describe('getAreaData', () => {
       media_player: { total: 1, on: 0 },
       lock: { total: 1, on: 1 },
       motion: { total: 1, on: 1 },
+    });
+  });
+
+  describe('with a device hierarchy in the energy settings', () => {
+    const circuits = [
+      entityState('sensor.general_power', '3200', { unit_of_measurement: 'W' }),
+      entityState('sensor.light_power', '900', { unit_of_measurement: 'W' }),
+      entityState('sensor.plugs_power', '1500', { unit_of_measurement: 'W' }),
+    ];
+    const circuitEntities = circuits.map((state) => ({ entity_id: state.entity_id }));
+    const prefs = {
+      energy_sources: [],
+      device_consumption: [
+        { stat_consumption: 'sensor.general_energy', stat_rate: 'sensor.general_power' },
+        { stat_consumption: 'sensor.light_energy', stat_rate: 'sensor.light_power', included_in_stat: 'sensor.general_energy' },
+        { stat_consumption: 'sensor.plugs_energy', stat_rate: 'sensor.plugs_power', included_in_stat: 'sensor.general_energy' },
+      ],
+    };
+
+    afterEach(() => resetEnergyPowerConfigCache());
+
+    it('counts a main meter and its circuits in the same room once', async () => {
+      resetEnergyPowerConfigCache();
+      const hass = makeHass(circuits);
+      // Before the energy settings are loaded everything is added up, as before.
+      expect(getAreaData(area, hass, circuitEntities).wattage).toBe(u('5.6', 'kW'));
+
+      await loadEnergyPowerConfig({ ...hass, callWS: vi.fn(async () => prefs) } as unknown as HomeAssistant);
+      // Same area, same states: the loaded hierarchy still gives a new result.
+      expect(getAreaData(area, hass, circuitEntities).wattage).toBe(u('3.2', 'kW'));
+    });
+
+    it('keeps the full reading of a main meter whose circuits are in other rooms', async () => {
+      resetEnergyPowerConfigCache();
+      const hass = makeHass(circuits);
+      await loadEnergyPowerConfig({ ...hass, callWS: vi.fn(async () => prefs) } as unknown as HomeAssistant);
+      expect(getAreaData(area, hass, [{ entity_id: 'sensor.general_power' }]).wattage).toBe(u('3.2', 'kW'));
     });
   });
 

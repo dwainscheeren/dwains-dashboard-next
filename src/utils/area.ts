@@ -2,6 +2,12 @@ import type { HomeAssistant, HassEntity } from '../types/home-assistant';
 import type { AreaConfig, AreaData, AlertInfo, DomainCounts, EntityConfig } from '../types/strategy';
 import { formatEntityStateWithUnit, formatValueWithUnit } from './unit-format';
 import { getEntityRegistry } from './entity-registry';
+import { getEnergyPowerConfig, upstreamRatesOf } from './energy-prefs';
+import { splitUpstreamPower } from './power-hierarchy';
+
+/** Device hierarchy of the energy settings, empty while they are not loaded. */
+const areaUpstreamRates = (hass: HomeAssistant): Readonly<Record<string, string>> =>
+  upstreamRatesOf(getEnergyPowerConfig(hass));
 
 // Area data is cached per area and reused as long as every input is the same
 // object as before: the area, its entity list, the state object of each of
@@ -18,6 +24,8 @@ interface AreaDataCacheEntry {
   formatEntityState: unknown;
   registry: unknown;
   areasOptions: unknown;
+  /** Device hierarchy of the energy settings the wattage was split with. */
+  upstreamRates: Readonly<Record<string, string>>;
   /** Last states object the entry was checked against (states objects are never changed in place). */
   checkedStates: HomeAssistant['states'];
   data: AreaData;
@@ -51,6 +59,7 @@ const cachedAreaData = (
     cached.formatEntityState !== hass.formatEntityState ||
     cached.registry !== getEntityRegistry(hass) ||
     cached.areasOptions !== config?.areas_options ||
+    cached.upstreamRates !== areaUpstreamRates(hass) ||
     cached.temperatureState !== (areaRegistry?.temperature_entity_id ? hass.states[areaRegistry.temperature_entity_id] : undefined) ||
     cached.humidityState !== (areaRegistry?.humidity_entity_id ? hass.states[areaRegistry.humidity_entity_id] : undefined)
   ) {
@@ -103,9 +112,10 @@ export const getAreaData = (area: AreaConfig, hass: HomeAssistant, areaEntities:
     }
   }
 
-  // Calculate total wattage from sensors with unit_of_measurement 'W'
-  let totalWattage = 0;
-  let hasWattageData = false;
+  // Calculate total wattage from sensors with unit_of_measurement 'W'.
+  // A main meter and its circuits in the same room count once, see below.
+  const upstreamRates = areaUpstreamRates(hass);
+  const wattReadings = new Map<string, number>();
 
   areaEntities.forEach(entity => {
     const state = hass.states[entity.entity_id];
@@ -124,11 +134,18 @@ export const getAreaData = (area: AreaConfig, hass: HomeAssistant, areaEntities:
         state.state !== 'unknown') {
       const wattageValue = parseFloat(state.state);
       if (!isNaN(wattageValue)) {
-        totalWattage += wattageValue;
-        hasWattageData = true;
+        wattReadings.set(entity.entity_id, wattageValue);
       }
     }
   });
+
+  // The device hierarchy of the energy settings: a sensor below another one in
+  // this room is taken off it, like on the Energy page.
+  let totalWattage = 0;
+  splitUpstreamPower(wattReadings, upstreamRates).forEach((watts) => {
+    totalWattage += watts;
+  });
+  const hasWattageData = wattReadings.size > 0;
 
   // Format wattage display
   if (hasWattageData) {
@@ -274,6 +291,7 @@ export const getAreaData = (area: AreaConfig, hass: HomeAssistant, areaEntities:
     formatEntityState: hass.formatEntityState,
     registry: getEntityRegistry(hass),
     areasOptions: config?.areas_options,
+    upstreamRates,
     checkedStates: hass.states,
     data: areaData,
   });

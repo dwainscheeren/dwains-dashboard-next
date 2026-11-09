@@ -1,4 +1,5 @@
 import type { HomeAssistant } from '../types/home-assistant';
+import { buildUpstreamRates, NO_UPSTREAM_RATES, type DeviceConsumptionLink } from './power-hierarchy';
 
 // Reads the power sensors from the Home Assistant energy settings
 // (`energy/get_prefs`). The house power total is based on these sensors
@@ -15,7 +16,10 @@ import type { HomeAssistant } from '../types/home-assistant';
 //       stat_rate?, power_config? },       // positive = discharge
 //     { type: 'gas' | 'water', ... }      // ignored
 //   ],
-//   device_consumption: [{ stat_consumption, stat_rate? }]
+//   device_consumption: [{ stat_consumption, stat_rate?, included_in_stat? }]
+// `included_in_stat` names the `stat_consumption` of the device upstream of
+// this one (the "Upstream device" field), for example a main meter above the
+// circuits it feeds.
 // Older versions stored the grid as `flow_from: [{ stat_energy_from }]`,
 // `flow_to: [{ stat_energy_to }]` and `power: [{ stat_rate, power_config? }]`;
 // both shapes are read. Anything unexpected is skipped.
@@ -37,6 +41,18 @@ export interface EnergyPowerConfig {
   sourceEntityIds: string[];
   /** Power sensors of individual devices in the energy settings. These are always consumers. */
   deviceRateEntityIds: string[];
+  /**
+   * The device hierarchy of the energy settings for power: the power sensor
+   * of a device mapped to the power sensor of the nearest device upstream of
+   * it that has one. A main meter and the circuits below it are then not
+   * added up. Never contains a loop.
+   */
+  upstreamRates: Record<string, string>;
+}
+
+/** The device hierarchy of `energy`, empty without energy settings. */
+export function upstreamRatesOf(energy: EnergyPowerConfig | null | undefined): Readonly<Record<string, string>> {
+  return energy?.upstreamRates ?? NO_UPSTREAM_RATES;
 }
 
 function asString(value: unknown): string | undefined {
@@ -83,7 +99,10 @@ function termSensorIds(powerConfig: unknown, statRate: unknown): string[] {
   ].map(asString).filter((id): id is string => Boolean(id));
 }
 
-/** Parses `energy/get_prefs`. Returns null when no grid, solar or battery source is configured. */
+/**
+ * Parses `energy/get_prefs`. Returns null when there is no grid, solar or
+ * battery source and no device hierarchy with power sensors either.
+ */
 export function parseEnergyPowerConfig(prefs: unknown): EnergyPowerConfig | null {
   const root = asRecord(prefs);
   if (!root) return null;
@@ -94,6 +113,7 @@ export function parseEnergyPowerConfig(prefs: unknown): EnergyPowerConfig | null
     battery: [],
     sourceEntityIds: [],
     deviceRateEntityIds: [],
+    upstreamRates: {},
   };
   const sourceIds = new Set<string>();
   const addSourceIds = (...ids: unknown[]) => {
@@ -133,12 +153,21 @@ export function parseEnergyPowerConfig(prefs: unknown): EnergyPowerConfig | null
     }
   }
 
+  const devices: DeviceConsumptionLink[] = [];
   for (const item of asArray(root.device_consumption)) {
-    const statRate = asString(asRecord(item)?.stat_rate);
-    if (statRate) result.deviceRateEntityIds.push(statRate);
+    const device = asRecord(item);
+    if (!device) continue;
+    const link: DeviceConsumptionLink = {
+      consumption: asString(device.stat_consumption),
+      rate: asString(device.stat_rate),
+      includedIn: asString(device.included_in_stat),
+    };
+    devices.push(link);
+    if (link.rate && !result.deviceRateEntityIds.includes(link.rate)) result.deviceRateEntityIds.push(link.rate);
   }
+  result.upstreamRates = buildUpstreamRates(devices);
 
-  if (!hasSource) return null;
+  if (!hasSource && !Object.keys(result.upstreamRates).length) return null;
   result.sourceEntityIds = [...sourceIds];
   return result;
 }
@@ -147,7 +176,8 @@ export function parseEnergyPowerConfig(prefs: unknown): EnergyPowerConfig | null
 
 // The energy settings rarely change, so they are fetched once and refreshed
 // in the background after a while. Failures (energy not set up, no access)
-// are cached as "no energy settings" so they are not retried on every render.
+// are cached as "no energy settings" (a failed refresh keeps the last
+// settings), so they are not retried on every render.
 const REFRESH_AFTER_MS = 10 * 60 * 1000;
 
 interface EnergyPrefsCache {
@@ -171,9 +201,13 @@ export function loadEnergyPowerConfig(hass: HomeAssistant | undefined): Promise<
   pending = Promise.resolve()
     .then(() => hass.callWS<unknown>({ type: 'energy/get_prefs' }))
     .then((prefs) => parseEnergyPowerConfig(prefs))
-    .catch(() => null)
+    // A failed refresh (Home Assistant restarting, a lost connection) keeps
+    // the last settings, so the hierarchy does not drop out for a while.
+    .catch(() => cache?.value ?? null)
     .then((value) => {
       const changed = !cache || !sameConfig(cache.value, value);
+      // Unchanged settings keep the same object, so memos that compare it stay valid.
+      if (!changed && cache) value = cache.value;
       cache = { value, loadedAt: Date.now() };
       pending = undefined;
       if (changed) listeners.forEach((listener) => listener());

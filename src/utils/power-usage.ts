@@ -1,8 +1,10 @@
 import type { DwainsDashboardConfig, EntityConfig } from '../types/strategy';
 import type { HassEntity, HomeAssistant } from '../types/home-assistant';
-import { getAreaConfigMap, getDeviceConfigMap, getEntityConfigMap } from './entity-lookups';
-import { isEntityVisibleInArea } from './entity-visibility';
-import { getEnergyPowerConfig, type EnergyPowerConfig, type PowerTerm } from './energy-prefs';
+import { getAreaConfigMap, getDeviceConfigMap, getEntityConfigMap, getHiddenAreaIdSet } from './entity-lookups';
+import { isEntityFromHiddenDevice } from './device-admission';
+import { isEntityVisibleInArea, isRegistryEntryVisible } from './entity-visibility';
+import { getEnergyPowerConfig, upstreamRatesOf, type EnergyPowerConfig, type PowerTerm } from './energy-prefs';
+import { splitUpstreamPower } from './power-hierarchy';
 import { getAreaIcon } from './icons';
 import { getDomainStates } from './state-index';
 import { getEntityRegistry } from './entity-registry';
@@ -13,8 +15,18 @@ export interface PowerEntitySummary {
   areaId: string;
   areaName: string;
   icon: string;
+  /**
+   * What the sensor adds to its room. For an upstream device in the energy
+   * settings this is its reading minus the downstream sensors that are
+   * shown as well (the untracked part); otherwise the reading itself.
+   */
   watts: number;
   formatted: string;
+  /**
+   * The reading of the sensor itself. At least `watts`; higher for an
+   * upstream device whose downstream sensors are counted as well.
+   */
+  measuredWatts: number;
   unit: string;
   stateClass?: string;
 }
@@ -54,6 +66,13 @@ export interface HousePowerUsageSummary {
   roomSensorCount: number;
   /** Sum of the per-room breakdown. */
   roomTotalWatts: number;
+  /**
+   * Upstream devices from the energy settings that are in no room: without
+   * an area, or in an area that is hidden or unknown to the dashboard, such
+   * as a main meter. Their untracked part (`watts`) still counts for a total
+   * that is not based on the energy settings.
+   */
+  outsideAreaEntities: PowerEntitySummary[];
 }
 
 const UNIT_TO_WATTS: Record<string, number> = {
@@ -74,19 +93,39 @@ const UNIT_TO_WATTS: Record<string, number> = {
  * where grid is the net grid power (import minus export), solar the solar
  * production and battery the net battery power (discharge minus charge).
  * Unavailable solar or battery sensors count as 0. Otherwise the total is the
- * sum of the power sensors in the visible rooms.
+ * sum of the power sensors in the visible rooms, plus the untracked part of
+ * an upstream device of the energy settings that is in no room.
  *
  * The rooms always come from the power sensors in the rooms. Sensors of the
  * grid meter, solar inverter and battery devices from the energy settings are
  * left out there, because they measure the whole house or production rather
  * than a consumer.
+ *
+ * The device hierarchy of the energy settings is followed like Home
+ * Assistant does: a sensor below another one counts in full, and the sensor
+ * above it only counts what the sensors below it do not measure. A main
+ * meter and its circuits are then counted once, also when they share a room.
  */
 export function buildHousePowerUsage(
   hass: HomeAssistant | undefined,
   config: DwainsDashboardConfig | undefined,
   energy: EnergyPowerConfig | null | undefined = getEnergyPowerConfig(hass)
 ): HousePowerUsageSummary {
-  const entities = getLivePowerEntities(hass, config, getMeterExclusions(hass, config, energy));
+  const exclusions = getMeterExclusions(hass, config, energy);
+  const upstream = upstreamRatesOf(energy);
+  const measured = getLivePowerEntities(hass, config, exclusions);
+  const measuredOutside = getUpstreamEntitiesOutsideAreas(hass, config, upstream, measured);
+  const shares = splitUpstreamPower(
+    new Map([...measured, ...measuredOutside].map((entity) => [entity.entityId, entity.measuredWatts])),
+    upstream
+  );
+  const withShare = (entity: PowerEntitySummary): PowerEntitySummary => {
+    const watts = shares.get(entity.entityId) ?? entity.measuredWatts;
+    return watts === entity.watts ? entity : { ...entity, watts, formatted: formatPowerWatts(watts) };
+  };
+  const entities = measured.map(withShare);
+  const outsideAreaEntities = measuredOutside.map(withShare);
+  const outsideAreaWatts = outsideAreaEntities.reduce((total, entity) => total + entity.watts, 0);
   const areas = new Map<string, PowerAreaSummary>();
   const areasById = getAreaConfigMap(config);
 
@@ -142,19 +181,62 @@ export function buildHousePowerUsage(
       sources: energyTotal.sources,
       roomSensorCount: entities.length,
       roomTotalWatts,
+      outsideAreaEntities,
     };
   }
 
+  const sensorCount = entities.length + outsideAreaEntities.length;
+  const totalWatts = roomTotalWatts + outsideAreaWatts;
   return {
-    totalWatts: roomTotalWatts,
-    formattedTotal: entities.length ? formatPowerWatts(roomTotalWatts) : '',
-    sensorCount: entities.length,
+    totalWatts,
+    formattedTotal: sensorCount ? formatPowerWatts(totalWatts) : '',
+    sensorCount,
     areas: areasWithPercent,
     basis: 'rooms',
     sources: [],
     roomSensorCount: entities.length,
     roomTotalWatts,
+    outsideAreaEntities,
   };
+}
+
+/**
+ * Upstream devices of the energy settings that are in no room: without an
+ * area, or in an area that is hidden or unknown to the dashboard. A main
+ * meter like that still measures more than the circuits below it. Sensors
+ * that are hidden, disabled or part of a hidden device are left out, and so
+ * is a sensor hidden in the groups of a room that is shown.
+ */
+function getUpstreamEntitiesOutsideAreas(
+  hass: HomeAssistant | undefined,
+  config: DwainsDashboardConfig | undefined,
+  upstream: Readonly<Record<string, string>>,
+  inAreas: readonly PowerEntitySummary[]
+): PowerEntitySummary[] {
+  if (!hass?.states) return [];
+  const parents = new Set(Object.values(upstream));
+  if (!parents.size) return [];
+
+  const shown = new Set(inAreas.map((entity) => entity.entityId));
+  const configEntities = getEntityConfigMap(config);
+  const areasById = getAreaConfigMap(config);
+  const hiddenAreas = getHiddenAreaIdSet(config);
+  const result: PowerEntitySummary[] = [];
+  parents.forEach((entityId) => {
+    if (shown.has(entityId)) return;
+    const state = hass.states[entityId];
+    if (!state) return;
+    const watts = getLivePowerValueWatts(state);
+    if (watts === null) return;
+    const configEntity = configEntities.get(entityId);
+    if (!isRegistryEntryVisible(getEntityRegistry(hass)[entityId])) return;
+    if (isEntityFromHiddenDevice(hass, config, configEntity || entityId)) return;
+    const areaId = resolvePowerEntityAreaId(hass, config, entityId, configEntity);
+    // In a room that is shown, the sensor is not in `inAreas` because it was hidden there.
+    if (areaId && areasById.has(areaId) && !hiddenAreas.has(areaId)) return;
+    result.push(powerEntitySummary(state, '', '', watts));
+  });
+  return result;
 }
 
 function readPowerTerms(
@@ -276,21 +358,26 @@ export function getLivePowerEntities(
       const area = areasById.get(areaId);
       if (!area) return undefined;
 
-      const stateClass = normalizeStateClass(state.attributes?.state_class);
-      const entity: PowerEntitySummary = {
-        entityId,
-        name: state.attributes?.friendly_name || entityId,
-        areaId,
-        areaName: area.name,
-        icon: state.attributes?.icon || 'mdi:flash',
-        watts,
-        formatted: formatPowerWatts(watts),
-        unit: normalizePowerUnit(state.attributes?.unit_of_measurement) || 'W',
-      };
-      if (stateClass) entity.stateClass = stateClass;
-      return entity;
+      return powerEntitySummary(state, areaId, area.name, watts);
     })
     .filter((entity): entity is PowerEntitySummary => Boolean(entity));
+}
+
+function powerEntitySummary(state: HassEntity, areaId: string, areaName: string, watts: number): PowerEntitySummary {
+  const stateClass = normalizeStateClass(state.attributes?.state_class);
+  const entity: PowerEntitySummary = {
+    entityId: state.entity_id,
+    name: state.attributes?.friendly_name || state.entity_id,
+    areaId,
+    areaName,
+    icon: state.attributes?.icon || 'mdi:flash',
+    watts,
+    formatted: formatPowerWatts(watts),
+    measuredWatts: watts,
+    unit: normalizePowerUnit(state.attributes?.unit_of_measurement) || 'W',
+  };
+  if (stateClass) entity.stateClass = stateClass;
+  return entity;
 }
 
 export function getLivePowerValueWatts(state: HassEntity | undefined): number | null {
