@@ -68,6 +68,8 @@ Tap a group title to collapse or expand its cards. This is remembered until the 
 
 When a group with a master switch (lights, switches, fans and toggles) has more than one entity, the switch shows how many are on, for example **2 of 5 on**, in place of the item count next to the title. Cover groups have open all and close all buttons instead.
 
+Tap a card to open the Home Assistant details dialog; the switch on a light, switch or fan card turns it on or off. To turn lights, switches and fans on or off with a tap on the whole card and open the details by holding it, choose **Turn on or off** in [Dashboard settings > Controls & confirmations](dashboard-settings.md#tapping-a-tile).
+
 Select and input select cards show the current option on one line. Tap the card to open the Home Assistant details dialog, or tap the round chevron button to pick another option from the list.
 
 To-do entities use Home Assistant's editable to-do list card, so list items can be viewed, completed and added directly from the area page.

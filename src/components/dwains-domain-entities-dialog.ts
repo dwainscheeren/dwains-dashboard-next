@@ -2,6 +2,7 @@ import { mdiClose } from "@mdi/js";
 import { LitElement, html, css, PropertyValues, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { repeat } from 'lit/directives/repeat.js';
+import { ifDefined } from 'lit/directives/if-defined.js';
 import memoizeOne from 'memoize-one';
 
 import type { HassEntity, HomeAssistant } from '../types/home-assistant';
@@ -22,6 +23,8 @@ import { getAreaConfigMap, getEntityConfigMap, resolveStatusEntityAreaId } from 
 import { getDomainStates } from '../utils/state-index';
 import { sortAreas } from '../utils/area-entities';
 import { masterActionConfirmationEnabled } from '../utils/master-action-confirmations';
+import { tileTapToggles } from '../utils/tile-tap';
+import { tileTap } from '../utils/tile-tap-directive';
 import {
   TOGGLE_DOMAINS,
   countActiveEntities,
@@ -293,6 +296,13 @@ export class DwainsDomainEntitiesDialog extends LitElement {
       transition:
         transform 0.18s ease,
         box-shadow 0.18s ease;
+    }
+
+    /* Cards that turn on or off with a tap open the details when held. */
+    .domain-entity-card.tap-toggles {
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      user-select: none;
     }
 
     .domain-entity-card:active {
@@ -1241,12 +1251,16 @@ export class DwainsDomainEntitiesDialog extends LitElement {
     const name = areaEntityDisplayName(fullName, areaName, this._params?.config?.settings);
     const active = this._isEntityActiveForUi(state, domain);
     const unavailable = this._isUnavailable(state);
+    const tapToggles = tileTapToggles(this._params?.config?.settings, entity.entity_id);
+    const tapOptions = this._tileTapOptions(entity.entity_id, tapToggles);
+    const holdHint = tapToggles ? this._t('tile.hold_for_details') : undefined;
     const classes = [
       'domain-entity-card',
       `domain-entity-${domain}`,
       layout === 'row' ? 'is-row' : '',
       active ? 'is-active' : 'is-off',
       unavailable ? 'is-unavailable' : '',
+      tapToggles ? 'tap-toggles' : '',
     ].join(' ');
 
     if (layout === 'row') {
@@ -1258,8 +1272,8 @@ export class DwainsDomainEntitiesDialog extends LitElement {
           role="button"
           tabindex="0"
           aria-label=${name}
-          @click=${() => this._showMoreInfo(entity.entity_id)}
-          @keydown=${(event: KeyboardEvent) => this._handleEntityKeydown(event, entity.entity_id)}
+          aria-description=${ifDefined(holdHint)}
+          ${tileTap(tapOptions)}
         >
           <div class="domain-entity-icon" aria-hidden="true">
             <ha-icon icon=${icon}></ha-icon>
@@ -1281,8 +1295,8 @@ export class DwainsDomainEntitiesDialog extends LitElement {
         role="button"
         tabindex="0"
         aria-label=${fullName}
-        @click=${() => this._showMoreInfo(entity.entity_id)}
-        @keydown=${(event: KeyboardEvent) => this._handleEntityKeydown(event, entity.entity_id)}
+        aria-description=${ifDefined(holdHint)}
+        ${tileTap(tapOptions)}
       >
         <div class="domain-entity-top">
           <div class="domain-entity-icon">
@@ -1461,17 +1475,34 @@ export class DwainsDomainEntitiesDialog extends LitElement {
     }
   }
 
-  private _handleEntityKeydown(event: KeyboardEvent, entityId: string): void {
-    // Keys pressed on a control inside the card belong to that control.
-    if (event.target !== event.currentTarget) return;
-    if (event.key !== 'Enter' && event.key !== ' ') return;
+  /**
+   * Tap and hold of an entity card. With "tap turns on or off" a tap toggles
+   * the entity and holding opens the details; otherwise a tap opens the details.
+   */
+  private _tileTapOptions(entityId: string, tapToggles: boolean) {
+    const showMoreInfo = () => this._showMoreInfo(entityId);
+    if (!tapToggles) return { tap: showMoreInfo };
+    return { tap: () => void this._tapToggleEntity(entityId), hold: showMoreInfo };
+  }
 
-    event.preventDefault();
-    this._showMoreInfo(entityId);
+  /** Toggle from a tap on the card. An entity that can not switch opens its details. */
+  private async _tapToggleEntity(entityId: string): Promise<void> {
+    const rawState = this.hass?.states[entityId];
+    if (!rawState) return;
+    const state = this._getEffectiveEntityState(rawState);
+    if (this._isUnavailable(state)) {
+      this._showMoreInfo(entityId);
+      return;
+    }
+    await this._toggleEntity(state, entityId.split('.')[0] || '');
   }
 
   private async _handleEntityToggle(event: Event, state: any, domain: string): Promise<void> {
     event.stopPropagation();
+    await this._toggleEntity(state, domain);
+  }
+
+  private async _toggleEntity(state: any, domain: string): Promise<void> {
     const entityId = state?.entity_id;
     if (!entityId) return;
 

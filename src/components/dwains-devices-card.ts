@@ -16,6 +16,7 @@ import { isNonAdminUser } from '../utils/security';
 import { getAreaIcon, getDomainIcon, getDeviceClassIcon, getDomainColor } from '../utils/icons';
 import { getDomainName, getDeviceClassName } from '../utils/domain-names';
 import { findReplacementAssignment, resolveEntityCardConfig } from '../utils/blueprint-replacements';
+import { withTileTapActions } from '../utils/tile-tap';
 import { areaEntityDisplayName } from '../utils/entity-names';
 import {
   NEW_DEVICE_WINDOW_HOURS,
@@ -803,14 +804,17 @@ export class DwainsDevicesCard extends LitElement {
       entity: entityId,
       surface: 'devices_cards' as const,
     };
-    const cardConfig = resolveEntityCardConfig(params);
+    const assignment = findReplacementAssignment(params);
+    // Blueprint replacements keep their own naming and actions.
+    if (assignment && assignment.enabled !== false) return resolveEntityCardConfig(params);
+
+    // A standard tile follows the "Tapping a tile" setting.
+    const cardConfig = withTileTapActions(resolveEntityCardConfig(params), this.config?.settings);
     // The area group already shows the area, so the default cards drop it from
-    // the entity name. Blueprint replacements keep their own naming.
+    // the entity name.
     if (!areaName || !NAMED_DEFAULT_CARD_TYPES.has(cardConfig.type) || cardConfig.name !== undefined) {
       return cardConfig;
     }
-    const assignment = findReplacementAssignment(params);
-    if (assignment && assignment.enabled !== false) return cardConfig;
 
     const fullName = this._hass.states?.[entityId]?.attributes?.friendly_name;
     if (typeof fullName !== 'string' || !fullName) return cardConfig;

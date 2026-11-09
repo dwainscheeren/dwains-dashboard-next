@@ -46,6 +46,7 @@ import {
   resolveStatusEntityAreaId,
 } from "../utils/entity-lookups";
 import { isAreaNowPlayingEnabled } from "../utils/now-playing";
+import { tileTapAction, type TileTapAction } from "../utils/tile-tap";
 import { getDeviceClassName, getDomainName } from "../utils/domain-names";
 import { getDeviceClassIcon, getDomainColor, getDomainIcon } from "../utils/icons";
 import { ddLocale, ddLocalize, ddLocalizePlural } from "../utils/localize";
@@ -672,7 +673,12 @@ export class DwainsDashboardStrategyEditor extends LitElement {
         color: "#d97706",
         title: this._t('settings.controls_confirmations'),
         description: this._t('settings.controls_confirmations_description'),
-        summary: [this._t('settings.controls_confirmations_summary', { count: protectedMasterActionCount })],
+        summary: [
+          this._t(tileTapAction(this._config?.settings) === 'toggle'
+            ? 'settings.tile_tap_summary_toggle'
+            : 'settings.tile_tap_summary_more_info'),
+          this._t('settings.controls_confirmations_summary', { count: protectedMasterActionCount }),
+        ],
       },
       {
         page: "people",
@@ -933,7 +939,10 @@ export class DwainsDashboardStrategyEditor extends LitElement {
           ${this._renderAlarmSettingsPanel()}
         `;
       case "controls":
-        return this._renderMasterActionConfirmationSettingsPanel();
+        return html`
+          ${this._renderTileTapSettingsPanel()}
+          ${this._renderMasterActionConfirmationSettingsPanel()}
+        `;
       case "devices":
         return this._renderEntityDisplaySettingsPanel();
       case "people":
@@ -971,6 +980,60 @@ export class DwainsDashboardStrategyEditor extends LitElement {
         ${content}
       </ha-expansion-panel>
     `;
+  }
+
+  private _renderTileTapSettingsPanel() {
+    const current = tileTapAction(this._config?.settings);
+    const modes: Array<{ mode: TileTapAction; icon: string; title: string; description: string }> = [
+      {
+        mode: 'more-info',
+        icon: 'mdi:card-text-outline',
+        title: this._t('settings.tile_tap_more_info'),
+        description: this._t('settings.tile_tap_more_info_description'),
+      },
+      {
+        mode: 'toggle',
+        icon: 'mdi:gesture-tap-hold',
+        title: this._t('settings.tile_tap_toggle'),
+        description: this._t('settings.tile_tap_toggle_description'),
+      },
+    ];
+
+    return this._renderSettingsPanel(
+      "mdi:gesture-tap",
+      this._t('settings.tile_tap_title'),
+      this._t('settings.tile_tap_description'),
+      html`
+        <div class="tile-tap-section">
+          <div class="area-order-modes tile-tap-modes" role="radiogroup" aria-label=${this._t('settings.tile_tap_title')}>
+            ${modes.map(({ mode, icon, title, description }) => html`
+              <button
+                type="button"
+                class="area-order-mode ${current === mode ? 'selected' : ''}"
+                role="radio"
+                aria-checked=${current === mode ? 'true' : 'false'}
+                @click=${() => this._setTileTapAction(mode)}
+              >
+                <ha-icon .icon=${icon}></ha-icon>
+                <span>
+                  <strong>${title}</strong>
+                  <small>${description}</small>
+                </span>
+              </button>
+            `)}
+          </div>
+        </div>
+      `
+    );
+  }
+
+  private _setTileTapAction(mode: TileTapAction): void {
+    if (!this._config || tileTapAction(this._config.settings) === mode) return;
+    const settings = { ...this._config.settings };
+    // The default is left out of the stored config.
+    if (mode === 'toggle') settings.tile_tap_action = 'toggle';
+    else delete settings.tile_tap_action;
+    this._fireConfigChanged({ ...this._config, settings });
   }
 
   private _renderMasterActionConfirmationSettingsPanel() {
@@ -6315,8 +6378,13 @@ export class DwainsDashboardStrategyEditor extends LitElement {
         line-height: 1.4;
       }
 
-      .area-entity-layout-settings .area-order-modes {
+      .area-entity-layout-settings .area-order-modes,
+      .tile-tap-modes {
         grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .tile-tap-section {
+        padding: 0 16px 16px;
       }
 
       .entity-name small {
@@ -6335,7 +6403,8 @@ export class DwainsDashboardStrategyEditor extends LitElement {
           grid-template-columns: 1fr;
         }
 
-        .area-entity-layout-settings .area-order-modes {
+        .area-entity-layout-settings .area-order-modes,
+        .tile-tap-modes {
           grid-template-columns: 1fr;
         }
 

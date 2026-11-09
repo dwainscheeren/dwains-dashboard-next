@@ -53,6 +53,8 @@ import {
   type AreaCoverGroup,
 } from '../utils/area-entities';
 import { areaEntityDisplayName } from '../utils/entity-names';
+import { tileTapToggles } from '../utils/tile-tap';
+import { tileTap } from '../utils/tile-tap-directive';
 import { navigateHomeAssistant } from '../utils/navigation';
 import { syncHassDarkThemeAttribute } from '../utils/theme';
 import { HOME_SECTION_META, normalizeHiddenHomeInformationCards, normalizeHomeSectionsOrder, resolveHiddenHomeSections } from '../utils/home-sections';
@@ -3690,12 +3692,14 @@ export class DwainsLayoutCard extends LitElement {
     const icon = registry?.icon || state.attributes?.icon || getDeviceClassIcon(domain, deviceClass) || getDomainIcon(domain);
     const activeState = this._favoriteActiveState(state, domain);
     const supportsToggle = this._favoriteSupportsQuickToggle(domain);
+    const tapToggles = tileTapToggles(this.config?.settings, entityId);
     const classes = [
       'favorite-card-wrapper',
       `favorite-${domain}`,
       deviceClass ? `favorite-${deviceClass}` : '',
       activeState,
       supportsToggle ? 'can-toggle' : 'info-only',
+      tapToggles ? 'tap-toggles' : '',
     ].filter(Boolean).join(' ');
 
     return html`
@@ -3704,8 +3708,8 @@ export class DwainsLayoutCard extends LitElement {
         data-entity=${entityId}
         role="button"
         tabindex="0"
-        @click=${() => this._showMoreInfo(entityId)}
-        @keydown=${(event: KeyboardEvent) => this._handleFavoriteKeydown(event, entityId)}
+        aria-description=${ifDefined(tapToggles ? this._t('tile.hold_for_details') : undefined)}
+        ${tileTap(this._tileTapOptions(entityId, tapToggles))}
       >
         <div class="favorite-top">
           <div class="favorite-icon">
@@ -3732,10 +3736,6 @@ export class DwainsLayoutCard extends LitElement {
         </div>
       </article>
     `;
-  }
-
-  private _handleFavoriteKeydown(event: KeyboardEvent, entityId: string): void {
-    this._handleActivationKeydown(event, () => this._showMoreInfo(entityId));
   }
 
   private _formatFavoriteState(state: any): string {
@@ -5769,12 +5769,14 @@ export class DwainsLayoutCard extends LitElement {
     const deviceLabel = areaEntityDeviceLabel(name, this._entityDeviceName(entity.entity_id), area.name);
     const active = this._isEntityActiveForUi(state, domain);
     const actionKind = this._mobileEntityActionKind(domain);
+    const tapToggles = tileTapToggles(this.config?.settings, entity.entity_id);
     const classes = [
       'mobile-entity-card',
       `mobile-entity-${domain}`,
       `action-${actionKind}`,
       active ? 'is-active' : 'is-off',
       isHiddenAsUnavailable(state) ? 'is-unavailable' : '',
+      tapToggles ? 'tap-toggles' : '',
     ].join(' ');
 
     return html`
@@ -5784,9 +5786,9 @@ export class DwainsLayoutCard extends LitElement {
         role="button"
         tabindex="0"
         aria-label=${fullName}
+        aria-description=${ifDefined(tapToggles ? this._t('tile.hold_for_details') : undefined)}
         title=${fullName}
-        @click=${() => this._showMoreInfo(entity.entity_id)}
-        @keydown=${(event: KeyboardEvent) => this._handleMobileEntityKeydown(event, entity.entity_id)}
+        ${tileTap(this._tileTapOptions(entity.entity_id, tapToggles))}
       >
         <div class="mobile-entity-top">
           <div class="mobile-entity-icon">
@@ -5821,12 +5823,28 @@ export class DwainsLayoutCard extends LitElement {
     `;
   }
 
-  private _handleMobileEntityKeydown(event: KeyboardEvent, entityId: string): void {
-    const target = event.target as HTMLElement | null;
-    if (target?.closest?.('button, select, input, textarea, a')) return;
-    if (event.key !== 'Enter' && event.key !== ' ') return;
-    event.preventDefault();
-    this._showMoreInfo(entityId);
+  /**
+   * Tap and hold of a room or favorite tile. With "tap turns on or off" a tap
+   * toggles the entity and holding opens the details; otherwise a tap opens
+   * the details.
+   */
+  private _tileTapOptions(entityId: string, tapToggles: boolean) {
+    const showMoreInfo = () => this._showMoreInfo(entityId);
+    if (!tapToggles) return { tap: showMoreInfo };
+    return { tap: () => void this._tapToggleEntity(entityId), hold: showMoreInfo };
+  }
+
+  /** Toggle from a tap on the tile. An entity that can not switch opens its details. */
+  private async _tapToggleEntity(entityId: string): Promise<void> {
+    const rawState = this.hass?.states[entityId];
+    if (!rawState) return;
+    const state = this._getEffectiveEntityState(rawState);
+    const value = String(state?.state || '').toLowerCase();
+    if (value === 'unavailable' || value === 'unknown') {
+      this._showMoreInfo(entityId);
+      return;
+    }
+    await this._toggleOnOffEntity(state, entityId.split('.')[0] || '');
   }
 
   private _mobileEntityHasInlineSelect(domain: string, state: any): boolean {
@@ -6008,6 +6026,10 @@ export class DwainsLayoutCard extends LitElement {
 
   private async _handleMobileEntityToggle(event: Event, state: any, domain: string): Promise<void> {
     event.stopPropagation();
+    await this._toggleOnOffEntity(state, domain);
+  }
+
+  private async _toggleOnOffEntity(state: any, domain: string): Promise<void> {
     const entityId = state?.entity_id;
     if (!entityId) return;
 

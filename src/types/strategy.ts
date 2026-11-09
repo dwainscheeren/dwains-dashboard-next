@@ -66,6 +66,11 @@ export interface DwainsDashboardSettings {
    */
   hide_area_name_in_entity_names?: boolean;
   show_recent_devices_panel?: boolean;
+  /**
+   * What a tap on a light, switch or fan tile does. `more-info` (default)
+   * opens the details; `toggle` turns it on or off and holding opens the details.
+   */
+  tile_tap_action?: 'more-info' | 'toggle';
   restrict_non_admin_ha_sidebar?: boolean;
   restrict_non_admin_dashboard_settings?: boolean;
   home_sections_order?: HomeSectionKey[];

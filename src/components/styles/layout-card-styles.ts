@@ -37,6 +37,13 @@ export const layoutCardStyles = css`
       touch-action: manipulation;
     }
 
+    /* Tiles that turn on or off with a tap open the details when held. */
+    .tap-toggles {
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+
     /* Visible keyboard focus for cards and chips that act as buttons. */
     .status-card-compact:focus-visible,
     .home-status-card:focus-visible,

@@ -38,6 +38,21 @@ If no alarm entity is selected, no alarm chip is shown. **Show the alarm chip on
 
 The Now playing bar is a section of the Home page and has its own switch for the room pages, see [Now playing](home-page.html#now-playing).
 
+## Controls And Confirmations
+
+### Tapping a tile
+
+Choose what a tap on the tile of a light, switch, fan or input boolean does:
+
+- **Open details** (default): a tap opens the details of Home Assistant. The switch on the tile turns it on or off.
+- **Turn on or off**: a tap turns it on or off. Hold the tile for half a second to open the details. A right click, the menu key or Shift+F10 opens the details too.
+
+This works on the room pages, the favorites on Home, the device popups and the Devices page. Covers, locks and other tiles keep opening the details on a tap. Moving your finger while holding scrolls the page and does not open anything. An entity that is unavailable opens its details instead of turning on or off. Cards replaced by a blueprint keep their own tap and hold actions.
+
+### Master action confirmation
+
+Choose which area-wide master controls, such as all lights in a room, ask for confirmation before they change every matching entity. The controls of a single entity always work right away.
+
 ## People
 
 Choose which people are shown in Dwains Dashboard.
