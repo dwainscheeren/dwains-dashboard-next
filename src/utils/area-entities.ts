@@ -516,3 +516,34 @@ export function sortAreas(
   });
   return filteredAreas.sort((a, b) => collator.compare(a.name, b.name));
 }
+
+/**
+ * Custom cards of a freely ordered room page that would fall outside its
+ * list: `ungrouped:N` past the last entity shown, and cards placed in or
+ * after a type group (`domain:<group>:N`, `after:<group>`) that has no
+ * entity on the page, for example because its entities are hidden. The room
+ * page shows these at the end, so hiding entities never hides a card. The
+ * `ungrouped:` cards come first, in the order of their place in the list;
+ * the others follow in the order they are stored.
+ */
+export function overflowingUngroupedCustomCards<T extends { placement: string }>(
+  cards: readonly T[],
+  entityCount: number,
+  groupsOnPage: ReadonlySet<string>
+): T[] {
+  const ungroupedSlot = (card: T): number | undefined => {
+    const match = /^ungrouped:(\d+)$/.exec(card.placement);
+    return match ? Number(match[1]) : undefined;
+  };
+  return cards.filter((card) => {
+    const slot = ungroupedSlot(card);
+    if (slot !== undefined) return slot > entityCount;
+    const domain = /^domain:(.+):\d+$/.exec(card.placement);
+    if (domain) return !groupsOnPage.has(domain[1]!);
+    if (card.placement.startsWith('after:')) return !groupsOnPage.has(card.placement.slice('after:'.length));
+    return false;
+  })
+    // Group cards sort after every place; sort is stable, so cards with the
+    // same place, and the group cards among themselves, keep their stored order.
+    .sort((a, b) => (ungroupedSlot(a) ?? Number.MAX_SAFE_INTEGER) - (ungroupedSlot(b) ?? Number.MAX_SAFE_INTEGER));
+}

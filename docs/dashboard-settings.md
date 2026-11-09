@@ -73,6 +73,12 @@ Configure:
 - Whether rooms with one climate entity show a thermostat in the room header (on by default)
 - **Show favorites on room pages** (on by default)
 - **Show Now playing on room pages**
+- **Hide power and energy sensors on room pages** (off by default): room pages leave out sensors that measure power or energy, such as the Powercalc sensors of every lamp.
+  - These are sensors with the `power` or `energy` device class, or without a device class a unit such as W or kWh. Sensors for current, voltage or a battery stay.
+  - Only the cards of the room pages change. The Energy page, the House power usage popup, the house total and the power badge of each room still count the power sensors among them, and favorites you picked stay visible.
+  - When a room has nothing else, its page says the sensors are hidden and, if you can change the dashboard, offers a button to show them in that room. Right after a restart, while those sensors are still unavailable and unavailable entities are hidden (the default), the room shows the usual empty text.
+  - While the setting is on, these sensors are also left out of the edit mode of a room page and of its count of hidden unavailable entities. Hide or show single ones in the room settings, which list every entity.
+  - The exception of a room stays stored when you turn the setting off, and counts again when you turn it back on.
 
 Custom order supports dragging on desktop and move up/down controls on touch devices. While you drag, the list follows the pointer; the order is saved when you drop. New areas that are added later are appended without changing the order of existing areas. The selected order is used consistently in the desktop sidebar, mobile area menu and area overviews. **Reset area list** shows hidden areas again and goes back to alphabetical order, after a confirmation.
 
@@ -83,9 +89,10 @@ Open an area to change how its page is built:
 - Group entities by type, or show them in one freely ordered list.
 - Reorder the type groups and the entities in them by dragging or with the move up/down buttons.
 - Fold a group to keep the list short.
-- Hide single entities, or a whole group with the eye button on the group header. The eye shows when a group is partly hidden. Hiding a group hides the entities it has now, so entities added later are still shown.
+- Hide single entities, or a whole group with the eye button on the group header. The eye shows when a group is partly hidden. Hiding a group hides the entities it has now, so entities added later are still shown. A hidden power sensor is also left out of the power numbers of the dashboard; to only keep power and energy sensors off the room pages, use **Hide power and energy sensors on room pages** instead.
+- **Show power and energy sensors in this room** appears when **Hide power and energy sensors on room pages** is on, and shows them on this room page anyway.
 - **Use this type order for all rooms** copies the order of the type groups to every room, after you changed it.
-- **Reset room layout** goes back to grouping by type in the default order and shows every entity again. Custom cards stay; cards placed between freely ordered entities move to the bottom.
+- **Reset room layout** goes back to grouping by type in the default order and shows every entity again (power and energy sensors keep following **Hide power and energy sensors on room pages** and the exception of the room). Custom cards stay; cards placed between freely ordered entities move to the bottom.
 
 ## Devices Page
 

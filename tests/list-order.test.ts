@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { moveItemTo, sameItems, sameOrder } from '../src/utils/list-order';
+import { mergeReorderedSubset, moveItemTo, sameItems, sameOrder } from '../src/utils/list-order';
 
 describe('moveItemTo', () => {
   it('moves an item forwards and backwards', () => {
@@ -35,5 +35,21 @@ describe('sameItems and sameOrder', () => {
   it('compares the order', () => {
     expect(sameOrder(['a', 'b'], ['a', 'b'])).toBe(true);
     expect(sameOrder(['a', 'b'], ['b', 'a'])).toBe(false);
+  });
+});
+
+describe('mergeReorderedSubset', () => {
+  it('keeps hidden items in place while the shown ones change order', () => {
+    // b and d are hidden; the page showed a, c, e and moved e to the front.
+    expect(mergeReorderedSubset(['a', 'b', 'c', 'd', 'e'], ['e', 'a', 'c'])).toEqual(['e', 'b', 'a', 'd', 'c']);
+  });
+
+  it('adds shown items that were not stored yet at the end', () => {
+    expect(mergeReorderedSubset(['a', 'hidden'], ['new', 'a'])).toEqual(['new', 'hidden', 'a']);
+  });
+
+  it('works without a stored order and drops duplicates', () => {
+    expect(mergeReorderedSubset([], ['b', 'a'])).toEqual(['b', 'a']);
+    expect(mergeReorderedSubset(['a', 'a', 'b'], ['b', 'a'])).toEqual(['b', 'a']);
   });
 });

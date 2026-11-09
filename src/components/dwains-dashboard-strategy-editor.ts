@@ -47,6 +47,7 @@ import {
 } from "../utils/entity-lookups";
 import { isAreaNowPlayingEnabled } from "../utils/now-playing";
 import { tileTapAction, type TileTapAction } from "../utils/tile-tap";
+import { withAreaShowEnergySensors, withHideEnergySensors } from "../utils/area-energy-sensors";
 import { getDeviceClassName, getDomainName } from "../utils/domain-names";
 import { getDeviceClassIcon, getDomainColor, getDomainIcon } from "../utils/icons";
 import { ddLocale, ddLocalize, ddLocalizePlural } from "../utils/localize";
@@ -1578,6 +1579,15 @@ export class DwainsDashboardStrategyEditor extends LitElement {
             <p class="toggle-description">${this._t('settings.hide_area_name_description')}</p>
           </div>
           <div class="hide-unavailable-toggle">
+            <ha-formfield .label=${this._t('settings.hide_energy_sensors')}>
+              <ha-switch
+                .checked=${this._config?.settings?.hide_energy_sensors_on_area_pages === true}
+                @change=${this._toggleHideEnergySensors}
+              ></ha-switch>
+            </ha-formfield>
+            <p class="toggle-description">${this._t('settings.hide_energy_sensors_description')}</p>
+          </div>
+          <div class="hide-unavailable-toggle">
             <ha-formfield .label=${this._t('thermostat.setting_label')}>
               <ha-switch
                 .checked=${this._config?.settings?.show_area_thermostat !== false}
@@ -1977,6 +1987,18 @@ export class DwainsDashboardStrategyEditor extends LitElement {
           </section>
         ` : nothing}
 
+
+        ${this._config.settings?.hide_energy_sensors_on_area_pages === true ? html`
+          <section class="area-entity-layout-settings area-energy-sensors-settings">
+            <ha-formfield .label=${this._t('settings.area_show_energy_sensors')}>
+              <ha-switch
+                .checked=${areaOptions.show_energy_sensors === true}
+                @change=${this._toggleAreaShowEnergySensors}
+              ></ha-switch>
+            </ha-formfield>
+            <span class="area-energy-sensors-description">${this._t('settings.area_show_energy_sensors_description')}</span>
+          </section>
+        ` : nothing}
 
         <section class="area-entity-layout-settings">
           <div class="area-entity-layout-copy">
@@ -5050,6 +5072,16 @@ export class DwainsDashboardStrategyEditor extends LitElement {
     });
   };
 
+  private _toggleHideEnergySensors = (e: Event): void => {
+    if (!this._config) return;
+    this._fireConfigChanged(withHideEnergySensors(this._config, Boolean((e.target as any).checked)));
+  };
+
+  private _toggleAreaShowEnergySensors = (e: Event): void => {
+    if (!this._config || !this._area) return;
+    this._fireConfigChanged(withAreaShowEnergySensors(this._config, this._area, Boolean((e.target as any).checked)));
+  };
+
   private _toggleAreaFavorites = (e: Event): void => {
     if (!this._config) return;
     this._fireConfigChanged({
@@ -6371,7 +6403,12 @@ export class DwainsDashboardStrategyEditor extends LitElement {
         font-size: 15px;
       }
 
+      .area-energy-sensors-settings {
+        gap: 4px;
+      }
+
       .area-entity-layout-copy span,
+      .area-energy-sensors-description,
       .entity-name small {
         color: var(--secondary-text-color);
         font-size: 12px;

@@ -90,6 +90,12 @@ Each quick control tile shows the group and its state, for example **Lights, 2 o
 
 Unavailable entities are hidden by default. This can be changed in Dashboard settings, Areas.
 
+## Power And Energy Sensors
+
+Sensors that measure power or energy, such as the Powercalc sensors of every lamp, can make a room page long. Turn on **Hide power and energy sensors on room pages** in Dashboard settings, Areas, to leave them off the room pages. The Energy page, the House power usage popup and the power badge of the room still count the power sensors among them. A single room can show them anyway with **Show power and energy sensors in this room** in its room settings. See [Areas](dashboard-settings.md#areas).
+
 ## Custom Cards
 
 Custom cards can be added at the top of an area, inside a domain section, above generated cards, below generated cards, or at the bottom of an area.
+
+In a room with one freely ordered list, a card whose place is no longer on the page, because it comes after the last entity shown or belongs to a type group with no entity shown (for example when power and energy sensors are hidden), is shown at the end of the list instead of disappearing. Moving entities in that list keeps the place of the entities the page does not show. A card's place counts the entities shown on the page, so hiding entities can move a card within the list; the room settings show every entity and count those.

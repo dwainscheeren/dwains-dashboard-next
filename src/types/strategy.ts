@@ -65,6 +65,13 @@ export interface DwainsDashboardSettings {
    * the area. Default on; only `false` turns it off.
    */
   hide_area_name_in_entity_names?: boolean;
+  /**
+   * Leave sensors that measure power or energy off the room pages. The
+   * Energy page, the house power usage and the power badges still count the
+   * power sensors among them. Default off; a room can make an exception with
+   * `show_energy_sensors`.
+   */
+  hide_energy_sensors_on_area_pages?: boolean;
   show_recent_devices_panel?: boolean;
   /**
    * What a tap on a light, switch or fan tile does. `more-info` (default)
@@ -134,6 +141,8 @@ export interface AreaOptions {
   /** Area-wide entity order used when entity_layout is ungrouped. */
   entity_order?: string[];
   groups_options?: Record<string, EntitiesDisplay>;
+  /** Show power and energy sensors on this room page although `hide_energy_sensors_on_area_pages` is on. */
+  show_energy_sensors?: boolean;
   // Custom Lovelace cards placed around the area sections.
   custom_cards?: AreaCustomCard[];
 }

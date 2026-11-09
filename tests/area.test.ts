@@ -16,6 +16,7 @@ import {
   groupAreaCovers,
   legacyAreaGroupKeys,
   migrateAreaCardPlacement,
+  overflowingUngroupedCustomCards,
   resolveAreaGroupEntityOrder,
   resolveAreaSortMode,
   selectAreaCovers,
@@ -499,5 +500,44 @@ describe('area cover groups', () => {
 
   it('treats covers without a state as shading', () => {
     expect(ids(selectAreaCovers([{ entity_id: 'cover.gone' }], {}, 'cover_shading'))).toEqual(['cover.gone']);
+  });
+});
+
+describe('overflowingUngroupedCustomCards', () => {
+  const card = (placement: string) => ({ id: placement, placement });
+
+  it('finds cards placed past the last entity shown', () => {
+    const cards = [card('ungrouped:0'), card('ungrouped:3'), card('ungrouped:4'), card('ungrouped:9')];
+    expect(overflowingUngroupedCustomCards(cards, 3, new Set(['light'])).map((entry) => entry.placement))
+      .toEqual(['ungrouped:4', 'ungrouped:9']);
+  });
+
+  it('finds cards of a type group with no entity on the page', () => {
+    const cards = [card('domain:sensor:1'), card('domain:light:0'), card('after:sensor'), card('after:light')];
+    expect(overflowingUngroupedCustomCards(cards, 2, new Set(['light'])).map((entry) => entry.placement))
+      .toEqual(['domain:sensor:1', 'after:sensor']);
+  });
+
+  it('leaves cards at the top, at the bottom and in a shown group alone', () => {
+    const cards = [card('top'), card('bottom'), card('domain:light:5')];
+    expect(overflowingUngroupedCustomCards(cards, 1, new Set(['light']))).toEqual([]);
+  });
+
+  it('puts the cards past the end in the order of their place, the group cards after them', () => {
+    const cards = [
+      card('ungrouped:9'),
+      card('domain:sensor:0'),
+      card('ungrouped:6'),
+      { id: 'second at 6', placement: 'ungrouped:6' },
+      card('after:sensor'),
+    ];
+    expect(overflowingUngroupedCustomCards(cards, 3, new Set(['light'])).map((entry) => entry.id))
+      .toEqual(['ungrouped:6', 'second at 6', 'ungrouped:9', 'domain:sensor:0', 'after:sensor']);
+  });
+
+  it('shows every placed card at the end of an empty list', () => {
+    const cards = [card('ungrouped:0'), card('ungrouped:1'), card('domain:cover_shading:0')];
+    expect(overflowingUngroupedCustomCards(cards, 0, new Set()).map((entry) => entry.placement))
+      .toEqual(['ungrouped:1', 'domain:cover_shading:0']);
   });
 });

@@ -46,6 +46,7 @@ import {
   getAreaEntityGroupKey,
   groupAreaCovers,
   migrateAreaCardPlacement,
+  overflowingUngroupedCustomCards,
   resolveAreaGroupEntityOrder,
   selectAreaCovers,
   sortAreas,
@@ -55,6 +56,8 @@ import {
 import { areaEntityDisplayName } from '../utils/entity-names';
 import { tileTapToggles } from '../utils/tile-tap';
 import { tileTap } from '../utils/tile-tap-directive';
+import { areaPageEntities } from '../utils/area-energy-sensors';
+import { mergeReorderedSubset } from '../utils/list-order';
 import { navigateHomeAssistant } from '../utils/navigation';
 import { syncHassDarkThemeAttribute } from '../utils/theme';
 import { HOME_SECTION_META, normalizeHiddenHomeInformationCards, normalizeHomeSectionsOrder, resolveHiddenHomeSections } from '../utils/home-sections';
@@ -3929,9 +3932,13 @@ export class DwainsLayoutCard extends LitElement {
     if (!area) return this._renderAreaNotFound();
 
     const visibleAreaEntities = this._getFilteredAreaEntities(this._selectedArea);
+    // The cards of the room page can leave out power and energy sensors; the
+    // header, badges and power numbers keep using every visible entity.
+    const pageEntities = areaPageEntities(visibleAreaEntities, this.hass, this.config, area.area_id);
     const areaEntities = this._editMode
-      ? this._getEditableAreaEntities(this._selectedArea)
-      : visibleAreaEntities;
+      ? areaPageEntities(this._getEditableAreaEntities(this._selectedArea), this.hass, this.config, area.area_id)
+      : pageEntities;
+    const hiddenEnergySensorCount = visibleAreaEntities.length - pageEntities.length;
     const areaData = this._getCachedAreaData(area);
     const hasPicture = area.picture ? true : false;
     const pictureContrastClass = hasPicture ? this._getPictureContrastClass(area.picture) : '';
@@ -4023,8 +4030,9 @@ export class DwainsLayoutCard extends LitElement {
         ${this._renderCustomCardSlot(area.area_id, 'top', this._t('layout.custom_cards_top'))}
         ${this._renderMobileEntitiesSection(area, areaEntities)}
         ${this._renderCustomCardSlot(area.area_id, 'bottom', this._t('layout.custom_cards_bottom'))}
-        ${!this._editMode && !areaEntities.length && !this._getAreaCustomCards(area.area_id).length
-          ? this._renderAreaEmptyState(area)
+        ${!this._editMode && !areaEntities.length && !this._getAreaCustomCards(area.area_id).length &&
+          !this._getAreaFavoriteEntities(area.area_id).length
+          ? this._renderAreaEmptyState(area, hiddenEnergySensorCount)
           : nothing}
       </div>
     `;
@@ -4106,10 +4114,26 @@ export class DwainsLayoutCard extends LitElement {
     return hidden.unavailable.length + hidden.unknown.length;
   }
 
-  private _renderAreaEmptyState(area: AreaConfig) {
+  /**
+   * Shown when a room page has nothing to show. With `hiddenEnergySensorCount`
+   * (power and energy sensors the room page leaves out) it says so, and people
+   * who may change the dashboard can show them in this room right away.
+   */
+  private _renderAreaEmptyState(area: AreaConfig, hiddenEnergySensorCount = 0) {
     const hiddenCount = this._hiddenUnavailableEntityCount(area.area_id);
     const isAdmin = Boolean(this.hass?.user?.is_admin);
-    const actions = hiddenCount || isAdmin ? html`
+    const canShowEnergySensors = hiddenEnergySensorCount > 0 && this._canManageDashboard();
+    const actions = hiddenCount || isAdmin || canShowEnergySensors ? html`
+      ${canShowEnergySensors ? html`
+        <button
+          class="dd-empty-state-button primary"
+          type="button"
+          @click=${() => void this._saveAreaOptionsPatch(area.area_id, { show_energy_sensors: true })}
+        >
+          <ha-icon icon="mdi:flash-outline"></ha-icon>
+          <span>${this._t('layout.show_energy_sensors_in_room')}</span>
+        </button>
+      ` : nothing}
       ${hiddenCount ? html`
         <button
           class="dd-empty-state-button"
@@ -4133,9 +4157,11 @@ export class DwainsLayoutCard extends LitElement {
     ` : nothing;
 
     return this._renderEmptyState(
-      'mdi:devices',
+      hiddenEnergySensorCount ? 'mdi:flash-outline' : 'mdi:devices',
       this._t('layout.area_empty_title'),
-      this._t('layout.area_empty_text'),
+      hiddenEnergySensorCount
+        ? this._tp('layout.area_energy_sensors_hidden_text', hiddenEnergySensorCount)
+        : this._t('layout.area_empty_text'),
       actions
     );
   }
@@ -5117,6 +5143,14 @@ export class DwainsLayoutCard extends LitElement {
     });
 
     const groupIndexes = new Map<string, number>();
+    // Cards whose place is not on the page (past the last entity, or in a group
+    // with no entity shown) go at the end instead of disappearing.
+    const overflowCards = overflowingUngroupedCustomCards(
+      this._getAreaCustomCards(area.area_id),
+      entities.length,
+      new Set(groupTotals.keys())
+    );
+    const overflowPlacementCounts = new Map<string, number>();
     return html`
       <section class="mobile-entities-section area-ungrouped-entities layout-${this._mobileEntityLayout}">
         <div class="mobile-domain-group area-ungrouped-group">
@@ -5159,6 +5193,11 @@ export class DwainsLayoutCard extends LitElement {
                 ${this._renderUngroupedCustomCardSlot(area.area_id, entityIndex + 1)}
               `;
             })}
+            ${overflowCards.map(entry => this._renderCustomCard(
+              area.area_id,
+              entry,
+              this._placementIndexForCard(entry, overflowPlacementCounts)
+            ))}
           </div>
         </div>
       </section>
@@ -5602,7 +5641,9 @@ export class DwainsLayoutCard extends LitElement {
     reordered.splice(Math.max(0, Math.min(dropIndex, reordered.length)), 0, moved);
 
     if (groupKey === UNGROUPED_AREA_EDIT_GROUP) {
-      void this._saveAreaOptionsPatch(areaId, { entity_order: reordered });
+      // Entities the page does not show (hidden by a setting) keep their place.
+      const existingOrder = this.config?.areas_options?.[areaId]?.entity_order || [];
+      void this._saveAreaOptionsPatch(areaId, { entity_order: mergeReorderedSubset(existingOrder, reordered) });
       this._clearGeneratedCardDragState();
       return;
     }
@@ -6527,6 +6568,8 @@ export class DwainsLayoutCard extends LitElement {
     }
 
     entities = filterHiddenDeviceEntities(this.hass, this.config, entities);
+    // Power and energy sensors the room page hides by setting are not "hidden unavailable" ones.
+    entities = areaPageEntities(entities, this.hass, this.config, areaId);
 
     return splitHiddenUnavailableEntities(entities.map(entity => entity.entity_id), this.hass.states);
   }

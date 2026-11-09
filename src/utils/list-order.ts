@@ -27,3 +27,16 @@ export function sameItems<T>(left: readonly T[], right: readonly T[]): boolean {
 export function sameOrder<T>(left: readonly T[], right: readonly T[]): boolean {
   return left.length === right.length && left.every((item, index) => item === right[index]);
 }
+
+/**
+ * A stored order after some of its items were reordered: `reordered` is the
+ * new order of the items that were shown, the others (hidden ones) keep their
+ * place. Items of `reordered` missing from `existing` are added at the end.
+ */
+export function mergeReorderedSubset<T>(existing: readonly T[], reordered: readonly T[]): T[] {
+  const unique = existing.filter((item, index) => existing.indexOf(item) === index);
+  const base = [...unique, ...reordered.filter((item) => !unique.includes(item))];
+  const moved = new Set(reordered);
+  let next = 0;
+  return base.map((item) => (moved.has(item) ? (reordered[next++] as T) : item));
+}
