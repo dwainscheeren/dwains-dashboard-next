@@ -1,10 +1,10 @@
-import{_ as e,n as t,t as r}from"./state-Ch1yw9_s.js";import{r as a,a as i,i as o,A as s,b as n}from"./lit-element-D6iXJla1.js";import{d,m as l}from"./master-action-confirmations-Do570I3-.js";import{a as c,c as p,T as h,d as m}from"./localize-CRZub6Gq.js";import{s as g}from"./energy-prefs-omSSeaFs.js";import{d as u,e as v,f as x}from"./home-information-BEX3a7b6.js";import{c as w,f as y}from"./page-header-styles-CWdJajg4.js";import{f}from"./confirm-dialog-CeIE1roe.js";import"./dd-card-host-zbmwRU5c.js";const b=w();function _(e,t){if("energy"===t.basis){const r=[...new Set(t.sources.map(e=>e.name))];return c(e,"devices.power_based_on",{sensors:r.join(", ")})}return p(e,"devices.live_power_sensor",t.sensorCount)}let $=class extends o{constructor(){super(...arguments),this.navigableAreas=!1,this._forceRender=!1,this._handleForcedUpdate=()=>{this._forceRender=!0,this.requestUpdate()}}_t(e,t){return c(this.hass,e,t)}_tp(e,t,r){return p(this.hass,e,t,r)}connectedCallback(){super.connectedCallback(),window.addEventListener(h,this._handleForcedUpdate),this._energyUnsub=g(this._handleForcedUpdate)}disconnectedCallback(){super.disconnectedCallback(),window.removeEventListener(h,this._handleForcedUpdate),this._energyUnsub?.(),this._energyUnsub=void 0}shouldUpdate(e){const t=b(this.hass,this.config),r=m(this.hass),a=[...e.keys()].every(e=>"hass"===e);return!this._forceRender&&a&&t===this._summary&&r===this._renderedLanguage?(this.renderRoot?.querySelectorAll("dwains-dashboard-next-card-host").forEach(e=>{e.hass=this.hass}),!1):(this._forceRender=!1,this._summary=t,this._renderedLanguage=r,!0)}render(){const e=this._summary;if(!e||!this.hass)return s;if(!e.sensorCount)return n`
+import{_ as e,n as t,t as r}from"./state-Ch1yw9_s.js";import{r as a,a as i,i as o,A as s,b as n}from"./lit-element-D6iXJla1.js";import{d,n as l}from"./master-action-confirmations-gpZdKxph.js";import{a as c,c as p,T as h,d as m}from"./localize-7aUPHCDd.js";import{a as g}from"./energy-prefs-D8WnTq1q.js";import{w as u,s as v,d as x,e as w,f as y}from"./home-information-D-IAHHhi.js";import{c as f,f as b}from"./page-header-styles-DroEdB5-.js";import{f as _}from"./confirm-dialog-BJngm6q4.js";import"./dd-card-host-zbmwRU5c.js";const $=f();function k(e,t){if("energy"===t.basis){const r=[...new Set(t.sources.map(e=>e.name))];return c(e,"devices.power_based_on",{sensors:r.join(", ")})}return p(e,"devices.live_power_sensor",t.sensorCount)}let z=class extends o{constructor(){super(...arguments),this.navigableAreas=!1,this._forceRender=!1,this._handleForcedUpdate=()=>{this._forceRender=!0,this.requestUpdate()}}_t(e,t){return c(this.hass,e,t)}_tp(e,t,r){return p(this.hass,e,t,r)}connectedCallback(){super.connectedCallback(),window.addEventListener(h,this._handleForcedUpdate),this._energyUnsub=g(this._handleForcedUpdate)}disconnectedCallback(){super.disconnectedCallback(),window.removeEventListener(h,this._handleForcedUpdate),this._energyUnsub?.(),this._energyUnsub=void 0}shouldUpdate(e){const t=$(this.hass,this.config),r=m(this.hass),a=[...e.keys()].every(e=>"hass"===e);return!this._forceRender&&a&&t===this._summary&&r===this._renderedLanguage?(this.renderRoot?.querySelectorAll("dwains-dashboard-next-card-host").forEach(e=>{e.hass=this.hass}),!1):(this._forceRender=!1,this._summary=t,this._renderedLanguage=r,!0)}render(){const e=this._summary;if(!e||!this.hass)return s;if(!e.sensorCount)return n`
         <div class="empty">
           <ha-icon icon="mdi:flash-off-outline"></ha-icon>
           <h2>${this._t("devices.no_power_title")}</h2>
           <p>${this._t("devices.no_power_description")}</p>
         </div>
-      `;const t=e.areas[0],r="energy"===e.basis?u(e.sources,this.hass?.states):v(e.areas.flatMap(e=>e.entities),8);return n`
+      `;const t=e.areas[0],r=u(e,this.hass?.states,8);return n`
       <div class="overview-grid">
         <section class="card overview-card">
           <div class="overview-head">
@@ -13,8 +13,8 @@ import{_ as e,n as t,t as r}from"./state-Ch1yw9_s.js";import{r as a,a as i,i as 
             </span>
             <div class="overview-copy">
               <h2>${this._t("devices.whole_house")}</h2>
-              <p>${_(this.hass,e)}</p>
-              ${"energy"===e.basis&&e.roomSensorCount?n`<p>${this._t("devices.power_measured_in_rooms",{value:y(e.roomTotalWatts)})}</p>`:s}
+              <p>${k(this.hass,e)}</p>
+              ${v(e)?n`<p>${this._t("devices.power_measured_in_rooms",{value:b(e.roomTotalWatts)})}</p>`:s}
             </div>
             <strong class="overview-total">${e.formattedTotal}</strong>
           </div>
@@ -61,17 +61,19 @@ import{_ as e,n as t,t as r}from"./state-Ch1yw9_s.js";import{r as a,a as i,i as 
           </div>
         </header>
 
-        ${this._renderGraph(v(e.entities,6),this._t("devices.area_power_history",{area:e.name}))}
+        ${this._renderGraph(x(e.entities,6),this._t("devices.area_power_history",{area:e.name}))}
 
         <div class="entity-list">
           ${l(e.entities,e=>e.entityId,t=>this._renderEntityRow(t,e.totalWatts))}
         </div>
       </section>
-    `}_renderEntityMini(e,t){return n`
+    `}_untrackedLabel(e){return w(e)?this._t("devices.power_untracked_of",{value:b(e.measuredWatts)}):void 0}_renderEntityMini(e,t){const r=this._untrackedLabel(e);return n`
       <button
         class="entity-mini"
         type="button"
-        style=${`--power-width: ${x(e.watts,t)}%`}
+        title=${r?`${e.name}: ${r}`:e.name}
+        aria-label=${r?`${e.name}, ${e.formatted}, ${r}`:`${e.name}, ${e.formatted}`}
+        style=${`--power-width: ${y(e.watts,t)}%`}
         @click=${()=>this._showMoreInfo(e.entityId)}
       >
         <span>${e.name}</span>
@@ -81,7 +83,7 @@ import{_ as e,n as t,t as r}from"./state-Ch1yw9_s.js";import{r as a,a as i,i as 
       <button
         class="entity-row"
         type="button"
-        style=${`--power-width: ${x(e.watts,t)}%`}
+        style=${`--power-width: ${y(e.watts,t)}%`}
         @click=${()=>this._showMoreInfo(e.entityId)}
       >
         <span class="icon-badge small" aria-hidden="true">
@@ -89,7 +91,7 @@ import{_ as e,n as t,t as r}from"./state-Ch1yw9_s.js";import{r as a,a as i,i as 
         </span>
         <span class="entity-copy">
           <strong>${e.name}</strong>
-          <small>${e.areaName}</small>
+          <small>${this._untrackedLabel(e)??e.areaName}</small>
           <span class="entity-bar" aria-hidden="true"><span></span></span>
         </span>
         <span class="entity-value">${e.formatted}</span>
@@ -102,7 +104,7 @@ import{_ as e,n as t,t as r}from"./state-Ch1yw9_s.js";import{r as a,a as i,i as 
         .hass=${this.hass}
         .config=${{type:"statistics-graph",entities:e,days_to_show:1,period:"5minute",stat_types:["mean"],chart_type:"line",hide_legend:!0,fit_y_data:!0,min_y_axis:0}}
       ></dwains-dashboard-next-card-host>
-    `:s}_selectArea(e){f(this,"dd-power-area-selected",{areaId:e},{bubbles:!1,composed:!1})}_showMoreInfo(e){f(this,"hass-more-info",{entityId:e})}};$.styles=i`
+    `:s}_selectArea(e){_(this,"dd-power-area-selected",{areaId:e},{bubbles:!1,composed:!1})}_showMoreInfo(e){_(this,"hass-more-info",{entityId:e})}};z.styles=i`
     :host {
       --power-color: var(--domain-color, ${a(d("energy"))});
       display: block;
@@ -479,12 +481,12 @@ import{_ as e,n as t,t as r}from"./state-Ch1yw9_s.js";import{r as a,a as i,i as 
         transform: none;
       }
     }
-  `,e([t({attribute:!1})],$.prototype,"hass",void 0),e([t({attribute:!1})],$.prototype,"config",void 0),e([t({type:Boolean,attribute:"navigable-areas"})],$.prototype,"navigableAreas",void 0),$=e([r("dwains-dashboard-next-house-power-panel")],$);let k=class extends o{constructor(){super(...arguments),this._forceRender=!1,this._handleForcedUpdate=()=>{this._forceRender=!0,this.requestUpdate()}}connectedCallback(){super.connectedCallback(),window.addEventListener(h,this._handleForcedUpdate)}disconnectedCallback(){super.disconnectedCallback(),window.removeEventListener(h,this._handleForcedUpdate)}shouldUpdate(){const e=b(this.hass,this.config),t=m(this.hass);return!(!this._forceRender&&e===this._summary&&t===this._renderedLanguage)&&(this._forceRender=!1,this._summary=e,this._renderedLanguage=t,!0)}render(){const e=this._summary;return e&&this.hass?n`
-      <div class="total" title=${_(this.hass,e)}>
+  `,e([t({attribute:!1})],z.prototype,"hass",void 0),e([t({attribute:!1})],z.prototype,"config",void 0),e([t({type:Boolean,attribute:"navigable-areas"})],z.prototype,"navigableAreas",void 0),z=e([r("dwains-dashboard-next-house-power-panel")],z);let j=class extends o{constructor(){super(...arguments),this._forceRender=!1,this._handleForcedUpdate=()=>{this._forceRender=!0,this.requestUpdate()}}connectedCallback(){super.connectedCallback(),window.addEventListener(h,this._handleForcedUpdate)}disconnectedCallback(){super.disconnectedCallback(),window.removeEventListener(h,this._handleForcedUpdate)}shouldUpdate(){const e=$(this.hass,this.config),t=m(this.hass);return!(!this._forceRender&&e===this._summary&&t===this._renderedLanguage)&&(this._forceRender=!1,this._summary=e,this._renderedLanguage=t,!0)}render(){const e=this._summary;return e&&this.hass?n`
+      <div class="total" title=${k(this.hass,e)}>
         <span>${e.formattedTotal}</span>
         <small>${"energy"===e.basis?c(this.hass,"devices.whole_house"):p(this.hass,"devices.live_power_sensor",e.sensorCount)}</small>
       </div>
-    `:s}};k.styles=i`
+    `:s}};j.styles=i`
     :host {
       --power-color: var(--domain-color, ${a(d("energy"))});
       display: block;
@@ -522,4 +524,4 @@ import{_ as e,n as t,t as r}from"./state-Ch1yw9_s.js";import{r as a,a as i,i as 
         justify-items: start;
       }
     }
-  `,e([t({attribute:!1})],k.prototype,"hass",void 0),e([t({attribute:!1})],k.prototype,"config",void 0),k=e([r("dwains-dashboard-next-house-power-total")],k);export{b as s};
+  `,e([t({attribute:!1})],j.prototype,"hass",void 0),e([t({attribute:!1})],j.prototype,"config",void 0),j=e([r("dwains-dashboard-next-house-power-total")],j);export{$ as s};
