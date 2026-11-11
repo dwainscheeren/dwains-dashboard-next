@@ -75,7 +75,7 @@ Configure:
 - **Show Now playing on room pages**
 - **Hide power and energy sensors on room pages** (off by default): room pages leave out sensors that measure power or energy, such as the Powercalc sensors of every lamp.
   - These are sensors with the `power` or `energy` device class, or without a device class a unit such as W or kWh. Sensors for current, voltage or a battery stay.
-  - Only the cards of the room pages change. The Energy page, the House power usage popup, the house total and the power badge of each room still count the power sensors among them, and favorites you picked stay visible.
+  - Only the cards of the room pages change. What the Energy page, the House power usage popup, the house total and the power badge of each room count stays the same (see [Main meter and circuits](devices.md#main-meter-and-circuits)), and favorites you picked stay visible.
   - When a room has nothing else, its page says the sensors are hidden and, if you can change the dashboard, offers a button to show them in that room. Right after a restart, while those sensors are still unavailable and unavailable entities are hidden (the default), the room shows the usual empty text.
   - While the setting is on, these sensors are also left out of the edit mode of a room page and of its count of hidden unavailable entities. Hide or show single ones in the room settings, which list every entity.
   - The exception of a room stays stored when you turn the setting off, and counts again when you turn it back on.

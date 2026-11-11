@@ -66,10 +66,10 @@ export interface DwainsDashboardSettings {
    */
   hide_area_name_in_entity_names?: boolean;
   /**
-   * Leave sensors that measure power or energy off the room pages. The
-   * Energy page, the house power usage and the power badges still count the
-   * power sensors among them. Default off; a room can make an exception with
-   * `show_energy_sensors`.
+   * Leave sensors that measure power or energy off the room pages. Only the
+   * room pages change: the power numbers (Energy page, house power usage,
+   * power badges) do not read this setting. Default off; a room can make an
+   * exception with `show_energy_sensors`.
    */
   hide_energy_sensors_on_area_pages?: boolean;
   show_recent_devices_panel?: boolean;

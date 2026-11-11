@@ -55,6 +55,30 @@ export function upstreamRatesOf(energy: EnergyPowerConfig | null | undefined): R
   return energy?.upstreamRates ?? NO_UPSTREAM_RATES;
 }
 
+// The counted power sensors per energy settings object, so the house usage and every area badge reuse one set.
+const countedPowerSensorsCache = new WeakMap<EnergyPowerConfig, ReadonlySet<string>>();
+
+/**
+ * The power sensors that count for power usage, like on the Power dashboard
+ * of Home Assistant. When the energy settings have a device hierarchy for
+ * power (a device with a power sensor below another one), only the power
+ * sensors of the devices in the energy settings count: the device at the top
+ * measures a whole circuit or the whole house, and a power sensor that is
+ * not in the energy settings cannot be placed below it, so it would be
+ * counted twice. Null when every power sensor counts: without energy
+ * settings or without such a hierarchy. The same energy settings object
+ * always gives the same set.
+ */
+export function countedPowerSensorsOf(energy: EnergyPowerConfig | null | undefined): ReadonlySet<string> | null {
+  if (!energy || !Object.keys(energy.upstreamRates).length) return null;
+  let sensors = countedPowerSensorsCache.get(energy);
+  if (!sensors) {
+    sensors = new Set(energy.deviceRateEntityIds);
+    countedPowerSensorsCache.set(energy, sensors);
+  }
+  return sensors;
+}
+
 function asString(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value : undefined;
 }

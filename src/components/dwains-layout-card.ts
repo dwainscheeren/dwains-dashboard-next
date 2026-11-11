@@ -61,7 +61,9 @@ import { mergeReorderedSubset } from '../utils/list-order';
 import { navigateHomeAssistant } from '../utils/navigation';
 import { syncHassDarkThemeAttribute } from '../utils/theme';
 import { HOME_SECTION_META, normalizeHiddenHomeInformationCards, normalizeHomeSectionsOrder, resolveHiddenHomeSections } from '../utils/home-sections';
-import { buildHousePowerUsage } from '../utils/power-usage';
+import { buildHousePowerUsage, type HousePowerUsageSummary } from '../utils/power-usage';
+import { getEnergyPowerConfig, subscribeEnergyPowerConfig, type EnergyPowerConfig } from '../utils/energy-prefs';
+import { powerSensorCountLabel } from '../utils/home-information';
 import { normalizeHomeScenes, resolveHomeSceneItems, type HomeSceneItem } from '../utils/home-scenes';
 import { formatEntityStateWithUnit, formatValueWithUnit } from '../utils/unit-format';
 import { showDomainEntitiesDialog } from './utils/show-domain-entities-dialog';
@@ -154,6 +156,9 @@ interface HousePowerUsage {
   totalWatts: number;
   formattedTotal: string;
   sensorCount: number;
+  /** Basis of the total and whether only the devices in the energy settings count (see HousePowerUsageSummary). */
+  basis: HousePowerUsageSummary['basis'];
+  energySettingsDevicesOnly: boolean;
   rooms: HousePowerRoom[];
 }
 
@@ -538,6 +543,8 @@ export class DwainsLayoutCard extends LitElement {
   connectedCallback() {
     super.connectedCallback();
     window.addEventListener(TRANSLATIONS_LOADED_EVENT, this._handleTranslationsLoaded);
+    // The power numbers and badges change once the energy settings are loaded.
+    this._energyUnsub ??= subscribeEnergyPowerConfig(this._handleEnergySettingsChanged);
     this._syncThemeAttribute(true);
     this._loadMobileEntityLayoutPreference();
     this._loadAreaSidebarWidthPreference();
@@ -592,10 +599,18 @@ export class DwainsLayoutCard extends LitElement {
     this.requestUpdate();
   };
 
+  private _energyUnsub?: () => void;
+
+  private _handleEnergySettingsChanged = (): void => {
+    this.requestUpdate();
+  };
+
   disconnectedCallback() {
     super.disconnectedCallback();
     window.clearTimeout(this._deviceSettingsSavedTimer);
     window.removeEventListener(TRANSLATIONS_LOADED_EVENT, this._handleTranslationsLoaded);
+    this._energyUnsub?.();
+    this._energyUnsub = undefined;
     window.removeEventListener('dwains-dashboard-next-toggle-area-nav', this._handleAreaNavToggle);
     window.removeEventListener('dwains-dashboard-next-open-settings', this._handleOpenSettingsEvent);
     window.removeEventListener('dwains-dashboard-next-open-home', this._handleOpenHomeEvent);
@@ -2866,7 +2881,7 @@ export class DwainsLayoutCard extends LitElement {
     if (!powerUsage.sensorCount) return nothing;
 
     const subtitle = powerUsage.sensorCount
-      ? this._tp('devices.live_power_sensor', powerUsage.sensorCount)
+      ? powerSensorCountLabel(this.hass, powerUsage)
       : this._t('home.no_live_power_sensors');
 
     return html`
@@ -3261,7 +3276,7 @@ export class DwainsLayoutCard extends LitElement {
   }
 
   private _getHousePowerUsage(): HousePowerUsage {
-    const powerUsage = this._housePowerUsage(this.hass, this.config);
+    const powerUsage = this._housePowerUsage(this.hass, this.config, getEnergyPowerConfig(this.hass));
     const rooms = powerUsage.areas.slice(0, 4).map(area => ({
       areaId: area.areaId,
       name: area.name,
@@ -3275,6 +3290,8 @@ export class DwainsLayoutCard extends LitElement {
       totalWatts: powerUsage.totalWatts,
       formattedTotal: powerUsage.formattedTotal,
       sensorCount: powerUsage.sensorCount,
+      basis: powerUsage.basis,
+      energySettingsDevicesOnly: powerUsage.energySettingsDevicesOnly,
       rooms,
     };
   }
@@ -6460,19 +6477,20 @@ export class DwainsLayoutCard extends LitElement {
   }
 
   private _getStatusDomains(): DomainCount[] {
-    return this._statusDomains(this.hass, this.config, this._isAlarmTriggered());
+    return this._statusDomains(this.hass, this.config, this._isAlarmTriggered(), getEnergyPowerConfig(this.hass));
   }
 
-  // Computed once per hass object, config and alarm state.
+  // Computed once per hass object, config, alarm state and energy settings.
   private _statusDomains = memoizeOne((
     hass: HomeAssistant,
     config: DwainsDashboardConfig,
-    alarmTriggered: boolean
+    alarmTriggered: boolean,
+    energy: EnergyPowerConfig | null | undefined
   ): DomainCount[] => {
     const result = getStatusDomains(hass, config);
 
     // Add wattage badge if available (same as getTotalWattage()).
-    const powerUsage = this._housePowerUsage(hass, config);
+    const powerUsage = this._housePowerUsage(hass, config, energy);
     const totalWattage = powerUsage.sensorCount ? powerUsage.formattedTotal : undefined;
     if (totalWattage) {
       result.unshift({
@@ -6489,8 +6507,10 @@ export class DwainsLayoutCard extends LitElement {
     return applyStatusUrgency(result, alarmTriggered);
   });
 
+  // The energy settings are part of the key: they load after the first render.
   private _housePowerUsage = memoizeOne(
-    (hass: HomeAssistant, config: DwainsDashboardConfig) => buildHousePowerUsage(hass, config)
+    (hass: HomeAssistant, config: DwainsDashboardConfig, energy: EnergyPowerConfig | null | undefined) =>
+      buildHousePowerUsage(hass, config, energy)
   );
 
   private _getHiddenStatusCount(): string {

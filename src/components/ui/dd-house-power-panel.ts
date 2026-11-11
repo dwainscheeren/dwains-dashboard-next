@@ -9,6 +9,7 @@ import { subscribeEnergyPowerConfig } from '../../utils/energy-prefs';
 import {
   hasUntrackedPowerShare,
   pickPowerStatisticsEntities,
+  powerSensorCountLabel,
   powerSharePercentage,
   showsPowerMeasuredInAreas,
   wholeHousePowerGraphEntities,
@@ -42,7 +43,7 @@ export function energyBasisLabel(hass: HomeAssistant | undefined, summary: House
     const names = [...new Set(summary.sources.map((source) => source.name))];
     return ddLocalize(hass, 'devices.power_based_on', { sensors: names.join(', ') });
   }
-  return ddLocalizePlural(hass, 'devices.live_power_sensor', summary.sensorCount);
+  return powerSensorCountLabel(hass, summary);
 }
 
 /**
@@ -717,7 +718,7 @@ export class DwainsHousePowerTotal extends LitElement {
         <span>${summary.formattedTotal}</span>
         <small>${summary.basis === 'energy'
           ? ddLocalize(this.hass, 'devices.whole_house')
-          : ddLocalizePlural(this.hass, 'devices.live_power_sensor', summary.sensorCount)}</small>
+          : powerSensorCountLabel(this.hass, summary)}</small>
       </div>
     `;
   }

@@ -1,4 +1,5 @@
 import type { HomeAssistant } from '../types/home-assistant';
+import { ddLocalizePlural } from './localize';
 import type { HousePowerUsageSummary, PowerEntitySummary, PowerSourceSummary } from './power-usage';
 
 // Pure helpers for the Home information popups (people, climate and device
@@ -207,9 +208,28 @@ export function hasUntrackedPowerShare(entity: Pick<PowerEntitySummary, 'watts' 
 }
 
 /**
+ * The number of power sensors the house total counts. A total that is not
+ * based on the grid says so when only the devices in the energy settings
+ * count. With the grid the count is the number of energy settings sensors
+ * the total is based on (grid, solar and battery), as before.
+ */
+export function powerSensorCountLabel(
+  hass: HomeAssistant | undefined,
+  summary: Pick<HousePowerUsageSummary, 'basis' | 'sensorCount' | 'energySettingsDevicesOnly'>
+): string {
+  return ddLocalizePlural(
+    hass,
+    summary.basis === 'rooms' && summary.energySettingsDevicesOnly
+      ? 'devices.energy_settings_power_sensor'
+      : 'devices.live_power_sensor',
+    summary.sensorCount
+  );
+}
+
+/**
  * True when the whole house card should say how much is measured in the
- * areas: the total comes from the energy settings, or a main meter that is
- * in no room adds its untracked part to it.
+ * areas: the total comes from the energy settings, or a device of the energy
+ * settings that is in no room, such as a main meter, adds its share to it.
  */
 export function showsPowerMeasuredInAreas(
   summary: Pick<HousePowerUsageSummary, 'basis' | 'roomSensorCount' | 'totalWatts' | 'roomTotalWatts'>
@@ -220,8 +240,8 @@ export function showsPowerMeasuredInAreas(
 
 /**
  * Lines of the whole house graph: the energy settings sensors when the total
- * comes from them, otherwise the biggest power sensors, a main meter that is
- * in no room included.
+ * comes from them, otherwise the biggest power sensors, the devices of the
+ * energy settings that are in no room (such as a main meter) included.
  */
 export function wholeHousePowerGraphEntities(
   summary: Pick<HousePowerUsageSummary, 'basis' | 'sources' | 'areas' | 'outsideAreaEntities'>,

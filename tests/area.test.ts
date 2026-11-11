@@ -148,6 +148,56 @@ describe('getAreaData', () => {
       await loadEnergyPowerConfig({ ...hass, callWS: vi.fn(async () => prefs) } as unknown as HomeAssistant);
       expect(getAreaData(area, hass, [{ entity_id: 'sensor.general_power' }]).wattage).toBe(u('3.2', 'kW'));
     });
+
+    it('only counts the power sensors of the devices in the energy settings (issue #29)', async () => {
+      resetEnergyPowerConfigCache();
+      const fridge = entityState('sensor.fridge_power', '120', { unit_of_measurement: 'W' });
+      const hass = makeHass([...circuits, fridge]);
+      const roomEntities = [...circuitEntities, { entity_id: 'sensor.fridge_power' }];
+      expect(getAreaData(area, hass, roomEntities).wattage).toBe(u('5.7', 'kW'));
+
+      await loadEnergyPowerConfig({ ...hass, callWS: vi.fn(async () => prefs) } as unknown as HomeAssistant);
+      // The fridge is fed by the main meter too, like on the Power dashboard of Home Assistant.
+      expect(getAreaData(area, hass, roomEntities).wattage).toBe(u('3.2', 'kW'));
+      // A room with only sensors outside the energy settings has no power badge.
+      expect(getAreaData({ ...area, area_id: 'kitchen' }, hass, [{ entity_id: 'sensor.fridge_power' }]).wattage).toBeUndefined();
+    });
+
+    it('follows changed energy settings for the same area and states', async () => {
+      resetEnergyPowerConfigCache();
+      const fridge = entityState('sensor.fridge_power', '120', { unit_of_measurement: 'W' });
+      const hass = makeHass([...circuits, fridge]);
+      const roomEntities = [...circuitEntities, { entity_id: 'sensor.fridge_power' }];
+      const load = (answer: unknown) =>
+        loadEnergyPowerConfig({ ...hass, callWS: vi.fn(async () => answer) } as unknown as HomeAssistant);
+
+      await load(prefs);
+      expect(getAreaData(area, hass, roomEntities).wattage).toBe(u('3.2', 'kW'));
+      // The fridge is added to the energy settings; the links stay the same.
+      await load({
+        ...prefs,
+        device_consumption: [...prefs.device_consumption, { stat_consumption: 'sensor.fridge_energy', stat_rate: 'sensor.fridge_power' }],
+      });
+      expect(getAreaData(area, hass, roomEntities).wattage).toBe(u('3.3', 'kW'));
+      // Settings without the hierarchy: every power sensor counts again.
+      await load({
+        energy_sources: [{ type: 'grid', stat_energy_from: 'sensor.import' }],
+        device_consumption: prefs.device_consumption.map(({ stat_consumption, stat_rate }) => ({ stat_consumption, stat_rate })),
+      });
+      expect(getAreaData(area, hass, roomEntities).wattage).toBe(u('5.7', 'kW'));
+    });
+
+    it('counts every power sensor when the energy settings have no hierarchy', async () => {
+      resetEnergyPowerConfigCache();
+      const fridge = entityState('sensor.fridge_power', '120', { unit_of_measurement: 'W' });
+      const hass = makeHass([...circuits, fridge]);
+      const flat = {
+        energy_sources: [{ type: 'grid', stat_energy_from: 'sensor.import' }],
+        device_consumption: prefs.device_consumption.map(({ stat_consumption, stat_rate }) => ({ stat_consumption, stat_rate })),
+      };
+      await loadEnergyPowerConfig({ ...hass, callWS: vi.fn(async () => flat) } as unknown as HomeAssistant);
+      expect(getAreaData(area, hass, [...circuitEntities, { entity_id: 'sensor.fridge_power' }]).wattage).toBe(u('5.7', 'kW'));
+    });
   });
 
   it('shows watts below one kilowatt', () => {

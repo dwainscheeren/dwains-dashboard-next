@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  countedPowerSensorsOf,
   getEnergyPowerConfig,
   loadEnergyPowerConfig,
   parseEnergyPowerConfig,
@@ -547,6 +548,48 @@ describe('device hierarchy of the energy settings', () => {
   });
 });
 
+describe('countedPowerSensorsOf', () => {
+  it('counts every power sensor without energy settings or without a hierarchy', () => {
+    expect(countedPowerSensorsOf(undefined)).toBeNull();
+    expect(countedPowerSensorsOf(null)).toBeNull();
+    expect(countedPowerSensorsOf(parseEnergyPowerConfig({
+      ...P1_PREFS,
+      device_consumption: [{ stat_consumption: 'sensor.washer_energy', stat_rate: 'sensor.washer_power' }],
+    }))).toBeNull();
+    // A hierarchy of devices without power sensors gives no links for power.
+    expect(countedPowerSensorsOf(parseEnergyPowerConfig({
+      ...P1_PREFS,
+      device_consumption: [
+        { stat_consumption: 'sensor.main_energy' },
+        { stat_consumption: 'sensor.washer_energy', stat_rate: 'sensor.washer_power', included_in_stat: 'sensor.main_energy' },
+      ],
+    }))).toBeNull();
+  });
+
+  it('only counts the power sensors of the devices in the energy settings with a hierarchy', () => {
+    const energy = parseEnergyPowerConfig({
+      ...CIRCUIT_PREFS,
+      device_consumption: [
+        ...CIRCUIT_PREFS.device_consumption,
+        { stat_consumption: 'sensor.oven_energy', stat_rate: 'sensor.oven_power' },
+        { stat_consumption: 'sensor.dryer_energy' },
+      ],
+    });
+    expect([...countedPowerSensorsOf(energy)!]).toEqual([
+      'sensor.general_power',
+      'sensor.light_power',
+      'sensor.plugs_power',
+      'sensor.oven_power',
+    ]);
+  });
+
+  it('gives the same set for the same energy settings object', () => {
+    const energy = parseEnergyPowerConfig(CIRCUIT_PREFS);
+    expect(countedPowerSensorsOf(energy)).toBe(countedPowerSensorsOf(energy));
+    expect(countedPowerSensorsOf(parseEnergyPowerConfig(CIRCUIT_PREFS))).not.toBe(countedPowerSensorsOf(energy));
+  });
+});
+
 describe('splitUpstreamPower', () => {
   it('takes every reading off the sensor above it', () => {
     const shares = splitUpstreamPower(
@@ -663,16 +706,25 @@ describe('buildHousePowerUsage with a device hierarchy', () => {
     expect(summary.totalWatts).toBe(3200);
   });
 
-  it('keeps the grid meter total and splits the rooms with the hierarchy', () => {
+  it('keeps the grid meter total and limits the rooms to the energy settings devices', () => {
     const prefs = { ...CIRCUIT_PREFS, energy_sources: P1_PREFS.energy_sources };
     const summary = buildHousePowerUsage(
-      hassWithStates([...states(), watt('sensor.p1_power_consumed', 3.4, 'kW'), watt('sensor.p1_power_produced', 0)]),
+      hassWithStates([
+        ...states(),
+        watt('sensor.p1_power_consumed', 3.4, 'kW'),
+        watt('sensor.p1_power_produced', 0),
+        watt('sensor.fridge_power', 120, 'W', { friendly_name: 'Fridge' }),
+      ]),
       baseConfig(),
       parseEnergyPowerConfig(prefs)
     );
     expect(summary.basis).toBe('energy');
+    expect(summary.energySettingsDevicesOnly).toBe(true);
     expect(summary.totalWatts).toBe(3400);
+    expect(summary.sensorCount).toBe(2);
     expect(summary.roomTotalWatts).toBe(3200);
+    expect(summary.roomSensorCount).toBe(3);
+    expect(summary.areas.map((area) => area.areaId)).toEqual(['meter_cupboard']);
   });
 
   it('still counts the untracked part of a main line without an area', () => {
@@ -710,13 +762,16 @@ describe('buildHousePowerUsage with a device hierarchy', () => {
     expect(summary.totalWatts).toBe(2400);
   });
 
-  it('counts a main line in a hidden room like one without an area', () => {
+  it('counts a main line and its circuits in a hidden room like ones without an area', () => {
     const config = baseConfig({ areas_display: { hidden: ['meter_cupboard'] } } as Partial<DwainsDashboardConfig>);
     const summary = buildHousePowerUsage(hassWithStates(states()), config, parseEnergyPowerConfig(CIRCUIT_PREFS));
-    // The circuits are in the hidden room too, so General keeps its whole reading.
     expect(summary.areas).toEqual([]);
-    expect(summary.outsideAreaEntities.map((entity) => [entity.entityId, entity.watts])).toEqual([['sensor.general_power', 3200]]);
-    expect(summary.sensorCount).toBe(1);
+    expect(summary.outsideAreaEntities.map((entity) => [entity.entityId, entity.watts])).toEqual([
+      ['sensor.general_power', 800],
+      ['sensor.light_power', 900],
+      ['sensor.plugs_power', 1500],
+    ]);
+    expect(summary.sensorCount).toBe(3);
     expect(summary.totalWatts).toBe(3200);
   });
 
@@ -758,7 +813,7 @@ describe('buildHousePowerUsage with a device hierarchy', () => {
     expect(summary.totalWatts).toBe(2400);
   });
 
-  it('does not count a circuit without an area', () => {
+  it('counts a circuit without an area for the whole house', () => {
     const config = baseConfig({
       entities: [
         { entity_id: 'sensor.general_power', device_id: 'dev-monitor' },
@@ -768,7 +823,29 @@ describe('buildHousePowerUsage with a device hierarchy', () => {
       devices: [{ device_id: 'dev-monitor', name: 'Panel monitor', area_id: 'meter_cupboard' }],
     } as Partial<DwainsDashboardConfig>);
     const summary = buildHousePowerUsage(hassWithStates(states()), config, parseEnergyPowerConfig(CIRCUIT_PREFS));
-    // Only upstream sensors count outside the rooms; the light circuit stays part of General.
+    // Like Home Assistant: the light circuit counts on its own and is taken off General.
+    expect(summary.outsideAreaEntities.map((entity) => [entity.entityId, entity.watts])).toEqual([['sensor.light_power', 900]]);
+    expect(summary.areas.flatMap((area) => area.entities.map((entity) => [entity.entityId, entity.watts]))).toEqual([
+      ['sensor.plugs_power', 1500],
+      ['sensor.general_power', 800],
+    ]);
+    expect(summary.roomTotalWatts).toBe(2300);
+    expect(summary.totalWatts).toBe(3200);
+    expect(summary.sensorCount).toBe(3);
+  });
+
+  it('leaves out a hidden circuit without an area, so it stays part of the main line', () => {
+    const config = baseConfig({
+      entities: [
+        { entity_id: 'sensor.general_power', device_id: 'dev-monitor' },
+        { entity_id: 'sensor.light_power' },
+        { entity_id: 'sensor.plugs_power', device_id: 'dev-monitor' },
+      ],
+    } as Partial<DwainsDashboardConfig>);
+    const hass = hassWithStates(states(), {
+      entities: { 'sensor.light_power': { entity_id: 'sensor.light_power', hidden_by: 'user' } },
+    });
+    const summary = buildHousePowerUsage(hass, config, parseEnergyPowerConfig(CIRCUIT_PREFS));
     expect(summary.outsideAreaEntities).toEqual([]);
     expect(summary.areas.flatMap((area) => area.entities.map((entity) => [entity.entityId, entity.watts]))).toEqual([
       ['sensor.general_power', 1700],
@@ -777,13 +854,72 @@ describe('buildHousePowerUsage with a device hierarchy', () => {
     expect(summary.totalWatts).toBe(3200);
   });
 
-  it('counts a sensor outside the hierarchy on top of the main line, as before', () => {
+  it('leaves out power sensors that are not in the energy settings (issue #29)', () => {
+    const config = baseConfig({
+      entities: [
+        ...baseConfig().entities!,
+        { entity_id: 'sensor.monitor_spare_power', device_id: 'dev-monitor' },
+        { entity_id: 'sensor.tv_power', area_id: 'living' },
+      ],
+    } as Partial<DwainsDashboardConfig>);
+    const summary = buildHousePowerUsage(
+      hassWithStates([
+        ...states(),
+        watt('sensor.fridge_power', 120, 'W', { friendly_name: 'Fridge' }),
+        watt('sensor.tv_power', 89, 'W', { friendly_name: 'TV' }),
+        watt('sensor.monitor_spare_power', 15),
+      ]),
+      config,
+      parseEnergyPowerConfig(CIRCUIT_PREFS)
+    );
+    // Home Assistant shows 3200 W: the fridge and the TV are fed by General as well.
+    expect(summary.energySettingsDevicesOnly).toBe(true);
+    expect(summary.basis).toBe('rooms');
+    expect(summary.totalWatts).toBe(3200);
+    expect(summary.sensorCount).toBe(3);
+    expect(summary.areas.map((area) => [area.areaId, area.totalWatts])).toEqual([['meter_cupboard', 3200]]);
+    expect(summary.areas[0]!.entities.map((entity) => entity.entityId)).not.toContain('sensor.monitor_spare_power');
+  });
+
+  it('keeps counting every power sensor when the energy settings have no hierarchy', () => {
+    // Grid energy without a power sensor keeps the settings without making the total grid based.
+    const prefs = {
+      energy_sources: [{ type: 'grid', stat_energy_from: 'sensor.import' }],
+      device_consumption: CIRCUIT_PREFS.device_consumption.map(({ included_in_stat: _upstream, ...device }) => device),
+    };
+    const energy = parseEnergyPowerConfig(prefs);
+    expect(energy?.deviceRateEntityIds).toEqual(['sensor.general_power', 'sensor.light_power', 'sensor.plugs_power']);
     const summary = buildHousePowerUsage(
       hassWithStates([...states(), watt('sensor.fridge_power', 120, 'W', { friendly_name: 'Fridge' })]),
       baseConfig(),
-      parseEnergyPowerConfig(CIRCUIT_PREFS)
+      energy
     );
-    expect(summary.totalWatts).toBe(3320);
+    expect(summary.energySettingsDevicesOnly).toBe(false);
+    expect(summary.basis).toBe('rooms');
+    expect(summary.totalWatts).toBe(3200 + 900 + 1500 + 120);
+    expect(summary.sensorCount).toBe(4);
+  });
+
+  it('keeps a main line that is the grid power sensor as well as a device', () => {
+    const prefs = {
+      ...CIRCUIT_PREFS,
+      energy_sources: [{ type: 'grid', stat_energy_from: 'sensor.general_energy', power_config: { stat_rate: 'sensor.general_power' } }],
+    };
+    const summary = buildHousePowerUsage(
+      hassWithStates([...states(), watt('sensor.fridge_power', 120, 'W', { friendly_name: 'Fridge' })]),
+      baseConfig(),
+      parseEnergyPowerConfig(prefs)
+    );
+    expect(summary.basis).toBe('energy');
+    expect(summary.sources.map((source) => source.entityId)).toEqual(['sensor.general_power']);
+    expect(summary.totalWatts).toBe(3200);
+    // The device rates are kept although their device is the grid meter.
+    expect(summary.areas.flatMap((area) => area.entities.map((entity) => [entity.entityId, entity.watts]))).toEqual([
+      ['sensor.plugs_power', 1500],
+      ['sensor.light_power', 900],
+      ['sensor.general_power', 800],
+    ]);
+    expect(summary.roomTotalWatts).toBe(3200);
   });
 
   it('keeps the reading of the main line when a circuit is unavailable', () => {

@@ -92,7 +92,7 @@ Unavailable entities are hidden by default. This can be changed in Dashboard set
 
 ## Power And Energy Sensors
 
-Sensors that measure power or energy, such as the Powercalc sensors of every lamp, can make a room page long. Turn on **Hide power and energy sensors on room pages** in Dashboard settings, Areas, to leave them off the room pages. The Energy page, the House power usage popup and the power badge of the room still count the power sensors among them. A single room can show them anyway with **Show power and energy sensors in this room** in its room settings. See [Areas](dashboard-settings.md#areas).
+Sensors that measure power or energy, such as the Powercalc sensors of every lamp, can make a room page long. Turn on **Hide power and energy sensors on room pages** in Dashboard settings, Areas, to leave them off the room pages. This only changes the room pages: what the Energy page, the House power usage popup and the power badge of the room count stays the same (see [Energy](devices.md#energy)). A single room can show them anyway with **Show power and energy sensors in this room** in its room settings. See [Areas](dashboard-settings.md#areas).
 
 ## Custom Cards
 

@@ -11,6 +11,7 @@ import {
   personPresence,
   pickEnergySourceStatisticsEntities,
   pickPowerStatisticsEntities,
+  powerSensorCountLabel,
   powerSharePercentage,
   roomActionNeedsConfirmation,
   showsPowerMeasuredInAreas,
@@ -235,5 +236,21 @@ describe('house power panel decisions', () => {
       areas: [],
     };
     expect(wholeHousePowerGraphEntities(summary, states, 8)).toEqual([{ entity: 'sensor.grid', name: 'Grid' }]);
+  });
+});
+
+describe('powerSensorCountLabel', () => {
+  it('says when only the devices in the energy settings count', () => {
+    expect(powerSensorCountLabel(undefined, { basis: 'rooms', sensorCount: 13, energySettingsDevicesOnly: true }))
+      .toBe('13 power sensors from the energy settings');
+    expect(powerSensorCountLabel(undefined, { basis: 'rooms', sensorCount: 1, energySettingsDevicesOnly: true }))
+      .toBe('1 power sensor from the energy settings');
+    expect(powerSensorCountLabel(undefined, { basis: 'rooms', sensorCount: 45, energySettingsDevicesOnly: false }))
+      .toBe('45 live power sensors');
+  });
+
+  it('counts the energy settings sources as before when the total comes from the grid', () => {
+    expect(powerSensorCountLabel(undefined, { basis: 'energy', sensorCount: 2, energySettingsDevicesOnly: true }))
+      .toBe('2 live power sensors');
   });
 });

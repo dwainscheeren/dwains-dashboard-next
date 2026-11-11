@@ -1,8 +1,8 @@
 // Room pages can leave out the sensors that measure power or energy, such as
 // the Powercalc sensors of every lamp (`hide_energy_sensors_on_area_pages`).
-// Only the room pages change: the Energy page, the house power usage, the
-// house total and the power badge of a room keep counting the power sensors
-// among them.
+// Only the room pages change. The power numbers (the Energy page, the house
+// power usage, the house total and the power badge of a room) do not read
+// this setting; for the rule of the energy settings see `countedPowerSensorsOf`.
 
 import type { HassEntity, HomeAssistant } from '../types/home-assistant';
 import type { DwainsDashboardConfig } from '../types/strategy';

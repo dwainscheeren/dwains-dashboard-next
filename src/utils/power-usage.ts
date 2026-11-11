@@ -3,7 +3,13 @@ import type { HassEntity, HomeAssistant } from '../types/home-assistant';
 import { getAreaConfigMap, getDeviceConfigMap, getEntityConfigMap, getHiddenAreaIdSet } from './entity-lookups';
 import { isEntityFromHiddenDevice } from './device-admission';
 import { isEntityVisibleInArea, isRegistryEntryVisible } from './entity-visibility';
-import { getEnergyPowerConfig, upstreamRatesOf, type EnergyPowerConfig, type PowerTerm } from './energy-prefs';
+import {
+  countedPowerSensorsOf,
+  getEnergyPowerConfig,
+  upstreamRatesOf,
+  type EnergyPowerConfig,
+  type PowerTerm,
+} from './energy-prefs';
 import { splitUpstreamPower } from './power-hierarchy';
 import { getAreaIcon } from './icons';
 import { getDomainStates } from './state-index';
@@ -18,7 +24,8 @@ export interface PowerEntitySummary {
   /**
    * What the sensor adds to its room. For an upstream device in the energy
    * settings this is its reading minus the downstream sensors that are
-   * shown as well (the untracked part); otherwise the reading itself.
+   * counted as well, in a room or not (the untracked part); otherwise the
+   * reading itself.
    */
   watts: number;
   formatted: string;
@@ -67,12 +74,20 @@ export interface HousePowerUsageSummary {
   /** Sum of the per-room breakdown. */
   roomTotalWatts: number;
   /**
-   * Upstream devices from the energy settings that are in no room: without
-   * an area, or in an area that is hidden or unknown to the dashboard, such
-   * as a main meter. Their untracked part (`watts`) still counts for a total
-   * that is not based on the energy settings.
+   * Power sensors of devices from the energy settings that are in no room:
+   * without an area, or in an area that is hidden or unknown to the
+   * dashboard, such as a main meter. Only with a device hierarchy (see
+   * `energySettingsDevicesOnly`). Their share (`watts`) still counts for a
+   * total that is not based on the grid.
    */
   outsideAreaEntities: PowerEntitySummary[];
+  /**
+   * True when only the power sensors of the devices in the energy settings
+   * count, because those settings have a device hierarchy for power (see
+   * `countedPowerSensorsOf`). Other power sensors are left out of the rooms,
+   * and out of the total when it is not based on the grid.
+   */
+  energySettingsDevicesOnly: boolean;
 }
 
 const UNIT_TO_WATTS: Record<string, number> = {
@@ -93,18 +108,21 @@ const UNIT_TO_WATTS: Record<string, number> = {
  * where grid is the net grid power (import minus export), solar the solar
  * production and battery the net battery power (discharge minus charge).
  * Unavailable solar or battery sensors count as 0. Otherwise the total is the
- * sum of the power sensors in the visible rooms, plus the untracked part of
- * an upstream device of the energy settings that is in no room.
+ * sum of the power sensors in the visible rooms, plus the share of a device
+ * of the energy settings that is in no room (only with a device hierarchy).
  *
- * The rooms always come from the power sensors in the rooms. Sensors of the
- * grid meter, solar inverter and battery devices from the energy settings are
- * left out there, because they measure the whole house or production rather
- * than a consumer.
+ * The rooms come from the power sensors in the rooms. Sensors of the grid
+ * meter, solar inverter and battery devices from the energy settings are left
+ * out there, because they measure the whole house or production rather than
+ * a consumer.
  *
- * The device hierarchy of the energy settings is followed like Home
- * Assistant does: a sensor below another one counts in full, and the sensor
- * above it only counts what the sensors below it do not measure. A main
- * meter and its circuits are then counted once, also when they share a room.
+ * When the energy settings have a device hierarchy for power, the dashboard
+ * counts like the Power dashboard of Home Assistant: only the power sensors
+ * of the devices in the energy settings count (see `countedPowerSensorsOf`),
+ * a sensor below another one counts in full, and the sensor above it only
+ * counts what the sensors below it do not measure. A main meter and its
+ * circuits are then counted once, also when they share a room, and a power
+ * sensor outside the energy settings is not added on top of the main meter.
  */
 export function buildHousePowerUsage(
   hass: HomeAssistant | undefined,
@@ -113,8 +131,9 @@ export function buildHousePowerUsage(
 ): HousePowerUsageSummary {
   const exclusions = getMeterExclusions(hass, config, energy);
   const upstream = upstreamRatesOf(energy);
-  const measured = getLivePowerEntities(hass, config, exclusions);
-  const measuredOutside = getUpstreamEntitiesOutsideAreas(hass, config, upstream, measured);
+  const counted = countedPowerSensorsOf(energy);
+  const measured = getLivePowerEntities(hass, config, exclusions, counted);
+  const measuredOutside = getCountedEntitiesOutsideAreas(hass, config, counted, measured);
   const shares = splitUpstreamPower(
     new Map([...measured, ...measuredOutside].map((entity) => [entity.entityId, entity.measuredWatts])),
     upstream
@@ -182,6 +201,7 @@ export function buildHousePowerUsage(
       roomSensorCount: entities.length,
       roomTotalWatts,
       outsideAreaEntities,
+      energySettingsDevicesOnly: Boolean(counted),
     };
   }
 
@@ -197,32 +217,31 @@ export function buildHousePowerUsage(
     roomSensorCount: entities.length,
     roomTotalWatts,
     outsideAreaEntities,
+    energySettingsDevicesOnly: Boolean(counted),
   };
 }
 
 /**
- * Upstream devices of the energy settings that are in no room: without an
- * area, or in an area that is hidden or unknown to the dashboard. A main
- * meter like that still measures more than the circuits below it. Sensors
- * that are hidden, disabled or part of a hidden device are left out, and so
- * is a sensor hidden in the groups of a room that is shown.
+ * Counted power sensors (see `countedPowerSensorsOf`) that are in no room:
+ * without an area, or in an area that is hidden or unknown to the dashboard,
+ * such as a main meter. Home Assistant counts them for the whole house too.
+ * Sensors that are hidden, disabled or part of a hidden device are left out,
+ * and so is a sensor hidden in the groups of a room that is shown.
  */
-function getUpstreamEntitiesOutsideAreas(
+function getCountedEntitiesOutsideAreas(
   hass: HomeAssistant | undefined,
   config: DwainsDashboardConfig | undefined,
-  upstream: Readonly<Record<string, string>>,
+  counted: ReadonlySet<string> | null,
   inAreas: readonly PowerEntitySummary[]
 ): PowerEntitySummary[] {
-  if (!hass?.states) return [];
-  const parents = new Set(Object.values(upstream));
-  if (!parents.size) return [];
+  if (!hass?.states || !counted?.size) return [];
 
   const shown = new Set(inAreas.map((entity) => entity.entityId));
   const configEntities = getEntityConfigMap(config);
   const areasById = getAreaConfigMap(config);
   const hiddenAreas = getHiddenAreaIdSet(config);
   const result: PowerEntitySummary[] = [];
-  parents.forEach((entityId) => {
+  counted.forEach((entityId) => {
     if (shown.has(entityId)) return;
     const state = hass.states[entityId];
     if (!state) return;
@@ -332,10 +351,15 @@ function isMeterEntity(
   return Boolean(deviceId && exclusions.deviceIds.has(deviceId));
 }
 
+/**
+ * Live power sensors in the visible rooms. With `counted`, only those
+ * sensors (see `countedPowerSensorsOf`); otherwise every power sensor.
+ */
 export function getLivePowerEntities(
   hass: HomeAssistant | undefined,
   config: DwainsDashboardConfig | undefined,
-  exclusions: MeterExclusions = NO_EXCLUSIONS
+  exclusions: MeterExclusions = NO_EXCLUSIONS,
+  counted: ReadonlySet<string> | null = null
 ): PowerEntitySummary[] {
   if (!hass?.states) return [];
 
@@ -345,9 +369,10 @@ export function getLivePowerEntities(
   // Only sensors can report live power (see getLivePowerValueWatts).
   return getDomainStates(hass.states, 'sensor')
     .map((state) => {
+      const entityId = state.entity_id;
+      if (counted && !counted.has(entityId)) return undefined;
       const watts = getLivePowerValueWatts(state);
       if (watts === null) return undefined;
-      const entityId = state.entity_id;
       const configEntity = configEntities.get(entityId);
       if (isMeterEntity(hass, entityId, configEntity, exclusions)) return undefined;
 
