@@ -60,3 +60,5 @@ Home Assistant shows this when it cannot start the dashboard, for example "Timeo
 - Check that the resource `/hacsfiles/dwains-dashboard-next/dwains-dashboard-next.js` (type `module`) exists in **Settings > Dashboards > Resources**, or in your YAML resources.
 
 Older browsers and webviews, for example on some wall displays, get the legacy frontend of Home Assistant, which loads slower. Since 1.12.1 Dwains Dashboard Next registers itself before it loads the rest, so it starts in time on these devices too.
+
+Home Assistant replaces its list of custom elements while it starts. When the browser loaded Dwains Dashboard Next from its cache before that, the dashboard could fail to start with the timeout above after a refresh. Since 1.14.1 Dwains Dashboard Next registers itself again in the new list, so it starts every time.

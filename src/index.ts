@@ -2,6 +2,11 @@
 // afterwards. Home Assistant waits at most 5 seconds for a custom strategy to
 // be registered; with nothing to load first, that also fits on slow wall
 // tablets and devices that get Home Assistant's legacy frontend.
+//
+// Home Assistant replaces the custom element registry while it starts. When
+// this file runs before that, the strategies are defined again in the new
+// registry and the cards are only loaded after it (see element-registration).
+import { createElementRegistration } from './utils/element-registration';
 import { loadPart } from './utils/load-part';
 
 // Keep the entry's version separate from the editor's version module. Sharing
@@ -32,11 +37,12 @@ const ensureUiElements = (): Promise<void> => {
   return uiElementsReady;
 };
 
-// Safe element registration
+const elements = createElementRegistration({ current: () => window.customElements });
+
+// Defines the element unless another script has the name, and defines it
+// again when Home Assistant replaces the registry.
 const safeDefine = (name: string, constructor: CustomElementConstructor) => {
-  if (!customElements.get(name)) {
-    customElements.define(name, constructor);
-  }
+  elements.define(name, constructor);
 };
 
 const createDashboardStrategyElement = () => class extends HTMLElement {
@@ -238,6 +244,8 @@ if (!Array.isArray(window.customCards)) {
   });
 }
 
-// Start loading the dashboard right away, so it is ready by the time Home
-// Assistant asks for it. A failure is reported when Home Assistant does.
-ensureUiElements().catch(() => undefined);
+// Start loading the dashboard as soon as Home Assistant has set up its custom
+// element registry (right away when it already has), so it is ready by the
+// time Home Assistant asks for it and the cards end up in that registry. A
+// failure is reported when Home Assistant asks.
+elements.ready.then(() => ensureUiElements()).catch(() => undefined);
