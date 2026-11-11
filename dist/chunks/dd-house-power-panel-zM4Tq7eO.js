@@ -1,10 +1,10 @@
-import{_ as e,n as t,t as r}from"./state-Ch1yw9_s.js";import{r as a,a as i,i as o,A as s,b as n}from"./lit-element-D6iXJla1.js";import{d,n as l}from"./master-action-confirmations-gpZdKxph.js";import{a as c,c as p,T as h,d as m}from"./localize-7aUPHCDd.js";import{a as g}from"./energy-prefs-D8WnTq1q.js";import{w as u,s as v,d as x,e as w,f as y}from"./home-information-D-IAHHhi.js";import{c as f,f as b}from"./page-header-styles-DroEdB5-.js";import{f as _}from"./confirm-dialog-BJngm6q4.js";import"./dd-card-host-zbmwRU5c.js";const $=f();function k(e,t){if("energy"===t.basis){const r=[...new Set(t.sources.map(e=>e.name))];return c(e,"devices.power_based_on",{sensors:r.join(", ")})}return p(e,"devices.live_power_sensor",t.sensorCount)}let z=class extends o{constructor(){super(...arguments),this.navigableAreas=!1,this._forceRender=!1,this._handleForcedUpdate=()=>{this._forceRender=!0,this.requestUpdate()}}_t(e,t){return c(this.hass,e,t)}_tp(e,t,r){return p(this.hass,e,t,r)}connectedCallback(){super.connectedCallback(),window.addEventListener(h,this._handleForcedUpdate),this._energyUnsub=g(this._handleForcedUpdate)}disconnectedCallback(){super.disconnectedCallback(),window.removeEventListener(h,this._handleForcedUpdate),this._energyUnsub?.(),this._energyUnsub=void 0}shouldUpdate(e){const t=$(this.hass,this.config),r=m(this.hass),a=[...e.keys()].every(e=>"hass"===e);return!this._forceRender&&a&&t===this._summary&&r===this._renderedLanguage?(this.renderRoot?.querySelectorAll("dwains-dashboard-next-card-host").forEach(e=>{e.hass=this.hass}),!1):(this._forceRender=!1,this._summary=t,this._renderedLanguage=r,!0)}render(){const e=this._summary;if(!e||!this.hass)return s;if(!e.sensorCount)return n`
+import{_ as e,n as t,t as a}from"./state-Ch1yw9_s.js";import{r,a as i,i as o,A as s,b as n}from"./lit-element-D6iXJla1.js";import{d,n as l}from"./master-action-confirmations-prWHnR4i.js";import{a as c,c as p,T as h,d as m}from"./localize-DC9lHZVH.js";import{a as g}from"./energy-prefs-DY5I1NyA.js";import{k as u,w as v,s as x,l as w,m as y,n as b,q as f,p as _}from"./page-header-styles-Uj8tWCJ4.js";import{f as $}from"./confirm-dialog-sj6nDODt.js";import"./dd-card-host-zbmwRU5c.js";const k=u();function z(e,t){if("energy"===t.basis){const a=[...new Set(t.sources.map(e=>e.name))];return c(e,"devices.power_based_on",{sensors:a.join(", ")})}return _(e,t)}let j=class extends o{constructor(){super(...arguments),this.navigableAreas=!1,this._forceRender=!1,this._handleForcedUpdate=()=>{this._forceRender=!0,this.requestUpdate()}}_t(e,t){return c(this.hass,e,t)}_tp(e,t,a){return p(this.hass,e,t,a)}connectedCallback(){super.connectedCallback(),window.addEventListener(h,this._handleForcedUpdate),this._energyUnsub=g(this._handleForcedUpdate)}disconnectedCallback(){super.disconnectedCallback(),window.removeEventListener(h,this._handleForcedUpdate),this._energyUnsub?.(),this._energyUnsub=void 0}shouldUpdate(e){const t=k(this.hass,this.config),a=m(this.hass),r=[...e.keys()].every(e=>"hass"===e);return!this._forceRender&&r&&t===this._summary&&a===this._renderedLanguage?(this.renderRoot?.querySelectorAll("dwains-dashboard-next-card-host").forEach(e=>{e.hass=this.hass}),!1):(this._forceRender=!1,this._summary=t,this._renderedLanguage=a,!0)}render(){const e=this._summary;if(!e||!this.hass)return s;if(!e.sensorCount)return n`
         <div class="empty">
           <ha-icon icon="mdi:flash-off-outline"></ha-icon>
           <h2>${this._t("devices.no_power_title")}</h2>
           <p>${this._t("devices.no_power_description")}</p>
         </div>
-      `;const t=e.areas[0],r=u(e,this.hass?.states,8);return n`
+      `;const t=e.areas[0],a=v(e,this.hass?.states,8);return n`
       <div class="overview-grid">
         <section class="card overview-card">
           <div class="overview-head">
@@ -13,12 +13,12 @@ import{_ as e,n as t,t as r}from"./state-Ch1yw9_s.js";import{r as a,a as i,i as 
             </span>
             <div class="overview-copy">
               <h2>${this._t("devices.whole_house")}</h2>
-              <p>${k(this.hass,e)}</p>
-              ${v(e)?n`<p>${this._t("devices.power_measured_in_rooms",{value:b(e.roomTotalWatts)})}</p>`:s}
+              <p>${z(this.hass,e)}</p>
+              ${x(e)?n`<p>${this._t("devices.power_measured_in_rooms",{value:w(e.roomTotalWatts)})}</p>`:s}
             </div>
             <strong class="overview-total">${e.formattedTotal}</strong>
           </div>
-          ${this._renderGraph(r,this._t("devices.whole_house_history"))}
+          ${this._renderGraph(a,this._t("devices.whole_house_history"))}
         </section>
 
         ${t?n`
@@ -43,7 +43,7 @@ import{_ as e,n as t,t as r}from"./state-Ch1yw9_s.js";import{r as a,a as i,i as 
       <div class="areas-grid">
         ${l(e.areas,e=>e.areaId,e=>this._renderAreaCard(e))}
       </div>
-    `}_renderAreaCard(e){const t=this.navigableAreas&&!e.areaId.startsWith("__"),r=n`
+    `}_renderAreaCard(e){const t=this.navigableAreas&&!e.areaId.startsWith("__"),a=n`
       <span class="icon-badge" aria-hidden="true">
         <ha-icon icon=${e.icon}></ha-icon>
       </span>
@@ -54,26 +54,26 @@ import{_ as e,n as t,t as r}from"./state-Ch1yw9_s.js";import{r as a,a as i,i as 
     `;return n`
       <section class="card area-card">
         <header class="area-head">
-          ${t?n`<button class="area-title" type="button" @click=${()=>this._selectArea(e.areaId)}>${r}</button>`:n`<div class="area-title">${r}</div>`}
+          ${t?n`<button class="area-title" type="button" @click=${()=>this._selectArea(e.areaId)}>${a}</button>`:n`<div class="area-title">${a}</div>`}
           <div class="area-total">
             <span>${e.formattedTotal}</span>
             <small>${this._t("devices.total_now")}</small>
           </div>
         </header>
 
-        ${this._renderGraph(x(e.entities,6),this._t("devices.area_power_history",{area:e.name}))}
+        ${this._renderGraph(y(e.entities,6),this._t("devices.area_power_history",{area:e.name}))}
 
         <div class="entity-list">
           ${l(e.entities,e=>e.entityId,t=>this._renderEntityRow(t,e.totalWatts))}
         </div>
       </section>
-    `}_untrackedLabel(e){return w(e)?this._t("devices.power_untracked_of",{value:b(e.measuredWatts)}):void 0}_renderEntityMini(e,t){const r=this._untrackedLabel(e);return n`
+    `}_untrackedLabel(e){return b(e)?this._t("devices.power_untracked_of",{value:w(e.measuredWatts)}):void 0}_renderEntityMini(e,t){const a=this._untrackedLabel(e);return n`
       <button
         class="entity-mini"
         type="button"
-        title=${r?`${e.name}: ${r}`:e.name}
-        aria-label=${r?`${e.name}, ${e.formatted}, ${r}`:`${e.name}, ${e.formatted}`}
-        style=${`--power-width: ${y(e.watts,t)}%`}
+        title=${a?`${e.name}: ${a}`:e.name}
+        aria-label=${a?`${e.name}, ${e.formatted}, ${a}`:`${e.name}, ${e.formatted}`}
+        style=${`--power-width: ${f(e.watts,t)}%`}
         @click=${()=>this._showMoreInfo(e.entityId)}
       >
         <span>${e.name}</span>
@@ -83,7 +83,7 @@ import{_ as e,n as t,t as r}from"./state-Ch1yw9_s.js";import{r as a,a as i,i as 
       <button
         class="entity-row"
         type="button"
-        style=${`--power-width: ${y(e.watts,t)}%`}
+        style=${`--power-width: ${f(e.watts,t)}%`}
         @click=${()=>this._showMoreInfo(e.entityId)}
       >
         <span class="icon-badge small" aria-hidden="true">
@@ -104,9 +104,9 @@ import{_ as e,n as t,t as r}from"./state-Ch1yw9_s.js";import{r as a,a as i,i as 
         .hass=${this.hass}
         .config=${{type:"statistics-graph",entities:e,days_to_show:1,period:"5minute",stat_types:["mean"],chart_type:"line",hide_legend:!0,fit_y_data:!0,min_y_axis:0}}
       ></dwains-dashboard-next-card-host>
-    `:s}_selectArea(e){_(this,"dd-power-area-selected",{areaId:e},{bubbles:!1,composed:!1})}_showMoreInfo(e){_(this,"hass-more-info",{entityId:e})}};z.styles=i`
+    `:s}_selectArea(e){$(this,"dd-power-area-selected",{areaId:e},{bubbles:!1,composed:!1})}_showMoreInfo(e){$(this,"hass-more-info",{entityId:e})}};j.styles=i`
     :host {
-      --power-color: var(--domain-color, ${a(d("energy"))});
+      --power-color: var(--domain-color, ${r(d("energy"))});
       display: block;
       container-type: inline-size;
     }
@@ -481,14 +481,14 @@ import{_ as e,n as t,t as r}from"./state-Ch1yw9_s.js";import{r as a,a as i,i as 
         transform: none;
       }
     }
-  `,e([t({attribute:!1})],z.prototype,"hass",void 0),e([t({attribute:!1})],z.prototype,"config",void 0),e([t({type:Boolean,attribute:"navigable-areas"})],z.prototype,"navigableAreas",void 0),z=e([r("dwains-dashboard-next-house-power-panel")],z);let j=class extends o{constructor(){super(...arguments),this._forceRender=!1,this._handleForcedUpdate=()=>{this._forceRender=!0,this.requestUpdate()}}connectedCallback(){super.connectedCallback(),window.addEventListener(h,this._handleForcedUpdate)}disconnectedCallback(){super.disconnectedCallback(),window.removeEventListener(h,this._handleForcedUpdate)}shouldUpdate(){const e=$(this.hass,this.config),t=m(this.hass);return!(!this._forceRender&&e===this._summary&&t===this._renderedLanguage)&&(this._forceRender=!1,this._summary=e,this._renderedLanguage=t,!0)}render(){const e=this._summary;return e&&this.hass?n`
-      <div class="total" title=${k(this.hass,e)}>
+  `,e([t({attribute:!1})],j.prototype,"hass",void 0),e([t({attribute:!1})],j.prototype,"config",void 0),e([t({type:Boolean,attribute:"navigable-areas"})],j.prototype,"navigableAreas",void 0),j=e([a("dwains-dashboard-next-house-power-panel")],j);let U=class extends o{constructor(){super(...arguments),this._forceRender=!1,this._handleForcedUpdate=()=>{this._forceRender=!0,this.requestUpdate()}}connectedCallback(){super.connectedCallback(),window.addEventListener(h,this._handleForcedUpdate)}disconnectedCallback(){super.disconnectedCallback(),window.removeEventListener(h,this._handleForcedUpdate)}shouldUpdate(){const e=k(this.hass,this.config),t=m(this.hass);return!(!this._forceRender&&e===this._summary&&t===this._renderedLanguage)&&(this._forceRender=!1,this._summary=e,this._renderedLanguage=t,!0)}render(){const e=this._summary;return e&&this.hass?n`
+      <div class="total" title=${z(this.hass,e)}>
         <span>${e.formattedTotal}</span>
-        <small>${"energy"===e.basis?c(this.hass,"devices.whole_house"):p(this.hass,"devices.live_power_sensor",e.sensorCount)}</small>
+        <small>${"energy"===e.basis?c(this.hass,"devices.whole_house"):_(this.hass,e)}</small>
       </div>
-    `:s}};j.styles=i`
+    `:s}};U.styles=i`
     :host {
-      --power-color: var(--domain-color, ${a(d("energy"))});
+      --power-color: var(--domain-color, ${r(d("energy"))});
       display: block;
     }
 
@@ -524,4 +524,4 @@ import{_ as e,n as t,t as r}from"./state-Ch1yw9_s.js";import{r as a,a as i,i as 
         justify-items: start;
       }
     }
-  `,e([t({attribute:!1})],j.prototype,"hass",void 0),e([t({attribute:!1})],j.prototype,"config",void 0),j=e([r("dwains-dashboard-next-house-power-total")],j);export{$ as s};
+  `,e([t({attribute:!1})],U.prototype,"hass",void 0),e([t({attribute:!1})],U.prototype,"config",void 0),U=e([a("dwains-dashboard-next-house-power-total")],U);export{k as s};
