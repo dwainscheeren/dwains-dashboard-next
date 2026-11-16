@@ -14,7 +14,7 @@ import {
 import type { DwainsDashboardSettings } from '../types/strategy';
 import { ddLocalize } from '../utils/localize';
 import { TRANSLATIONS_LOADED_EVENT } from '../i18n';
-import { navigateHomeAssistant } from '../utils/navigation';
+import { openHomeAssistantProfile } from '../utils/navigation';
 import { syncHassDarkThemeAttribute } from '../utils/theme';
 import {
   restrictNonAdminDashboardSettings,
@@ -332,7 +332,7 @@ export class DwainsBottomNav extends LitElement {
 
   private _openProfileSettings = (): void => {
     this._restrictedMenuOpen = false;
-    navigateHomeAssistant('/profile/general');
+    openHomeAssistantProfile();
   };
 
   private _toggleHaMenu(): void {
@@ -1524,10 +1524,6 @@ function _openDashboardSettingsPage(): void {
   window.setTimeout(open, 240);
 }
 
-function _navigateProfile(): void {
-  navigateHomeAssistant('/profile/general');
-}
-
 /** Sluit (toggle) het HA-zijmenu. */
 function _closeSidebar(): void {
   const ev = new CustomEvent('hass-toggle-menu', { bubbles: true, composed: true });
@@ -1743,7 +1739,7 @@ function _buildSidebarSection(
     wrap.appendChild(
       mkItem('mdi:account-cog', 'Profile settings', () => {
         _closeSidebar();
-        _navigateProfile();
+        openHomeAssistantProfile();
       })
     );
     _insertSidebarSection(sr, wrap);
@@ -1767,7 +1763,7 @@ function _buildSidebarSection(
     wrap.appendChild(
       mkItem('mdi:account-cog', 'Profile settings', () => {
         _closeSidebar();
-        _navigateProfile();
+        openHomeAssistantProfile();
       })
     );
   }

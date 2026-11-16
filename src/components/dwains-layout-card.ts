@@ -58,7 +58,7 @@ import { tileTapToggles } from '../utils/tile-tap';
 import { tileTap } from '../utils/tile-tap-directive';
 import { areaPageEntities } from '../utils/area-energy-sensors';
 import { mergeReorderedSubset } from '../utils/list-order';
-import { navigateHomeAssistant } from '../utils/navigation';
+import { navigateHomeAssistant, openHomeAssistantProfile } from '../utils/navigation';
 import { syncHassDarkThemeAttribute } from '../utils/theme';
 import { HOME_SECTION_META, normalizeHiddenHomeInformationCards, normalizeHomeSectionsOrder, resolveHiddenHomeSections } from '../utils/home-sections';
 import { buildHousePowerUsage, type HousePowerUsageSummary } from '../utils/power-usage';
@@ -7297,9 +7297,7 @@ export class DwainsLayoutCard extends LitElement {
     this.updateComplete.then(() => this._scrollContentAreaToTop());
   };
 
-  private _openProfileSettings = () => {
-    navigateHomeAssistant('/profile/general');
-  };
+  private _openProfileSettings = openHomeAssistantProfile;
 
   private _openNotificationsFromHomeShortcut = (event: Event) => {
     event.preventDefault();

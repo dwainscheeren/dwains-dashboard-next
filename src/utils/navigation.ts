@@ -15,3 +15,8 @@ export function navigateHomeAssistant(path: string, replace = false): void {
     })
   );
 }
+
+export function openHomeAssistantProfile(): void {
+  // Use the same route as HA's sidebar and let HA choose its default profile page.
+  navigateHomeAssistant('/profile');
+}
