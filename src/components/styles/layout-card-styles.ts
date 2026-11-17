@@ -1355,6 +1355,15 @@ export const layoutCardStyles = css`
       margin-top: 14px;
     }
 
+    .welcome-alert-announcement {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+
     .welcome-alert {
       display: inline-flex;
       align-items: center;
@@ -4845,6 +4854,24 @@ export const layoutCardStyles = css`
     .favorite-card-wrapper.info-only .favorite-quick-action ha-icon {
       display: block;
       --mdc-icon-size: 17px;
+    }
+
+    .favorite-card-wrapper .favorite-quick-action.favorite-details {
+      width: 36px;
+      height: 36px;
+      justify-content: center;
+      color: var(--primary-text-color);
+      background: color-mix(in srgb, var(--primary-text-color) 9%, transparent);
+      box-shadow: none;
+    }
+
+    .favorite-quick-action.favorite-details::before {
+      content: none;
+    }
+
+    .favorite-quick-action.favorite-details ha-icon {
+      display: inline-flex;
+      --mdc-icon-size: 19px;
     }
 
     .favorite-quick-action ha-icon {

@@ -292,6 +292,13 @@ export const pageHeaderStyles = css`
       transform: scale(0.97);
     }
 
+    .dd-room-tile:disabled,
+    .dd-room-tile-action:disabled,
+    .dd-room-tile-action[aria-disabled="true"] {
+      opacity: .55;
+      cursor: default;
+    }
+
     .dd-room-tile.light {
       --tile-color: #e1a129;
       --tile-on: #2b1c00;
@@ -628,23 +635,22 @@ export const pageHeaderStyles = css`
 
       .dd-room-tiles {
         flex: 0 0 auto;
-        flex-wrap: nowrap;
-        margin: 0 calc(var(--ph-pad-x) * -1);
-        padding: 2px var(--ph-pad-x);
-        overflow-x: auto;
-        overscroll-behavior-x: contain;
-        scroll-padding-inline: var(--ph-pad-x);
-        scroll-snap-type: x proximity;
-        scrollbar-width: none;
-      }
-
-      .dd-room-tiles::-webkit-scrollbar {
-        display: none;
+        gap: 8px;
       }
 
       .dd-room-tile {
-        flex: 0 0 auto;
-        scroll-snap-align: start;
+        flex: 1 1 auto;
+        max-width: 100%;
+        justify-content: space-between;
+      }
+
+      .dd-room-tile-copy {
+        margin-inline-end: auto;
+      }
+
+      .dd-room-tile-label,
+      .dd-room-tile-state {
+        white-space: normal;
       }
 
       .dd-page-header-strip > dwains-dashboard-next-area-thermostat {
@@ -742,12 +748,6 @@ export const pageHeaderStyles = css`
       .dd-room-compact .dd-page-header-button {
         width: 38px;
         height: 38px;
-      }
-
-      .dd-room-compact .dd-room-tiles {
-        margin: 0 -12px;
-        padding: 0 12px 2px;
-        scroll-padding-inline: 12px;
       }
 
       .dd-room-compact .dd-room-tile {

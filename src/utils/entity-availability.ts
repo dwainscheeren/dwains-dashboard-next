@@ -33,6 +33,11 @@ export function isHiddenAsUnavailable(state: StateLike): boolean {
   return state.state === 'unknown' && !isUnknownNormalForDomain(entityDomain(state.entity_id));
 }
 
+/** A bulk control can act on a current, reachable entity only. */
+export function isEntityActionAvailable(state: StateLike | undefined): boolean {
+  return state !== undefined && !isHiddenAsUnavailable(state);
+}
+
 /**
  * Entities the "hide unavailable entities" settings hide, split by state.
  * Entities without a state are left out.

@@ -769,6 +769,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
       <button
         class="settings-nav-item"
         type="button"
+        data-settings-page=${item.page}
         style=${`--settings-item-color: ${item.color};`}
         @click=${() => this._openSettingsPage(item.page)}
       >
@@ -813,6 +814,21 @@ export class DwainsDashboardStrategyEditor extends LitElement {
         bubbles: true,
         composed: true,
       }));
+      const previousPage = changedProps.get("_settingsPage");
+      if (previousPage) {
+        const target = this._settingsPage === "overview"
+          ? `[data-settings-page="${previousPage}"]`
+          : ".settings-detail-title";
+        this.renderRoot.querySelector<HTMLElement>(target)?.focus();
+      }
+    } else if (this._settingsPage === "home" && changedProps.has("_homeSettingsDetail")) {
+      const previous = changedProps.get("_homeSettingsDetail");
+      if (previous) {
+        const returning = this._homeSettingsDetail === "overview" ||
+          (this._homeSettingsDetail === "house_information" && (previous === "climate" || previous === "outdoor_climate"));
+        const target = returning ? `[data-home-settings-detail="${previous}"]` : ".settings-detail-title";
+        this.renderRoot.querySelector<HTMLElement>(target)?.focus();
+      }
     }
   }
 
@@ -914,7 +930,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
             <ha-icon icon="mdi:arrow-left"></ha-icon>
             <span>${backLabel}</span>
           </button>
-          <div class="settings-detail-title">
+          <div class="settings-detail-title" role="heading" aria-level="2" aria-label=${title} tabindex="-1">
             <span>${title}</span>
             <small>${description}</small>
           </div>
@@ -2503,6 +2519,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
                     <button
                       class="home-section-toggle home-section-detail-button"
                       type="button"
+                      data-home-settings-detail=${detail || 'favorites'}
                       aria-label=${detailLabel}
                       title=${detailLabel}
                       @click=${(event: Event) => { event.stopPropagation(); openDetail(); }}
@@ -2813,6 +2830,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
                     <button
                       class="home-section-toggle home-section-detail-button"
                       type="button"
+                      data-home-settings-detail=${detail}
                       aria-label=${detailLabel}
                       title=${detailLabel}
                       @click=${() => { this._homeSettingsDetail = detail; }}

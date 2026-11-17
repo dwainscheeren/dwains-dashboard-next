@@ -9,7 +9,7 @@ import type {
 } from '../types/strategy';
 import { ddLocale, ddLocalize, ddLocalizePlural } from '../utils/localize';
 import { sortAreas } from '../utils/area-entities';
-import { isHiddenAsUnavailable } from '../utils/entity-availability';
+import { isEntityActionAvailable, isHiddenAsUnavailable } from '../utils/entity-availability';
 import { getDevicesPageHiddenEntityIdSet, isConfigEntityInArea } from '../utils/entity-lookups';
 import { updateStoredDashboardStrategy } from '../utils/dashboard-config-store';
 import { isNonAdminUser } from '../utils/security';
@@ -1241,7 +1241,8 @@ export class DwainsDevicesCard extends LitElement {
    */
   private _renderRoomAction(area: AreaConfig, domain: string, entities: EntityConfig[]) {
     if (!hasRoomAction(domain)) return nothing;
-    const entityIds = entities.map((entity) => entity.entity_id).filter((entityId) => this._hass.states[entityId]);
+    const entityIds = entities.map((entity) => entity.entity_id)
+      .filter(entityId => isEntityActionAvailable(this._hass.states[entityId]));
     const activeCount = countActiveEntities(entityIds, (entityId) =>
       isRoomActionEntityActive(this._hass.states[entityId], domain)
     );
@@ -1308,7 +1309,8 @@ export class DwainsDevicesCard extends LitElement {
     }
 
     try {
-      await this._hass.callService(domain, action, { entity_id: entityIds });
+      const reachableIds = entityIds.filter(entityId => isEntityActionAvailable(this._hass.states[entityId]));
+      if (reachableIds.length) await this._hass.callService(domain, action, { entity_id: reachableIds });
     } catch (err) {
       console.warn(`Failed to run ${action} for ${domain}:`, err);
       fireEvent(this, 'hass-notification', { message: this._t('entity.group_failed') });

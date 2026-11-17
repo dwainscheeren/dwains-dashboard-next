@@ -5,17 +5,17 @@ import { fireEvent } from '../components/utils/fire-event';
 import { TileHoldGesture, isFromNestedControl } from './tile-tap';
 
 export interface TileTapOptions {
-  /** Runs on a pointer tap or click. */
+  /** Runs on a tap, or native keyboard activation. */
   tap: () => void;
   /**
    * When set, holding the tile runs this instead of the tap. A right click
-   * and native keyboard activation run it too, so details remain reachable.
+   * and the menu key (or Shift+F10) run it too.
    */
   hold?: () => void;
 }
 
 /**
- * Tap and hold for the native button covering a tile's details surface.
+ * Tap and hold for the native button covering a tile's main surface.
  * The quick controls are outside that button.
  */
 class TileTapDirective extends AsyncDirective {
@@ -63,14 +63,16 @@ class TileTapDirective extends AsyncDirective {
   }
 
   private _onClick = (event: MouseEvent): void => {
+    if (event.detail === 0) {
+      this._options?.tap();
+      return;
+    }
     if (this._gesture.consumeClick()) {
       event.preventDefault();
       event.stopPropagation();
       return;
     }
-    const options = this._options;
-    if (event.detail === 0 && options?.hold) options.hold();
-    else options?.tap();
+    this._options?.tap();
   };
 
   private _onPointerDown = (event: PointerEvent): void => {

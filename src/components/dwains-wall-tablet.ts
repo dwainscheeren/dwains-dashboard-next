@@ -501,11 +501,15 @@ export class DwainsWallTablet extends LitElement {
   };
 
   private _openSettings = (): void => {
-    this._menuOpen = false;
+    this._closeMenu();
     if (!isHomeViewPath(viewPathFromPath(window.location.pathname))) {
       navigateHomeAssistant(`/${this.dashSegment}/home`);
     }
-    const open = () => window.dispatchEvent(new CustomEvent('dwains-dashboard-next-open-settings'));
+    let handled = false;
+    const open = () => {
+      if (handled || !this._onDashboard() || !isHomeViewPath(viewPathFromPath(window.location.pathname))) return;
+      handled = !window.dispatchEvent(new CustomEvent('dwains-dashboard-next-open-settings', { cancelable: true }));
+    };
     open();
     window.setTimeout(open, 90);
     window.setTimeout(open, 240);

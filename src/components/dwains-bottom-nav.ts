@@ -14,7 +14,7 @@ import {
 import type { DwainsDashboardSettings } from '../types/strategy';
 import { ddLocalize } from '../utils/localize';
 import { TRANSLATIONS_LOADED_EVENT } from '../i18n';
-import { openHomeAssistantProfile } from '../utils/navigation';
+import { navigateHomeAssistant, openHomeAssistantProfile } from '../utils/navigation';
 import { syncHassDarkThemeAttribute } from '../utils/theme';
 import {
   restrictNonAdminDashboardSettings,
@@ -97,6 +97,7 @@ export class DwainsBottomNav extends LitElement {
   @state() private _pages: PageItem[] = [];
   @state() private _pagesOpen = false;
   @state() private _restrictedMenuOpen = false;
+  private _sheetOpener?: HTMLButtonElement;
   private _settings?: DwainsDashboardSettings;
 
   set hass(hass: any) {
@@ -259,7 +260,7 @@ export class DwainsBottomNav extends LitElement {
       return;
     }
     if (item.action === 'pages') {
-      this._openPages();
+      this._openPages(opener);
       return;
     }
     this._go(item.path);
@@ -305,30 +306,73 @@ export class DwainsBottomNav extends LitElement {
     fire();
   }
 
-  private _openPages(): void {
+  private _openPages(opener: HTMLButtonElement): void {
     const onlyPage = this._pages[0];
     if (this._pages.length === 1 && onlyPage) {
       this._go(onlyPage.path);
       return;
     }
-    this._pagesOpen = !this._pagesOpen;
+    if (this._pagesOpen) {
+      this._closePages();
+      return;
+    }
+    this._restrictedMenuOpen = false;
+    this._pagesOpen = true;
+    this._focusOpenSheet(opener);
   }
 
   private _closePages = (): void => {
     this._pagesOpen = false;
+    this._restoreSheetFocus();
   };
 
   private _isHaMenuRestricted(): boolean {
     return restrictNonAdminHaSidebar(this._hass, this._settings);
   }
 
-  private _openRestrictedMenu(): void {
+  private _openRestrictedMenu(opener: HTMLButtonElement): void {
+    if (this._restrictedMenuOpen) {
+      this._closeRestrictedMenu();
+      return;
+    }
     this._pagesOpen = false;
-    this._restrictedMenuOpen = !this._restrictedMenuOpen;
+    this._restrictedMenuOpen = true;
+    this._focusOpenSheet(opener);
   }
 
   private _closeRestrictedMenu = (): void => {
     this._restrictedMenuOpen = false;
+    this._restoreSheetFocus();
+  };
+
+  private _focusOpenSheet(opener: HTMLButtonElement): void {
+    this._sheetOpener = opener;
+    void this.updateComplete.then(() => this.renderRoot.querySelector<HTMLElement>('.pages-sheet.open button')?.focus());
+  }
+
+  private _restoreSheetFocus(): void {
+    const opener = this._sheetOpener;
+    this._sheetOpener = undefined;
+    void this.updateComplete.then(() => {
+      if (!this._pagesOpen && !this._restrictedMenuOpen) opener?.focus();
+    });
+  }
+
+  private _handleSheetKeydown = (event: KeyboardEvent) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      if (this._pagesOpen) this._closePages();
+      else this._closeRestrictedMenu();
+    } else if (event.key === 'Tab') {
+      const buttons = (event.currentTarget as HTMLElement).querySelectorAll<HTMLButtonElement>('button');
+      const first = buttons[0];
+      const last = buttons[buttons.length - 1];
+      if (event.shiftKey ? event.target === first : event.target === last) {
+        event.preventDefault();
+        (event.shiftKey ? last : first)?.focus();
+      }
+    }
   };
 
   private _openProfileSettings = (): void => {
@@ -336,9 +380,9 @@ export class DwainsBottomNav extends LitElement {
     openHomeAssistantProfile();
   };
 
-  private _toggleHaMenu(): void {
+  private _toggleHaMenu(opener: HTMLButtonElement): void {
     if (this._isHaMenuRestricted()) {
-      this._openRestrictedMenu();
+      this._openRestrictedMenu(opener);
       return;
     }
     // hass-toggle-menu wordt afgehandeld door <home-assistant-main>, dat in de
@@ -356,13 +400,8 @@ export class DwainsBottomNav extends LitElement {
   }
 
   private _go(path: string): void {
-    this._pagesOpen = false;
-    const url = `/${this._segment()}/${path}`;
-    window.history.pushState(null, '', url);
-    const ev = new Event('location-changed', { bubbles: true, composed: true });
-    (ev as any).detail = { replace: false };
-    window.dispatchEvent(ev);
-    this._active = path;
+    if (this._pagesOpen) this._closePages();
+    navigateHomeAssistant(`/${this._segment()}/${path}`);
   }
 
   protected render() {
@@ -383,6 +422,7 @@ export class DwainsBottomNav extends LitElement {
               title=${display.label}
               aria-label=${display.label}
               aria-current=${active ? 'page' : nothing}
+              aria-expanded=${it.action === 'pages' && this._pages.length > 1 ? String(this._pagesOpen) : nothing}
             >
               ${this._renderIcon(display.icon)}
               <span>${display.label}</span>
@@ -411,6 +451,7 @@ export class DwainsBottomNav extends LitElement {
       this._deviceContext.overview === false;
     const isBack = isArea || isDeviceGroup;
     const tabletMenu = _isWallTabletShellActive(this.dashSegment) && (!isBack || !_isMobileViewport());
+    const restrictedMenu = !isBack && !tabletMenu && this._isHaMenuRestricted();
     const label = tabletMenu
       ? ddLocalize(this._hass, 'kiosk.title')
       : isArea
@@ -424,7 +465,8 @@ export class DwainsBottomNav extends LitElement {
         type="button"
         title=${label}
         aria-label=${label}
-        aria-haspopup=${tabletMenu ? 'dialog' : nothing}
+        aria-haspopup=${tabletMenu || restrictedMenu ? 'dialog' : nothing}
+        aria-expanded=${restrictedMenu ? String(this._restrictedMenuOpen) : nothing}
         @click=${(event: Event) => {
           if (tabletMenu) {
             window.dispatchEvent(new CustomEvent(WALL_TABLET_OPEN_MENU_EVENT, {
@@ -435,7 +477,7 @@ export class DwainsBottomNav extends LitElement {
           } else if (isDeviceGroup) {
             this._goToDevicesOverview();
           } else {
-            this._toggleHaMenu();
+            this._toggleHaMenu(event.currentTarget as HTMLButtonElement);
           }
         }}
       >
@@ -463,14 +505,26 @@ export class DwainsBottomNav extends LitElement {
     return html`
       <button
         class="pages-backdrop ${this._restrictedMenuOpen ? 'open' : ''}"
-        aria-label=${ddLocalize(this._hass, 'common.close')}
+        type="button"
+        tabindex="-1"
+        aria-hidden="true"
+        ?inert=${!this._restrictedMenuOpen}
         @click=${this._closeRestrictedMenu}
       ></button>
-      <section class="pages-sheet ${this._restrictedMenuOpen ? 'open' : ''}" aria-hidden=${this._restrictedMenuOpen ? 'false' : 'true'}>
+      <section
+        class="pages-sheet ${this._restrictedMenuOpen ? 'open' : ''}"
+        role="dialog"
+        aria-modal="true"
+        aria-label=${ddLocalize(this._hass, 'navigation.menu')}
+        aria-hidden=${String(!this._restrictedMenuOpen)}
+        ?inert=${!this._restrictedMenuOpen}
+        @keydown=${this._handleSheetKeydown}
+      >
         <div class="pages-handle"></div>
         <div class="pages-heading">
           ${this._renderIcon('mdi:account-circle')}
           <span>${ddLocalize(this._hass, 'navigation.menu')}</span>
+          ${this._renderSheetClose(this._closeRestrictedMenu)}
         </div>
         <div class="pages-list">
           <button class="page-row" @click=${this._openProfileSettings}>
@@ -491,14 +545,26 @@ export class DwainsBottomNav extends LitElement {
     return html`
       <button
         class="pages-backdrop ${this._pagesOpen ? 'open' : ''}"
-        aria-label=${ddLocalize(this._hass, 'common.close')}
+        type="button"
+        tabindex="-1"
+        aria-hidden="true"
+        ?inert=${!this._pagesOpen}
         @click=${this._closePages}
       ></button>
-      <section class="pages-sheet ${this._pagesOpen ? 'open' : ''}" aria-hidden=${this._pagesOpen ? 'false' : 'true'}>
+      <section
+        class="pages-sheet ${this._pagesOpen ? 'open' : ''}"
+        role="dialog"
+        aria-modal="true"
+        aria-label=${ddLocalize(this._hass, 'navigation.pages')}
+        aria-hidden=${String(!this._pagesOpen)}
+        ?inert=${!this._pagesOpen}
+        @keydown=${this._handleSheetKeydown}
+      >
         <div class="pages-handle"></div>
         <div class="pages-heading">
           ${this._renderIcon('mdi:puzzle')}
           <span>${ddLocalize(this._hass, 'navigation.pages')}</span>
+          ${this._renderSheetClose(this._closePages)}
         </div>
         <div class="pages-list">
           ${this._pages.map((page) => {
@@ -522,6 +588,17 @@ export class DwainsBottomNav extends LitElement {
           })}
         </div>
       </section>
+    `;
+  }
+
+  private _renderSheetClose(onClose: () => void) {
+    return html`
+      <button
+        class="pages-close"
+        type="button"
+        aria-label=${ddLocalize(this._hass, 'common.close')}
+        @click=${onClose}
+      >${this._renderIcon('mdi:close')}</button>
     `;
   }
 
@@ -895,6 +972,7 @@ export class DwainsBottomNav extends LitElement {
       visibility: visible;
       pointer-events: auto;
       transform: translateY(0) scale(1);
+      transition-property: opacity, transform;
     }
 
     .pages-handle {
@@ -923,6 +1001,27 @@ export class DwainsBottomNav extends LitElement {
       height: 20px;
       color: rgba(15, 23, 42, 0.78);
       fill: currentColor;
+    }
+
+    .pages-close {
+      margin-inline-start: auto;
+      width: 44px;
+      height: 44px;
+      display: grid;
+      place-items: center;
+      border: 0;
+      border-radius: 50%;
+      background: transparent;
+      color: inherit;
+      cursor: pointer;
+    }
+
+    .pages-close:hover {
+      background: color-mix(in srgb, currentColor 10%, transparent);
+    }
+
+    .pages-close:focus-visible {
+      outline: 2px solid var(--primary-color);
     }
 
     .pages-list {

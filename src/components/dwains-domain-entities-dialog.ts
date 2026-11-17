@@ -2,6 +2,7 @@ import { mdiClose } from "@mdi/js";
 import { LitElement, html, css, PropertyValues, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { repeat } from 'lit/directives/repeat.js';
+import { ifDefined } from 'lit/directives/if-defined.js';
 import memoizeOne from 'memoize-one';
 
 import type { HassEntity, HomeAssistant } from '../types/home-assistant';
@@ -17,6 +18,7 @@ import { formatEntityStateWithUnit, formatValueWithUnit } from '../utils/unit-fo
 import './utils/dd-card-host';
 import './dwains-person-tile';
 import { getEntityRegistry } from '../utils/entity-registry';
+import { isEntityActionAvailable } from '../utils/entity-availability';
 import { closeDialogThenNavigate } from '../utils/dialog-history';
 import { getAreaConfigMap, getEntityConfigMap, resolveStatusEntityAreaId } from '../utils/entity-lookups';
 import { getDomainStates } from '../utils/state-index';
@@ -1011,7 +1013,8 @@ export class DwainsDomainEntitiesDialog extends LitElement {
   }
 
   private _renderRoomAction(group: RoomGroup, domain: string) {
-    const entityIds = group.entities.map(entity => entity.entity_id).filter(entityId => this.hass.states[entityId]);
+    const entityIds = group.entities.map(entity => entity.entity_id)
+      .filter(entityId => isEntityActionAvailable(this.hass.states[entityId]));
     const activeCount = countActiveEntities(entityIds, entityId => {
       const state = this._getEffectiveEntityState(this.hass.states[entityId]);
       return this._isEntityActiveForUi(state, domain);
@@ -1257,18 +1260,31 @@ export class DwainsDomainEntitiesDialog extends LitElement {
     const name = areaEntityDisplayName(fullName, areaName, this._params?.config?.settings);
     const active = this._isEntityActiveForUi(state, domain);
     const unavailable = this._isUnavailable(state);
-    const tapToggles = tileTapToggles(this._params?.config?.settings, entity.entity_id);
+    const tapToggles = !unavailable && tileTapToggles(this._params?.config?.settings, entity.entity_id);
     const tapOptions = this._tileTapOptions(entity.entity_id, tapToggles);
     const statusText = this._entityStatusText(state, domain);
-    const detailsButton = html`
+    const displayName = layout === 'row' ? name : fullName;
+    const detailsLabel = this._t('action.entity_action', { action: this._t('action.more_info'), name: displayName });
+    const tileButton = html`
       <button
         class="tile-surface"
         type="button"
-        aria-label=${this._t('action.entity_action', { action: this._t('action.more_info'), name: layout === 'row' ? name : fullName })}
+        role=${ifDefined(tapToggles ? 'switch' : undefined)}
+        aria-checked=${ifDefined(tapToggles ? String(active) : undefined)}
+        aria-label=${tapToggles ? displayName : detailsLabel}
         aria-description=${statusText}
         ${tileTap(tapOptions)}
       ></button>
     `;
+    const quickActions = tapToggles ? html`
+      <button
+        class="domain-entity-action domain-entity-more"
+        type="button"
+        title=${detailsLabel}
+        aria-label=${detailsLabel}
+        @click=${() => this._showMoreInfo(entity.entity_id)}
+      ><ha-icon icon="mdi:information-outline"></ha-icon></button>
+    ` : this._renderEntityActions(state, domain, active);
     const classes = [
       'domain-entity-card',
       `domain-entity-${domain}`,
@@ -1285,7 +1301,7 @@ export class DwainsDomainEntitiesDialog extends LitElement {
           class=${classes}
           style=${`--entity-color: ${this._entityColor(domain, deviceClass)};`}
         >
-          ${detailsButton}
+          ${tileButton}
           <div class="domain-entity-icon" aria-hidden="true">
             <ha-icon icon=${icon}></ha-icon>
           </div>
@@ -1294,7 +1310,7 @@ export class DwainsDomainEntitiesDialog extends LitElement {
             <div class="domain-entity-name">${name}</div>
             <div class="domain-entity-status">${statusText}</div>
           </div>
-          ${this._renderEntityActions(state, domain, active)}
+          ${quickActions}
         </article>
       `;
     }
@@ -1304,12 +1320,12 @@ export class DwainsDomainEntitiesDialog extends LitElement {
         class=${classes}
         style=${`--entity-color: ${this._entityColor(domain, deviceClass)};`}
       >
-        ${detailsButton}
+        ${tileButton}
         <div class="domain-entity-top">
           <div class="domain-entity-icon" aria-hidden="true">
             <ha-icon icon=${icon}></ha-icon>
           </div>
-          ${this._renderEntityActions(state, domain, active)}
+          ${quickActions}
         </div>
         <div class="domain-entity-copy" aria-hidden="true">
           <div class="domain-entity-meta">${fallbackMeta || areaName || this._t('dialog.no_area')}</div>
@@ -1438,20 +1454,10 @@ export class DwainsDomainEntitiesDialog extends LitElement {
   }
 
   private async _executeBulkAction(entityIds: string[], action: BulkDomainAction): Promise<void> {
+    entityIds = entityIds.filter(entityId => isEntityActionAvailable(this.hass.states[entityId]));
+    if (!entityIds.length) return;
     const domain = this._params?.domain || '';
-    const optimisticState = action === 'turn_on'
-      ? 'on'
-      : action === 'turn_off'
-        ? 'off'
-        : action === 'open_cover'
-          ? 'open'
-          : action === 'close_cover'
-            ? 'closed'
-            : action === 'unlock'
-              ? 'unlocked'
-              : action === 'lock'
-                ? 'locked'
-                : undefined;
+    const optimisticState = action === 'turn_on' ? 'on' : action === 'turn_off' ? 'off' : undefined;
     if (optimisticState) this._setOptimisticEntityStates(entityIds, optimisticState);
 
     try {
@@ -1469,7 +1475,7 @@ export class DwainsDomainEntitiesDialog extends LitElement {
         await this.hass.callService('lock', action, { entity_id: entityIds });
       }
     } catch (err) {
-      this._clearOptimisticEntityStates(entityIds);
+      if (optimisticState) this._clearOptimisticEntityStates(entityIds);
       console.warn(`Failed to run ${action} for ${domain}:`, err);
       this._showToast(this._t('entity.group_failed'));
     }
@@ -1633,7 +1639,7 @@ export class DwainsDomainEntitiesDialog extends LitElement {
     if (!optimistic || optimistic.expiresAt <= Date.now()) return state;
 
     const actualState = String(state?.state || '').toLowerCase();
-    if (actualState === optimistic.state.toLowerCase()) return state;
+    if (actualState === 'unavailable' || actualState === 'unknown' || actualState === optimistic.state.toLowerCase()) return state;
 
     return {
       ...(state as NonNullable<T>),

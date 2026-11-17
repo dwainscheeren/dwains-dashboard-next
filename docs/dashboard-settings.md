@@ -47,7 +47,7 @@ Choose what a tap on the tile of a light, switch, fan or input boolean does:
 - **Open details** (default): a tap opens the details of Home Assistant. The switch on the tile turns it on or off.
 - **Turn on or off**: a tap turns it on or off. Hold the tile for half a second to open the details. A right click, the menu key or Shift+F10 opens the details too.
 
-This works on the room pages, the favorites on Home, the device popups and the Devices page. Covers, locks and other tiles keep opening the details on a tap. Moving your finger while holding scrolls the page and does not open anything. An entity that is unavailable opens its details instead of turning on or off. Cards replaced by a blueprint keep their own tap and hold actions.
+This works on the room pages, the favorites on Home, the device popups and the Devices page. In rooms, favorites and popups you can also use the information button to open details directly. Covers, locks and other tiles keep opening the details on a tap. Moving your finger while holding scrolls the page and does not open anything. An entity that is unavailable opens its details instead of turning on or off. Cards replaced by a blueprint keep their own tap and hold actions.
 
 ### Master action confirmation
 
