@@ -9,6 +9,7 @@ import {
   type EnergyPowerConfig,
 } from './energy-prefs';
 import { splitUpstreamPower } from './power-hierarchy';
+import { ALARM_URGENT_DEVICE_CLASSES, ALWAYS_URGENT_DEVICE_CLASSES } from './status-urgency';
 
 // Area data is cached per area and reused as long as every input is the same
 // object as before: the area, its entity list, the state object of each of
@@ -267,11 +268,12 @@ export const getAreaData = (area: AreaConfig, hass: HomeAssistant, areaEntities:
     if (entity.entity_id.startsWith('binary_sensor.') &&
         state.state === 'on' &&
         state.attributes.device_class) {
-      const alertClasses = ['door', 'window', 'moisture', 'smoke'];
-      if (alertClasses.includes(state.attributes.device_class)) {
+      const deviceClass = state.attributes.device_class;
+      if (deviceClass !== 'motion' &&
+          (ALWAYS_URGENT_DEVICE_CLASSES.has(deviceClass) || ALARM_URGENT_DEVICE_CLASSES.has(deviceClass))) {
         alerts.push({
           entity_id: entity.entity_id,
-          deviceClass: state.attributes.device_class
+          deviceClass
         });
       }
     }

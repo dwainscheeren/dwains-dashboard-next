@@ -22,6 +22,7 @@ import {
 } from '../utils/security';
 import {
   WALL_TABLET_CHANGED_EVENT,
+  WALL_TABLET_OPEN_MENU_EVENT,
   WALL_TABLET_RESET_EVENT,
   isWallTabletEnabled,
   wallTabletHaMenuPeek,
@@ -248,13 +249,13 @@ export class DwainsBottomNav extends LitElement {
     this._sync();
   }
 
-  private _onItem(item: NavItem): void {
+  private _onItem(item: NavItem, opener: HTMLButtonElement): void {
     if (item.action === 'home') {
-      this._openHomeAreas();
+      this._openHomeAreas(opener);
       return;
     }
     if (item.action === 'devices') {
-      this._openDeviceTypes();
+      this._openDeviceTypes(opener);
       return;
     }
     if (item.action === 'pages') {
@@ -264,7 +265,7 @@ export class DwainsBottomNav extends LitElement {
     this._go(item.path);
   }
 
-  private _openHomeAreas(): void {
+  private _openHomeAreas(opener: HTMLButtonElement): void {
     this._pagesOpen = false;
 
     // On wide screens (wall tablet mode) there is no area menu to open: go to Home.
@@ -278,7 +279,7 @@ export class DwainsBottomNav extends LitElement {
 
     const fire = () => {
       this._active = 'home';
-      window.dispatchEvent(new CustomEvent('dwains-dashboard-next-toggle-area-nav'));
+      window.dispatchEvent(new CustomEvent('dwains-dashboard-next-toggle-area-nav', { detail: { opener } }));
     };
 
     if (this._currentPath() !== 'home') {
@@ -289,11 +290,11 @@ export class DwainsBottomNav extends LitElement {
     fire();
   }
 
-  private _openDeviceTypes(): void {
+  private _openDeviceTypes(opener: HTMLButtonElement): void {
     this._pagesOpen = false;
     const fire = () => {
       this._active = 'devices';
-      window.dispatchEvent(new CustomEvent('dwains-dashboard-next-toggle-devices-nav'));
+      window.dispatchEvent(new CustomEvent('dwains-dashboard-next-toggle-devices-nav', { detail: { opener } }));
     };
 
     if (this._currentPath() !== 'devices') {
@@ -378,7 +379,7 @@ export class DwainsBottomNav extends LitElement {
             return html`
             <button
               class="item ${active ? 'active' : ''} ${it.action === 'home' || it.action === 'devices' || it.action === 'pages' ? 'switcher' : ''}"
-              @click=${() => this._onItem(it)}
+              @click=${(event: Event) => this._onItem(it, event.currentTarget as HTMLButtonElement)}
               title=${display.label}
               aria-label=${display.label}
               aria-current=${active ? 'page' : nothing}
@@ -409,23 +410,27 @@ export class DwainsBottomNav extends LitElement {
       Boolean(this._deviceContext.domain) &&
       this._deviceContext.overview === false;
     const isBack = isArea || isDeviceGroup;
-    // A wall tablet keeps the Home Assistant menu out of reach; the wall tablet
-    // menu (press and hold the clock) opens it when needed. On wide screens the
-    // sidebars and the Home item already lead back.
-    if (_isWallTabletShellActive(this.dashSegment) && (!isBack || !_isMobileViewport())) return nothing;
-    const label = isArea
+    const tabletMenu = _isWallTabletShellActive(this.dashSegment) && (!isBack || !_isMobileViewport());
+    const label = tabletMenu
+      ? ddLocalize(this._hass, 'kiosk.title')
+      : isArea
       ? ddLocalize(this._hass, 'navigation.back_home')
       : isDeviceGroup
         ? ddLocalize(this._hass, 'navigation.back_devices')
         : ddLocalize(this._hass, 'navigation.open_menu');
     return html`
       <button
-        class="standalone-menu ${isBack ? 'is-back' : ''}"
+        class="standalone-menu ${isBack && !tabletMenu ? 'is-back' : ''}"
         type="button"
         title=${label}
         aria-label=${label}
-        @click=${() => {
-          if (isArea) {
+        aria-haspopup=${tabletMenu ? 'dialog' : nothing}
+        @click=${(event: Event) => {
+          if (tabletMenu) {
+            window.dispatchEvent(new CustomEvent(WALL_TABLET_OPEN_MENU_EVENT, {
+              detail: { dashSegment: this.dashSegment, opener: event.currentTarget },
+            }));
+          } else if (isArea) {
             this._goHomeFromArea();
           } else if (isDeviceGroup) {
             this._goToDevicesOverview();
@@ -434,7 +439,7 @@ export class DwainsBottomNav extends LitElement {
           }
         }}
       >
-        ${this._renderIcon(isBack ? 'mdi:arrow-left' : 'mdi:menu')}
+        ${this._renderIcon(tabletMenu ? 'mdi:tablet-dashboard' : isBack ? 'mdi:arrow-left' : 'mdi:menu')}
       </button>
     `;
   }

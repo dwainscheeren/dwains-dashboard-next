@@ -29,7 +29,7 @@ There are two ways:
 
 ## The Way Out
 
-Press and hold the clock or the greeting on the Home page for 3 seconds. The wall tablet menu opens with:
+Select the tablet icon next to the dashboard navigation. You can also press and hold the clock or the greeting on Home for 3 seconds. The wall tablet menu offers:
 
 - **Open Home Assistant menu**: shows the Home Assistant sidebar again until the tablet returns to Home or the dashboard is left. Not shown when the Home Assistant menu is restricted for the user (see [User permissions](user-permissions.html)).
 - **Dashboard settings**: only for users who may edit the dashboard.

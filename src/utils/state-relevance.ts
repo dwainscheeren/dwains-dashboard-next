@@ -1,6 +1,7 @@
 import type { HassEntity, HomeAssistant } from '../types/home-assistant';
 import { isCoverStatusActive } from './cover-status';
 import { isHiddenAsUnavailable } from './entity-availability';
+import { ALARM_URGENT_DEVICE_CLASSES, ALWAYS_URGENT_DEVICE_CLASSES } from './status-urgency';
 
 // Home Assistant replaces `hass` on every state change of any entity. These
 // helpers decide whether such a change can affect what a view shows, so the
@@ -103,18 +104,11 @@ const HOME_ENTITY_DOMAINS: ReadonlySet<string> = new Set(['person', 'camera', 'w
 
 // Binary sensor classes used by the status cards and the area badges and alerts.
 const HOME_BINARY_SENSOR_CLASSES: ReadonlySet<string> = new Set([
-  'door',
-  'gas',
-  'moisture',
-  'motion',
+  ...ALARM_URGENT_DEVICE_CLASSES,
+  ...ALWAYS_URGENT_DEVICE_CLASSES,
   'occupancy',
-  'opening',
   'presence',
-  'safety',
-  'smoke',
-  'tamper',
   'vibration',
-  'window',
 ]);
 
 const POWER_UNITS: ReadonlySet<string> = new Set(['w', 'kw', 'mw']);

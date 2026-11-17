@@ -96,6 +96,8 @@ export const getAlertIcon = (deviceClass?: string): string => {
     motion: 'mdi:motion-sensor',
     moisture: 'mdi:water-alert',
     smoke: 'mdi:smoke-detector-alert',
+    carbon_monoxide: 'mdi:molecule-co',
+    garage_door: 'mdi:garage-open',
     problem: 'mdi:alert-circle',
     safety: 'mdi:shield-alert',
     heat: 'mdi:fire-alert',

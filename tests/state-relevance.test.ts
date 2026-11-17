@@ -54,3 +54,12 @@ describe('cover relevance on Home', () => {
     expect(homeRelevant('cover.blind', before, after, new Set(['cover.blind']))).toBe(true);
   });
 });
+
+it('updates Home as soon as a carbon monoxide sensor activates or clears', () => {
+  const id = 'binary_sensor.hall_co';
+  const off = entityState(id, 'off', { device_class: 'carbon_monoxide' });
+  const on = entityState(id, 'on', { device_class: 'carbon_monoxide' });
+
+  expect(homeRelevant(id, off, on)).toBe(true);
+  expect(homeRelevant(id, on, off)).toBe(true);
+});

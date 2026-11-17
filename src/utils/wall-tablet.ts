@@ -27,6 +27,8 @@ export const WALL_TABLET_HOLD_ATTRIBUTE = 'data-dd-wall-tablet-hold';
 export const WALL_TABLET_HOLD_MS = 3000;
 /** Fired on window when the preferences or the session state change. */
 export const WALL_TABLET_CHANGED_EVENT = 'dwains-dashboard-next-wall-tablet-changed';
+/** Opens the wall tablet menu from the active dashboard's navigation bar. */
+export const WALL_TABLET_OPEN_MENU_EVENT = 'dwains-dashboard-next-wall-tablet-open-menu';
 /**
  * Fired on window, cancelable, when the tablet returns to Home after
  * inactivity. A view with unsaved changes cancels it to keep them.

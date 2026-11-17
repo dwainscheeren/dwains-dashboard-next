@@ -20,6 +20,7 @@ import {
 import {
   DEFAULT_WALL_TABLET_PREFS,
   WALL_TABLET_CHANGED_EVENT,
+  WALL_TABLET_OPEN_MENU_EVENT,
   WALL_TABLET_HOLD_ATTRIBUTE,
   WALL_TABLET_HOLD_MS,
   WALL_TABLET_PREVIEW_EVENT,
@@ -153,6 +154,7 @@ export class DwainsWallTablet extends LitElement {
   private _wakeTimer?: number;
   private _burnInStep = 0;
   private _menuOpenedAt = 0;
+  private _menuOpener?: HTMLElement;
   private _returningHome = false;
   private _consumingUrl = false;
   private _weatherState?: HassEntity;
@@ -206,6 +208,7 @@ export class DwainsWallTablet extends LitElement {
     window.addEventListener('location-changed', this._refresh);
     window.addEventListener('popstate', this._refresh);
     window.addEventListener(WALL_TABLET_CHANGED_EVENT, this._refresh);
+    window.addEventListener(WALL_TABLET_OPEN_MENU_EVENT, this._handleOpenMenu);
     window.addEventListener(WALL_TABLET_PREVIEW_EVENT, this._handlePreview);
     window.addEventListener('storage', this._handleStorage);
     this._refresh();
@@ -216,6 +219,7 @@ export class DwainsWallTablet extends LitElement {
     window.removeEventListener('location-changed', this._refresh);
     window.removeEventListener('popstate', this._refresh);
     window.removeEventListener(WALL_TABLET_CHANGED_EVENT, this._refresh);
+    window.removeEventListener(WALL_TABLET_OPEN_MENU_EVENT, this._handleOpenMenu);
     window.removeEventListener(WALL_TABLET_PREVIEW_EVENT, this._handlePreview);
     window.removeEventListener('storage', this._handleStorage);
     this._stop();
@@ -424,10 +428,16 @@ export class DwainsWallTablet extends LitElement {
 
   // ---- Menu -------------------------------------------------------------------
 
-  private _openMenu(): void {
-    if (!this._active) return;
+  private _handleOpenMenu = (event: Event): void => {
+    const detail = (event as CustomEvent<{ dashSegment: string; opener: HTMLElement }>).detail;
+    if (detail?.dashSegment === this.dashSegment) this._openMenu(detail.opener);
+  };
+
+  private _openMenu(opener?: HTMLElement): void {
+    if (!this._active || this._menuOpen || this._screensaver) return;
+    this._menuOpener = opener;
     this._menuOpen = true;
-    this._menuOpenedAt = Date.now();
+    this._menuOpenedAt = opener ? 0 : Date.now();
     try {
       navigator.vibrate?.(20);
     } catch {
@@ -437,6 +447,8 @@ export class DwainsWallTablet extends LitElement {
 
   private _closeMenu = (): void => {
     this._menuOpen = false;
+    this._menuOpener?.focus();
+    this._menuOpener = undefined;
   };
 
   private _handleBackdropClick = (): void => {

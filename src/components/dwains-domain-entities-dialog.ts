@@ -2,7 +2,6 @@ import { mdiClose } from "@mdi/js";
 import { LitElement, html, css, PropertyValues, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { repeat } from 'lit/directives/repeat.js';
-import { ifDefined } from 'lit/directives/if-defined.js';
 import memoizeOne from 'memoize-one';
 
 import type { HassEntity, HomeAssistant } from '../types/home-assistant';
@@ -43,6 +42,7 @@ import {
   shouldAnimateSheet,
 } from '../utils/sheet-drag-controller';
 import { dialogSheetStyles } from './styles/dialog-sheet-styles';
+import { tileSurfaceStyles } from './styles/tile-surface-styles';
 import { homeInformationDialogStyles } from './styles/home-information-dialog-styles';
 import { roomActionStyles } from './styles/room-action-styles';
 
@@ -124,7 +124,7 @@ export class DwainsDomainEntitiesDialog extends LitElement {
     return ddLocalizePlural(this.hass, key, count);
   }
 
-  static override styles = [dialogSheetStyles, css`
+  static override styles = [dialogSheetStyles, tileSurfaceStyles, css`
     .area-section {
       margin-bottom: 18px;
       background: color-mix(in srgb, var(--card-background-color) 98%, #ffffff);
@@ -359,6 +359,12 @@ export class DwainsDomainEntitiesDialog extends LitElement {
 
     .domain-entity-action:active {
       transform: scale(0.94);
+    }
+
+    button.domain-entity-action,
+    .domain-cover-actions {
+      position: relative;
+      z-index: 3;
     }
 
     .domain-entity-action:disabled {
@@ -1253,7 +1259,16 @@ export class DwainsDomainEntitiesDialog extends LitElement {
     const unavailable = this._isUnavailable(state);
     const tapToggles = tileTapToggles(this._params?.config?.settings, entity.entity_id);
     const tapOptions = this._tileTapOptions(entity.entity_id, tapToggles);
-    const holdHint = tapToggles ? this._t('tile.hold_for_details') : undefined;
+    const statusText = this._entityStatusText(state, domain);
+    const detailsButton = html`
+      <button
+        class="tile-surface"
+        type="button"
+        aria-label=${this._t('action.entity_action', { action: this._t('action.more_info'), name: layout === 'row' ? name : fullName })}
+        aria-description=${statusText}
+        ${tileTap(tapOptions)}
+      ></button>
+    `;
     const classes = [
       'domain-entity-card',
       `domain-entity-${domain}`,
@@ -1269,19 +1284,15 @@ export class DwainsDomainEntitiesDialog extends LitElement {
         <article
           class=${classes}
           style=${`--entity-color: ${this._entityColor(domain, deviceClass)};`}
-          role="button"
-          tabindex="0"
-          aria-label=${name}
-          aria-description=${ifDefined(holdHint)}
-          ${tileTap(tapOptions)}
         >
+          ${detailsButton}
           <div class="domain-entity-icon" aria-hidden="true">
             <ha-icon icon=${icon}></ha-icon>
           </div>
-          <div class="domain-entity-copy">
+          <div class="domain-entity-copy" aria-hidden="true">
             ${fallbackMeta ? html`<div class="domain-entity-meta">${fallbackMeta}</div>` : nothing}
             <div class="domain-entity-name">${name}</div>
-            <div class="domain-entity-status">${this._entityStatusText(state, domain)}</div>
+            <div class="domain-entity-status">${statusText}</div>
           </div>
           ${this._renderEntityActions(state, domain, active)}
         </article>
@@ -1292,29 +1303,24 @@ export class DwainsDomainEntitiesDialog extends LitElement {
       <article
         class=${classes}
         style=${`--entity-color: ${this._entityColor(domain, deviceClass)};`}
-        role="button"
-        tabindex="0"
-        aria-label=${fullName}
-        aria-description=${ifDefined(holdHint)}
-        ${tileTap(tapOptions)}
       >
+        ${detailsButton}
         <div class="domain-entity-top">
-          <div class="domain-entity-icon">
+          <div class="domain-entity-icon" aria-hidden="true">
             <ha-icon icon=${icon}></ha-icon>
           </div>
           ${this._renderEntityActions(state, domain, active)}
         </div>
-        <div class="domain-entity-copy">
+        <div class="domain-entity-copy" aria-hidden="true">
           <div class="domain-entity-meta">${fallbackMeta || areaName || this._t('dialog.no_area')}</div>
           <div class="domain-entity-name">${name}</div>
-          <div class="domain-entity-status">${this._entityStatusText(state, domain)}</div>
+          <div class="domain-entity-status">${statusText}</div>
         </div>
       </article>
     `;
   }
 
   private _renderEntityActions(state: any, domain: string, active: boolean) {
-    const entityId = state?.entity_id;
     const actionKind = this._entityActionKind(domain);
     const unavailable = this._isUnavailable(state);
     const name = this._entityDisplayName(state);
@@ -1356,15 +1362,9 @@ export class DwainsDomainEntitiesDialog extends LitElement {
     }
 
     return html`
-      <button
-        class="domain-entity-action domain-entity-more"
-        type="button"
-        title=${this._t('action.more_info')}
-        aria-label=${labelFor(this._t('action.more_info'))}
-        @click=${(event: Event) => this._handleMoreInfo(event, entityId)}
-      >
+      <span class="domain-entity-action domain-entity-more" aria-hidden="true">
         <ha-icon icon="mdi:chevron-right"></ha-icon>
-      </button>
+      </span>
     `;
   }
 
@@ -1565,11 +1565,6 @@ export class DwainsDomainEntitiesDialog extends LitElement {
   // Show a short message in Home Assistant's own snackbar.
   private _showToast(message: string): void {
     fireEvent(this, 'hass-notification', { message });
-  }
-
-  private _handleMoreInfo(event: Event, entityId?: string): void {
-    event.stopPropagation();
-    if (entityId) this._showMoreInfo(entityId);
   }
 
   private _showMoreInfo(entityId: string): void {

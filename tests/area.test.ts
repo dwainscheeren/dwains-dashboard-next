@@ -113,6 +113,19 @@ describe('getAreaData', () => {
     });
   });
 
+  it('adds a carbon monoxide warning to the room only while the sensor is active', () => {
+    const entity_id = 'binary_sensor.living_co';
+    const attributes = { device_class: 'carbon_monoxide' };
+    const roomEntities = [...entities, { entity_id, area_id: area.area_id }];
+    const active = hassWithStates([...states, entityState(entity_id, 'on', attributes)]);
+    const clear = hassWithStates([...states, entityState(entity_id, 'off', attributes)]);
+
+    expect(getAreaData(area, active, roomEntities, config).alerts)
+      .toContainEqual({ entity_id, deviceClass: 'carbon_monoxide' });
+    expect(getAreaData(area, clear, roomEntities, config).alerts)
+      .not.toContainEqual({ entity_id, deviceClass: 'carbon_monoxide' });
+  });
+
   describe('with a device hierarchy in the energy settings', () => {
     const circuits = [
       entityState('sensor.general_power', '3200', { unit_of_measurement: 'W' }),

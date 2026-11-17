@@ -31,8 +31,7 @@ function alertRank(deviceClass: string): number {
 /**
  * The status badges of an area: active lights, switches, covers, climate,
  * media players, fans, unlocked locks and motion, then one badge per alert
- * type (open windows, open doors, moisture, smoke) with its own icon and
- * colour. Urgent badges come first.
+ * type with its own icon and colour. Urgent badges come first.
  */
 export function buildAreaStatusBadges(areaData: AreaData, alarmTriggered: boolean): AreaStatusBadge[] {
   const badges: AreaStatusBadge[] = [];

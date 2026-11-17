@@ -5,18 +5,18 @@ import { fireEvent } from '../components/utils/fire-event';
 import { TileHoldGesture, isFromNestedControl } from './tile-tap';
 
 export interface TileTapOptions {
-  /** Runs on a tap, and on Enter or Space while the tile has focus. */
+  /** Runs on a pointer tap or click. */
   tap: () => void;
   /**
    * When set, holding the tile runs this instead of the tap. A right click
-   * and the menu key (or Shift+F10) run it too.
+   * and native keyboard activation run it too, so details remain reachable.
    */
   hold?: () => void;
 }
 
 /**
- * Tap and hold for a tile with role="button". Controls inside the tile, such
- * as its switch, keep working on their own.
+ * Tap and hold for the native button covering a tile's details surface.
+ * The quick controls are outside that button.
  */
 class TileTapDirective extends AsyncDirective {
   private _element?: HTMLElement;
@@ -54,7 +54,6 @@ class TileTapDirective extends AsyncDirective {
 
   private _listen(element: HTMLElement): void {
     element.addEventListener('click', this._onClick);
-    element.addEventListener('keydown', this._onKeyDown);
     element.addEventListener('pointerdown', this._onPointerDown);
     element.addEventListener('pointermove', this._onPointerMove, { passive: true });
     element.addEventListener('pointerup', this._onPointerEnd);
@@ -69,15 +68,9 @@ class TileTapDirective extends AsyncDirective {
       event.stopPropagation();
       return;
     }
-    this._options?.tap();
-  };
-
-  private _onKeyDown = (event: KeyboardEvent): void => {
-    // Keys pressed on a control inside the tile belong to that control.
-    if (event.target !== event.currentTarget) return;
-    if (event.key !== 'Enter' && event.key !== ' ') return;
-    event.preventDefault();
-    this._options?.tap();
+    const options = this._options;
+    if (event.detail === 0 && options?.hold) options.hold();
+    else options?.tap();
   };
 
   private _onPointerDown = (event: PointerEvent): void => {

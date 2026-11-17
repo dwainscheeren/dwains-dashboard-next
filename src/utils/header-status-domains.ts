@@ -12,6 +12,7 @@ import { buildHousePowerUsage } from './power-usage';
 import { getStateIndex } from './state-index';
 import { getEntityRegistry } from './entity-registry';
 import { coverStatusKind, isCoverStatusActive, type CoverStatusKind } from './cover-status';
+import { ALWAYS_URGENT_DEVICE_CLASSES } from './status-urgency';
 
 export { coverStatusKind, isCoverStatusActive, type CoverStatusKind } from './cover-status';
 
@@ -65,8 +66,12 @@ const BINARY_SENSOR_CONFIG: Record<string, { icon: string }> = {
   presence: { icon: getDeviceClassIcon('binary_sensor', 'presence') },
   safety: { icon: getDeviceClassIcon('binary_sensor', 'safety') },
   tamper: { icon: getAlertIcon('tamper') },
-  vibration: { icon: getDeviceClassIcon('binary_sensor', 'vibration') }
+  vibration: { icon: getDeviceClassIcon('binary_sensor', 'vibration') },
+  garage_door: { icon: getAlertIcon('garage_door') },
 };
+for (const deviceClass of ALWAYS_URGENT_DEVICE_CLASSES) {
+  BINARY_SENSOR_CONFIG[deviceClass] ??= { icon: getAlertIcon(deviceClass) };
+}
 
 // Covers are split in one chip per kind, in this order.
 const COVER_STATUS_KINDS: readonly CoverStatusKind[] = ['window', 'door', 'gate', 'shading'];

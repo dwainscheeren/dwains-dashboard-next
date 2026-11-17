@@ -51,8 +51,7 @@ export const layoutCardStyles = css`
     .welcome-weather:focus-visible,
     .welcome-alarm:focus-visible,
     .area-light-toggle:focus-visible,
-    .mobile-area-card:focus-visible,
-    .mobile-entity-card:focus-visible {
+    .mobile-area-card:focus-visible {
       outline: 2px solid var(--primary-color);
       outline-offset: 2px;
     }
@@ -1347,6 +1346,50 @@ export const layoutCardStyles = css`
       align-items: center;
       gap: 10px;
       margin-top: 14px;
+    }
+
+    .welcome-alerts {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    .welcome-alert {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 44px;
+      max-width: 100%;
+      padding: 8px 12px;
+      border: 1px solid color-mix(in srgb, var(--error-color, #db4437) 48%, transparent);
+      border-radius: 10px;
+      background: color-mix(in srgb, var(--error-color, #db4437) 10%, var(--card-background-color));
+      color: var(--primary-text-color);
+      font: inherit;
+      font-size: .875rem;
+      font-weight: 600;
+      text-align: start;
+      cursor: pointer;
+    }
+
+    .welcome-alert:hover {
+      background: color-mix(in srgb, var(--error-color, #db4437) 17%, var(--card-background-color));
+    }
+
+    .welcome-alert:focus-visible {
+      outline: 2px solid var(--primary-color);
+      outline-offset: 2px;
+    }
+
+    .welcome-alert ha-icon {
+      --mdc-icon-size: 19px;
+      color: var(--error-color, #db4437);
+      flex-shrink: 0;
+    }
+
+    .welcome-alert-count {
+      font-variant-numeric: tabular-nums;
     }
 
     .welcome-alarm {
@@ -3586,6 +3629,13 @@ export const layoutCardStyles = css`
       gap: 10px;
     }
 
+    button.mobile-entity-action,
+    .mobile-entity-select-action,
+    .mobile-cover-actions {
+      position: relative;
+      z-index: 3;
+    }
+
     .mobile-entity-icon {
       width: 36px;
       height: 36px;
@@ -4703,10 +4753,20 @@ export const layoutCardStyles = css`
     }
 
     .favorite-top {
+      z-index: 3;
+      pointer-events: none;
       display: flex;
       align-items: flex-start;
       justify-content: space-between;
       gap: 12px;
+    }
+
+    button.favorite-quick-action {
+      pointer-events: auto;
+    }
+
+    button.favorite-quick-action:disabled {
+      cursor: not-allowed;
     }
 
     .favorite-icon {

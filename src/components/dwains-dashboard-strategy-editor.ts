@@ -2468,13 +2468,18 @@ export class DwainsDashboardStrategyEditor extends LitElement {
               const detail = this._homeSectionDetail(section);
               const isFavorites = section === 'favorites';
               const hasDetail = Boolean(detail) || isFavorites;
+              const openDetail = () => isFavorites ? this._openFavoritesFrom('home') : this._openHomeSectionDetail(section);
+              const detailLabel = this._t('action.entity_action', {
+                action: this._t('sidebar.dashboard_settings'),
+                name: this._t(meta.labelKey),
+              });
               return html`
                 <div
                   class="home-section-item ${enabled ? '' : 'disabled'} ${hasDetail ? 'has-detail' : ''} ${isDragging ? 'dragging' : ''} ${isDragOver ? 'drag-over' : ''}"
                   draggable="true"
                   data-section=${section}
                   data-index=${index}
-                  @click=${() => isFavorites ? this._openFavoritesFrom('home') : detail && this._openHomeSectionDetail(section)}
+                  @click=${() => { if (hasDetail) openDetail(); }}
                   @dragstart=${(e: DragEvent) => this._handleHomeSectionDragStart(e, section)}
                   @dragend=${this._handleHomeSectionDragEnd}
                   @dragover=${(e: DragEvent) => this._handleHomeSectionDragOver(e, index)}
@@ -2494,7 +2499,15 @@ export class DwainsDashboardStrategyEditor extends LitElement {
                       ${isFavorites ? this._renderManageFavoritesLink('home') : nothing}
                     </div>
                   </div>
-                  ${hasDetail ? html`<ha-svg-icon class="home-section-detail-chevron" .path=${mdiChevronRight}></ha-svg-icon>` : nothing}
+                  ${hasDetail ? html`
+                    <button
+                      class="home-section-toggle home-section-detail-button"
+                      type="button"
+                      aria-label=${detailLabel}
+                      title=${detailLabel}
+                      @click=${(event: Event) => { event.stopPropagation(); openDetail(); }}
+                    ><ha-svg-icon class="home-section-detail-chevron" .path=${mdiChevronRight}></ha-svg-icon></button>
+                  ` : nothing}
                   <div class="home-section-actions" @click=${(event: Event) => event.stopPropagation()}>
                     <button
                       class="home-section-toggle ${enabled ? 'enabled' : ''}"
@@ -2780,6 +2793,10 @@ export class DwainsDashboardStrategyEditor extends LitElement {
             const enabled = !hiddenCards.has(card);
             const detail = card === 'climate' || card === 'outdoor_climate' ? card : undefined;
             const clickable = Boolean(detail);
+            const detailLabel = this._t('action.entity_action', {
+              action: this._t('sidebar.dashboard_settings'),
+              name: this._t(meta.labelKey),
+            });
 
             return html`
               <div
@@ -2792,7 +2809,15 @@ export class DwainsDashboardStrategyEditor extends LitElement {
                   <div class="home-section-description">${this._t(meta.descriptionKey)}</div>
                 </div>
                 <div class="home-info-card-actions" @click=${(event: Event) => event.stopPropagation()}>
-                  ${clickable ? html`<ha-svg-icon class="home-section-detail-chevron" .path=${mdiChevronRight}></ha-svg-icon>` : nothing}
+                  ${detail ? html`
+                    <button
+                      class="home-section-toggle home-section-detail-button"
+                      type="button"
+                      aria-label=${detailLabel}
+                      title=${detailLabel}
+                      @click=${() => { this._homeSettingsDetail = detail; }}
+                    ><ha-svg-icon class="home-section-detail-chevron" .path=${mdiChevronRight}></ha-svg-icon></button>
+                  ` : nothing}
                   <button
                     class="home-section-toggle ${enabled ? 'enabled' : ''}"
                     type="button"
@@ -5699,10 +5724,6 @@ export class DwainsDashboardStrategyEditor extends LitElement {
         color: var(--secondary-text-color);
       }
 
-      .home-section-item > .home-section-detail-chevron {
-        margin-left: -2px;
-      }
-
       .home-info-card-actions {
         display: inline-flex;
         align-items: center;
@@ -5894,7 +5915,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
       }
 
       .home-section-item.has-detail {
-        grid-template-columns: 32px 42px minmax(0, 1fr) 20px auto;
+        grid-template-columns: 32px 42px minmax(0, 1fr) 40px auto;
       }
 
       .home-section-actions {
@@ -5922,6 +5943,14 @@ export class DwainsDashboardStrategyEditor extends LitElement {
 
       .home-section-toggle ha-icon {
         --mdc-icon-size: 20px;
+      }
+
+      .home-section-detail-button:hover {
+        background: var(--secondary-background-color);
+      }
+
+      .home-section-detail-button:focus-visible {
+        outline: 2px solid var(--primary-color);
       }
 
       .home-layout-reset {
@@ -5963,7 +5992,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
         }
 
         .home-section-item.has-detail {
-          grid-template-columns: 28px 36px minmax(0, 1fr) 20px;
+          grid-template-columns: 28px 36px minmax(0, 1fr) 40px;
         }
 
         .home-info-card-item {

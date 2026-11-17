@@ -126,8 +126,8 @@ export class DwainsDashboardStrategy implements LovelaceStrategy {
     }
 
     if (canManageDashboard) {
-      // "+"-tab om nieuwe blueprints toe te voegen (alleen icoon).
       views.push({
+        title: ddLocalize(hass, 'sidebar.add_blueprint'),
         icon: 'mdi:plus',
         path: 'add-blueprint',
         cards: [{ type: 'custom:dwains-dashboard-next-page-card', add: true, settings: dashboardConfig.settings || {} }]

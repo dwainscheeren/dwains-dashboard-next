@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { ALWAYS_URGENT_DEVICE_CLASSES, applyStatusUrgency } from '../src/utils/status-urgency';
 import {
   coverStatusKind,
   getGroupMemberIds,
@@ -312,5 +313,32 @@ describe('status chip icons', () => {
       moisture: 'mdi:water-alert',
       tamper: 'mdi:lock-alert',
     });
+  });
+});
+
+describe('urgent safety sensors', () => {
+  it('shows each active urgent class and omits inactive or unavailable sensors', () => {
+    const classes = [...ALWAYS_URGENT_DEVICE_CLASSES];
+    const active = classes.map(deviceClass => entityState(`binary_sensor.${deviceClass}`, 'on', { device_class: deviceClass }));
+    const hass = hassWithStates([
+      ...active,
+      entityState('binary_sensor.co_clear', 'off', { device_class: 'carbon_monoxide' }),
+      entityState('binary_sensor.co_unavailable', 'unavailable', { device_class: 'carbon_monoxide' }),
+    ]);
+    const config = baseConfig({
+      entities: Object.keys(hass.states).map(entity_id => ({ entity_id, area_id: 'living' })),
+    });
+
+    const statuses = applyStatusUrgency(getStatusDomains(hass, config), false);
+    expect(statuses).toHaveLength(classes.length);
+    for (const deviceClass of classes) {
+      expect(statuses).toContainEqual(expect.objectContaining({
+        domain: 'binary_sensor',
+        deviceClass,
+        urgent: true,
+        count: 1,
+        entities: [`binary_sensor.${deviceClass}`],
+      }));
+    }
   });
 });

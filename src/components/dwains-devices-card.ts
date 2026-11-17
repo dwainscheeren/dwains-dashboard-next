@@ -121,6 +121,7 @@ export class DwainsDevicesCard extends LitElement {
   @state() private _selectedDomain: string | null = null;
   @state() private _isMobile = false;
   @state() private _mobileNavOpen = false;
+  private _mobileNavOpener?: HTMLElement;
   private _pendingDomainSelection: string | null = null;
 
   private _deviceTrackingTimer?: number;
@@ -830,7 +831,7 @@ export class DwainsDevicesCard extends LitElement {
     this._selectedDomain = domain;
     this._updateUrlDomain(domain === DEVICES_OVERVIEW_KEY ? null : domain);
     this._syncBottomNavDeviceContext();
-    this._closeMobileNav();
+    this._closeMobileNav(true);
     if (changed) this._scrollToTop();
   }
 
@@ -841,22 +842,46 @@ export class DwainsDevicesCard extends LitElement {
     if (this._isMobile && window.scrollY > 0) window.scrollTo(0, 0);
   }
 
-  private _toggleMobileNav = () => {
-    this._mobileNavOpen = !this._mobileNavOpen;
-  };
-
-  private _handleDevicesNavToggle = (event?: Event) => {
+  private _handleDevicesNavToggle = (event: Event) => {
     if (!this._isMobile) return;
-    if ((event as CustomEvent<{ open?: boolean }>)?.detail?.open) {
-      this._mobileNavOpen = true;
+    const detail = (event as CustomEvent<{ open?: boolean; opener?: HTMLElement }>).detail;
+    if (this._mobileNavOpen) {
+      if (!detail?.open) this._closeMobileNav();
       return;
     }
-    this._toggleMobileNav();
+    this._mobileNavOpener = detail?.opener;
+    this._mobileNavOpen = true;
+    void this.updateComplete.then(() => {
+      if (!this._mobileNavOpen) return;
+      const nav = this.renderRoot.querySelector<HTMLElement>('.sidebar');
+      (nav?.querySelector<HTMLElement>('[aria-current="page"]') ?? nav)?.focus();
+    });
   };
 
-  private _closeMobileNav = () => {
-    this._mobileNavOpen = false;
+  private _handleMobileNavKeydown = (event: KeyboardEvent) => {
+    if (event.key !== 'Escape' || !this._mobileNavOpen) return;
+    event.preventDefault();
+    event.stopPropagation();
+    this._closeMobileNav();
   };
+
+  private _closeMobileNav(navigated = false): void {
+    if (!this._mobileNavOpen) return;
+    this._mobileNavOpen = false;
+    const opener = this._mobileNavOpener;
+    this._mobileNavOpener = undefined;
+    void this.updateComplete.then(() => {
+      if (this._mobileNavOpen || !this.isConnected) return;
+      if (!navigated && opener?.isConnected) {
+        opener.focus();
+        return;
+      }
+      const content = this.renderRoot.querySelector<HTMLElement>('.content-area');
+      const heading = content?.querySelector<HTMLElement>('h1');
+      if (heading) heading.tabIndex = -1;
+      (heading ?? content)?.focus({ preventScroll: true });
+    });
+  }
 
   // ---- Render ---------------------------------------------------------------
 
@@ -881,7 +906,6 @@ export class DwainsDevicesCard extends LitElement {
     if (!groups.length) {
       return html`
         <div class="layout-container">
-          ${this._renderMobileOverlay()}
           <div class="main-content">
             <div class="content-area">
               <div class="device-view">
@@ -914,8 +938,8 @@ export class DwainsDevicesCard extends LitElement {
       <div class="layout-container">
         ${this._renderMobileOverlay()}
         ${this._renderSidebar(groups)}
-        <div class="main-content">
-          <div class="content-area">
+        <div class="main-content" ?inert=${this._isMobile && this._mobileNavOpen}>
+          <div class="content-area" tabindex="-1">
             ${this._selectedDomain === NEW_DEVICES_KEY
               ? this._renderNewDevicesView(newDevices)
               : this._selectedDomain === MAINTENANCE_KEY
@@ -936,7 +960,7 @@ export class DwainsDevicesCard extends LitElement {
     return html`
       <div
         class="mobile-nav-overlay ${this._mobileNavOpen ? 'open' : ''}"
-        @click=${this._closeMobileNav}
+        @click=${() => this._closeMobileNav()}
       ></div>
     `;
   }
@@ -1017,11 +1041,19 @@ export class DwainsDevicesCard extends LitElement {
     };
 
     return html`
-      <nav class=${classMap(classes)}>
+      <nav
+        class=${classMap(classes)}
+        tabindex="-1"
+        aria-label=${this._t('devices.title')}
+        ?inert=${this._isMobile && !this._mobileNavOpen}
+        @keydown=${this._handleMobileNavKeydown}
+      >
         <div class="sidebar-title">${this._t('devices.title')}</div>
         <div class="area-list">
           <button
             class="area-button overview ${this._selectedDomain === DEVICES_OVERVIEW_KEY ? 'selected' : ''}"
+            type="button"
+            aria-current=${this._selectedDomain === DEVICES_OVERVIEW_KEY ? 'page' : nothing}
             style=${`--domain-color: ${this._typeColor(DEVICES_OVERVIEW_KEY)};`}
             @click=${() => this._selectDomain(DEVICES_OVERVIEW_KEY)}
           >
@@ -1041,6 +1073,8 @@ export class DwainsDevicesCard extends LitElement {
             (group) => html`
               <button
                 class="area-button ${group.className || ''} ${this._selectedDomain === group.key ? 'selected' : ''}"
+                type="button"
+                aria-current=${this._selectedDomain === group.key ? 'page' : nothing}
                 style=${`--domain-color: ${group.color};`}
                 @click=${() => this._selectDomain(group.key)}
               >

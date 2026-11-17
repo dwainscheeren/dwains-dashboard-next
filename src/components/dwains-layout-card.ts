@@ -56,6 +56,7 @@ import {
 import { areaEntityDisplayName } from '../utils/entity-names';
 import { tileTapToggles } from '../utils/tile-tap';
 import { tileTap } from '../utils/tile-tap-directive';
+import { tileSurfaceStyles } from './styles/tile-surface-styles';
 import { areaPageEntities } from '../utils/area-energy-sensors';
 import { mergeReorderedSubset } from '../utils/list-order';
 import { navigateHomeAssistant, openHomeAssistantProfile } from '../utils/navigation';
@@ -63,7 +64,7 @@ import { syncHassDarkThemeAttribute } from '../utils/theme';
 import { HOME_SECTION_META, normalizeHiddenHomeInformationCards, normalizeHomeSectionsOrder, resolveHiddenHomeSections } from '../utils/home-sections';
 import { buildHousePowerUsage, type HousePowerUsageSummary } from '../utils/power-usage';
 import { getEnergyPowerConfig, subscribeEnergyPowerConfig, type EnergyPowerConfig } from '../utils/energy-prefs';
-import { powerSensorCountLabel } from '../utils/home-information';
+import { powerSensorCountLabel, roomActionNeedsConfirmation } from '../utils/home-information';
 import { normalizeHomeScenes, resolveHomeSceneItems, type HomeSceneItem } from '../utils/home-scenes';
 import { formatEntityStateWithUnit, formatValueWithUnit } from '../utils/unit-format';
 import { showDomainEntitiesDialog } from './utils/show-domain-entities-dialog';
@@ -247,6 +248,7 @@ export class DwainsLayoutCard extends LitElement {
   @state() private _currentTime = '';
   @state() private _currentDate = '';
   @state() private _mobileNavOpen = false;
+  private _mobileNavOpener?: HTMLElement;
   @state() private _editMode = false;
   @state() private _notificationsOpen = false;
   @state() private _persistentNotifications: PersistentNotification[] = [];
@@ -280,6 +282,7 @@ export class DwainsLayoutCard extends LitElement {
   @state() private _generatedGroupDrag: { areaId: string; groupKey: string } | null = null;
   @state() private _generatedGroupDragOver: { areaId: string; groupKey: string } | null = null;
   @state() private _optimisticEntityStates: Record<string, OptimisticEntityState> = {};
+  private _pendingAreaLightActions = new Set<string>();
   @state() private _renderAllMobileHomeAreas = false;
   @state() private _renderAllMobileAreaEntities = false;
   @state() private _settingsDirty = false;
@@ -538,7 +541,7 @@ export class DwainsLayoutCard extends LitElement {
     };
   }
 
-  static override styles = [layoutCardStyles, layoutControlsStyles, pageHeaderStyles];
+  static override styles = [layoutCardStyles, layoutControlsStyles, pageHeaderStyles, tileSurfaceStyles];
 
   connectedCallback() {
     super.connectedCallback();
@@ -1380,11 +1383,13 @@ export class DwainsLayoutCard extends LitElement {
 
     if (this._selectedView === 'area' && this._selectedArea) {
       const areaEntityIds = this._areaRelevantEntityIds(this._selectedArea);
+      const showsHouseStatus = !this._isMobile || this._mobileNavOpen;
       return hasRelevantStateChange(oldHass.states, newHass.states, (entityId, oldState, newState) =>
         !oldState ||
         !newState ||
         areaEntityIds.has(entityId) ||
         isUpdateEntityStateChange(entityId, oldState, newState) ||
+        (showsHouseStatus && isHomeRelevantStateChange(entityId, oldState, newState, areaEntityIds)) ||
         (nowPlaying && isNowPlayingRelevantStateChange(entityId, oldState, newState))
       );
     }
@@ -1493,10 +1498,11 @@ export class DwainsLayoutCard extends LitElement {
         ${this._renderMobileOverlay()}
         ${this._renderSidebar()}
         ${!this._isMobile ? this._renderSidebarResizeHandle() : nothing}
-        <div class="main-content">
+        <div class="main-content" ?inert=${this._isMobile && this._mobileNavOpen}>
           ${this._selectedView === 'area' && !this._isMobile ? this._renderGlobalHeader() : nothing}
           <div
             class="content-area ${this._selectedView === 'home' ? 'home-content-area' : ''} ${this._selectedView === 'area' ? 'area-content-area' : ''} ${this._selectedView === 'settings' ? 'settings-content-area' : ''}"
+            tabindex="-1"
             @scroll=${this._handleContentScroll}
           >
             ${this._selectedView === 'home'
@@ -1523,6 +1529,8 @@ export class DwainsLayoutCard extends LitElement {
         type="button"
         title=${collapsed ? this._t('sidebar.show') : this._t('sidebar.collapse')}
         aria-label=${collapsed ? this._t('sidebar.show') : this._t('sidebar.collapse')}
+        aria-expanded=${String(!collapsed)}
+        aria-controls="dd-areas-sidebar"
         @click=${this._toggleAreaSidebarCollapsed}
       >
         <ha-icon icon=${collapsed ? 'mdi:chevron-right' : 'mdi:chevron-left'}></ha-icon>
@@ -1551,7 +1559,7 @@ export class DwainsLayoutCard extends LitElement {
     return html`
       <div
         class="mobile-nav-overlay ${this._mobileNavOpen ? 'open' : ''}"
-        @click=${this._closeMobileNav}
+        @click=${() => this._closeMobileNav()}
       ></div>
     `;
   }
@@ -1730,7 +1738,15 @@ export class DwainsLayoutCard extends LitElement {
     const hasNotifications = showNotifications && this._persistentNotifications.length > 0;
 
     return html`
-      <nav class=${classMap(classes)} @scroll=${this._handleSidebarScroll}>
+      <nav
+        class=${classMap(classes)}
+        id="dd-areas-sidebar"
+        tabindex="-1"
+        aria-label=${this._t('home.areas')}
+        ?inert=${(this._isMobile && !this._mobileNavOpen) || this._isDesktopAreaSidebarCollapsed()}
+        @scroll=${this._handleSidebarScroll}
+        @keydown=${this._handleMobileNavKeydown}
+      >
         <div class="area-list" ${ref(this._sidebarListRef)}>
           <div
             class="area-button home-button ${this._selectedView === 'home' ? 'selected' : ''} ${hasNotifications ? 'has-notifications' : ''}"
@@ -1903,19 +1919,23 @@ export class DwainsLayoutCard extends LitElement {
     ].filter(Boolean);
     const sensorsText = sensors.join(' • ');
     const lightsOn = areaData.domains.light?.on || 0;
-    const lightToggleLabel = this._tp('sidebar.turn_off_area_lights', lightsOn, { area: area.name });
+    const lightOffLabel = this._tp('sidebar.turn_off_area_lights', lightsOn, { area: area.name });
+    const areaBadges = getAreaStatusBadges(areaData, this._isAlarmTriggered());
+    const urgentStatuses = areaBadges
+      .filter(badge => badge.urgent && badge.deviceClass)
+      .map(badge => `${getDeviceClassName(this.hass, badge.deviceClass!)}: ${badge.count}`);
     // Mobile: four places like the area cards. Desktop: as many as fit on
     // the tile, at most eight badges.
     const { visible: badges, hidden: hiddenBadges } = this._isMobile
-      ? limitAreaStatusBadges(getAreaStatusBadges(areaData, this._isAlarmTriggered()), MOBILE_AREA_BADGE_LIMIT)
+      ? limitAreaStatusBadges(areaBadges, MOBILE_AREA_BADGE_LIMIT)
       : limitAreaStatusBadges(
-          getAreaStatusBadges(areaData, this._isAlarmTriggered()),
+          areaBadges,
           sidebarAreaBadgeLimit(this._sidebarBadgeLimits, areasInFloor),
           SIDEBAR_AREA_BADGE_MAX
         );
 
     // The area item is a container with a full-size select button and, as a
-    // sibling, the light toggle; buttons are never nested.
+    // sibling, the lights-off button.
         return html`
           <div
             class="area-button ${isSelected ? 'selected' : ''} ${hasPicture ? 'has-picture' : ''} ${pictureContrastClass}"
@@ -1923,7 +1943,7 @@ export class DwainsLayoutCard extends LitElement {
             <button
               class="area-button-action"
               type="button"
-              aria-label=${[area.name, ...sensors].join(', ')}
+              aria-label=${[area.name, ...sensors, ...urgentStatuses].join(', ')}
               aria-current=${this._selectedView === 'area' && isSelected ? 'page' : nothing}
               @click=${() => this._selectArea(area.area_id)}
             ></button>
@@ -1954,9 +1974,9 @@ export class DwainsLayoutCard extends LitElement {
                       class="info-badge status-badge light clickable area-light-toggle"
                       type="button"
                       style=${this._areaBadgeStyle(badge)}
-                      title=${lightToggleLabel}
-                      aria-label=${lightToggleLabel}
-                      @click=${(e: Event) => this._handleLightToggle(e, area.area_id)}
+                      title=${lightOffLabel}
+                      aria-label=${lightOffLabel}
+                      @click=${(event: Event) => void this._setAreaLights(area.area_id, 'off', event.currentTarget as HTMLButtonElement)}
                     >
                       <ha-icon icon=${badge.icon}></ha-icon>
                       <span class="badge-count">${badge.count}</span>
@@ -2383,7 +2403,12 @@ export class DwainsLayoutCard extends LitElement {
               </button>
             ` : nothing}
             ${onSeeAll ? html`
-              <button class="mobile-section-action" type="button" @click=${onSeeAll}>
+              <button
+                class="mobile-section-action"
+                type="button"
+                aria-label=${`${this._t('common.see_all')} · ${title}`}
+                @click=${onSeeAll}
+              >
                 <span>${this._t('common.see_all')}</span>
                 <ha-icon icon="mdi:chevron-right"></ha-icon>
               </button>
@@ -2610,6 +2635,8 @@ export class DwainsLayoutCard extends LitElement {
     const userPicture = this._getWelcomeUserPicture(userName);
     const userInitials = this._userInitials(this.hass?.user?.name || '');
     const alarmContent = this._renderHomeAlarm();
+    const urgentStatuses = this._homeUrgentStatuses();
+    const snapshot = this._getHomeSnapshotText(weatherEntity);
 
     return html`
       <div class="home-welcome">
@@ -2635,7 +2662,7 @@ export class DwainsLayoutCard extends LitElement {
                   <span class="welcome-name">${userName}</span>
                   <span class="welcome-title">${greeting}, ${userName}</span>
                 </div>
-                <div class="welcome-return">${this._getHomeSnapshotText(weatherEntity)}</div>
+                ${snapshot ? html`<div class="welcome-return">${snapshot}</div>` : nothing}
               </div>
             </div>
             <div class="welcome-actions">
@@ -2686,9 +2713,31 @@ export class DwainsLayoutCard extends LitElement {
               ` : nothing}
             </div>
           ` : nothing}
+          ${urgentStatuses.length ? html`
+            <div class="welcome-alerts">
+              ${urgentStatuses.map(domain => html`
+                <button
+                  class="welcome-alert"
+                  type="button"
+                  aria-label=${this._statusCardAccessibleLabel(domain)}
+                  @click=${() => this._handleStatusCardClick(domain)}
+                >
+                  <ha-icon icon=${domain.icon} aria-hidden="true"></ha-icon>
+                  <span>${this._statusCardTitle(domain)}</span>
+                  ${domain.count > 1 ? html`<span class="welcome-alert-count" aria-hidden="true">${domain.count}</span>` : nothing}
+                </button>
+              `)}
+            </div>
+          ` : nothing}
         </div>
       </div>
     `;
+  }
+
+  private _homeUrgentStatuses(): DomainCount[] {
+    if (!this._homeInformationCardVisible('device_groups') ||
+        !this._getVisibleHomeSections().includes('devices')) return [];
+    return this._getStatusDomains().filter(domain => domain.urgent && domain.domain !== 'alarm_control_panel');
   }
 
   private _renderHomeStatusCards() {
@@ -2697,7 +2746,8 @@ export class DwainsLayoutCard extends LitElement {
       ? domains.filter(d =>
           d.domain !== 'person' &&
           d.domain !== 'wattage' &&
-          d.domain !== 'camera'
+          d.domain !== 'camera' &&
+          (!d.urgent || d.domain === 'alarm_control_panel')
         )
       : [];
     const gridMode = this._mobileHomeDevicesLayout === 'grid';
@@ -3223,7 +3273,7 @@ export class DwainsLayoutCard extends LitElement {
       parts.push(weatherText);
     }
 
-    return parts.slice(0, 3).join(' · ') || this._t('home.everything_calm');
+    return parts.slice(0, 3).join(' · ');
   }
 
   private _formatWeatherSnapshot(weatherEntity?: any): string {
@@ -3726,16 +3776,19 @@ export class DwainsLayoutCard extends LitElement {
       <article
         class=${classes}
         data-entity=${entityId}
-        role="button"
-        tabindex="0"
-        aria-description=${ifDefined(tapToggles ? this._t('tile.hold_for_details') : undefined)}
-        ${tileTap(this._tileTapOptions(entityId, tapToggles))}
       >
+        <button
+          class="tile-surface"
+          type="button"
+          aria-label=${this._t('action.entity_action', { action: this._t('action.more_info'), name })}
+          aria-description=${formattedState}
+          ${tileTap(this._tileTapOptions(entityId, tapToggles))}
+        ></button>
         <div class="favorite-top">
-          <div class="favorite-icon">
+          <div class="favorite-icon" aria-hidden="true">
             <ha-icon icon=${icon}></ha-icon>
           </div>
-          <button
+          ${supportsToggle ? html`<button
             class="favorite-quick-action"
             type="button"
             title=${this._favoriteQuickTitle(state, domain)}
@@ -3744,12 +3797,15 @@ export class DwainsLayoutCard extends LitElement {
             aria-label=${this._isOnOffDomain(domain)
               ? name
               : this._t('action.entity_action', { action: this._favoriteQuickTitle(state, domain), name })}
+            ?disabled=${isHiddenAsUnavailable(state)}
             @click=${(event: Event) => this._handleFavoriteQuickAction(event, state, domain)}
           >
             <ha-icon icon=${this._favoriteQuickIcon(state, domain)}></ha-icon>
-          </button>
+          </button>` : html`
+            <span class="favorite-quick-action" aria-hidden="true"><ha-icon icon="mdi:chevron-right"></ha-icon></span>
+          `}
         </div>
-        <div class="favorite-body">
+        <div class="favorite-body" aria-hidden="true">
           <div class="favorite-name">${name}</div>
           <div class="favorite-state">${formattedState}</div>
           ${areaName ? html`<div class="favorite-area">${areaName}</div>` : nothing}
@@ -4778,7 +4834,7 @@ export class DwainsLayoutCard extends LitElement {
       onClick: () => void
     ) => {
       const isOn = active > 0;
-      const label = this._t(`domain.${kind}`);
+      const label = this._t(`area_header.room_${kind}`);
       const state = this._areaTileState(active, total, 'on');
       const action = this._t(isOn ? actionKey[1] : actionKey[0], { active, total });
       return html`
@@ -4859,7 +4915,7 @@ export class DwainsLayoutCard extends LitElement {
           this._countActiveEntities(lights, 'light'),
           ['mdi:lightbulb-outline', 'mdi:lightbulb'],
           ['action.lights_on_summary', 'action.lights_off_summary'],
-          () => this._toggleAreaLights(areaId)
+          () => this._setAreaLights(areaId, 'toggle')
         ) : nothing}
         ${switches.length ? toggleTile(
           'switch',
@@ -5825,6 +5881,7 @@ export class DwainsLayoutCard extends LitElement {
     // (unless turned off) and use the second line for the device when that adds something.
     const name = areaEntityDisplayName(fullName, area.name, this.config?.settings);
     const deviceLabel = areaEntityDeviceLabel(name, this._entityDeviceName(entity.entity_id), area.name);
+    const statusText = this._mobileEntityStatusText(state, domain);
     const active = this._isEntityActiveForUi(state, domain);
     const actionKind = this._mobileEntityActionKind(domain);
     const tapToggles = tileTapToggles(this.config?.settings, entity.entity_id);
@@ -5841,23 +5898,25 @@ export class DwainsLayoutCard extends LitElement {
       <article
         class=${classes}
         style=${`--entity-color: ${this._mobileEntityColor(domain, deviceClass)};`}
-        role="button"
-        tabindex="0"
-        aria-label=${fullName}
-        aria-description=${ifDefined(tapToggles ? this._t('tile.hold_for_details') : undefined)}
-        title=${fullName}
-        ${tileTap(this._tileTapOptions(entity.entity_id, tapToggles))}
       >
+        <button
+          class="tile-surface"
+          type="button"
+          aria-label=${this._t('action.entity_action', { action: this._t('action.more_info'), name: fullName })}
+          aria-description=${statusText}
+          title=${fullName}
+          ${tileTap(this._tileTapOptions(entity.entity_id, tapToggles))}
+        ></button>
         <div class="mobile-entity-top">
-          <div class="mobile-entity-icon">
+          <div class="mobile-entity-icon" aria-hidden="true">
             <ha-icon icon=${icon}></ha-icon>
           </div>
           ${this._renderMobileEntityActions(state, domain, active)}
         </div>
-        <div class="mobile-entity-content">
+        <div class="mobile-entity-content" aria-hidden="true">
           ${deviceLabel ? html`<div class="mobile-entity-meta">${deviceLabel}</div>` : nothing}
           <div class="mobile-entity-name">${name}</div>
-          <div class="mobile-entity-status">${this._mobileEntityStatusText(state, domain)}</div>
+          <div class="mobile-entity-status">${statusText}</div>
         </div>
       </article>
     `;
@@ -5959,7 +6018,6 @@ export class DwainsLayoutCard extends LitElement {
   }
 
   private _renderMobileEntityActions(state: any, domain: string, active: boolean) {
-    const entityId = state?.entity_id;
     const actionKind = this._mobileEntityActionKind(domain);
     const unavailable = ['unavailable', 'unknown'].includes(String(state?.state || '').toLowerCase());
     const name = this._entityDisplayName(state);
@@ -6019,15 +6077,9 @@ export class DwainsLayoutCard extends LitElement {
     }
 
     return html`
-      <button
-        class="mobile-entity-action mobile-entity-more"
-        type="button"
-        title=${this._t('action.more_info')}
-        aria-label=${labelFor(this._t('action.more_info'))}
-        @click=${(event: Event) => this._handleMobileMoreInfo(event, entityId)}
-      >
+      <span class="mobile-entity-action mobile-entity-more" aria-hidden="true">
         <ha-icon icon="mdi:chevron-right"></ha-icon>
-      </button>
+      </span>
     `;
   }
 
@@ -6177,11 +6229,6 @@ export class DwainsLayoutCard extends LitElement {
     }
   }
 
-  private _handleMobileMoreInfo(event: Event, entityId?: string): void {
-    event.stopPropagation();
-    if (entityId) this._showMoreInfo(entityId);
-  }
-
   private _mobileControllableEntities(entities: EntityConfig[]): EntityConfig[] {
     return entities.filter(entity => {
       const domain = entity.entity_id.split('.')[0] || '';
@@ -6214,9 +6261,9 @@ export class DwainsLayoutCard extends LitElement {
     areaId: string
   ): Promise<boolean> {
     const normalizedDomain = normalizeMasterActionConfirmationDomain(domain);
-    if (!normalizedDomain || !masterActionConfirmationEnabled(this.config?.settings, normalizedDomain)) {
-      return true;
-    }
+    if (!normalizedDomain) return true;
+    const action = normalizedDomain === 'lock' && turnOn ? 'unlock' : 'turn_on';
+    if (!roomActionNeedsConfirmation(action, masterActionConfirmationEnabled(this.config?.settings, normalizedDomain))) return true;
 
     const actionLabel = this._masterActionLabel(normalizedDomain, turnOn);
     return this._showConfirmation(
@@ -6624,7 +6671,14 @@ export class DwainsLayoutCard extends LitElement {
 
   private _getCachedAreaData(area: AreaConfig): AreaData {
     // getAreaData() reuses its result while the area's entities and their states are unchanged.
-    return getAreaData(area, this.hass, this._getFilteredAreaEntities(area.area_id), this.config);
+    const entities = this._getFilteredAreaEntities(area.area_id);
+    const data = getAreaData(area, this.hass, entities, this.config);
+    const lights = data.domains.light;
+    if (!lights?.total || !Object.keys(this._optimisticEntityStates).length) return data;
+
+    const on = this._countActiveEntities(entities.filter(entity => entity.entity_id.startsWith('light.')), 'light');
+    if (on === lights.on) return data;
+    return { ...data, domains: { ...data.domains, light: { ...lights, on } } };
   }
 
   private _getPictureContrastClass(picture?: string | null): string {
@@ -6772,7 +6826,7 @@ export class DwainsLayoutCard extends LitElement {
       this._settingsEditorInitialized = false;
     }
     this._syncBottomNavAreaContext();
-    this._closeMobileNav();
+    this._closeMobileNav(true);
   }
 
   private _selectArea(areaId: string) {
@@ -6783,7 +6837,7 @@ export class DwainsLayoutCard extends LitElement {
     this._editMode = false;
     this._rememberAreaEditMode(null);
     this._clearSettingsEditState();
-    this._closeMobileNav();
+    this._closeMobileNav(true);
     this._updateUrlArea(areaId);
     this._syncBottomNavAreaContext();
   }
@@ -6792,13 +6846,28 @@ export class DwainsLayoutCard extends LitElement {
     this._headerExpanded = !this._headerExpanded;
   }
 
-  private _toggleMobileNav() {
-    this._mobileNavOpen = !this._mobileNavOpen;
+  private _openMobileNav(opener?: HTMLElement): void {
+    if (this._mobileNavOpen) return;
+    this._mobileNavOpener = opener;
+    this._mobileNavOpen = true;
+    void this.updateComplete.then(() => {
+      if (!this._mobileNavOpen) return;
+      const nav = this.renderRoot.querySelector<HTMLElement>('#dd-areas-sidebar');
+      (nav?.querySelector<HTMLElement>('[aria-current="page"]') ?? nav?.querySelector<HTMLElement>('button') ?? nav)?.focus();
+    });
   }
 
-  private _handleAreaNavToggle = () => {
+  private _handleAreaNavToggle = (event: Event) => {
     if (!this._isMobile) return;
-    this._toggleMobileNav();
+    if (this._mobileNavOpen) this._closeMobileNav();
+    else this._openMobileNav((event as CustomEvent<{ opener?: HTMLElement }>).detail?.opener);
+  };
+
+  private _handleMobileNavKeydown = (event: KeyboardEvent) => {
+    if (event.key !== 'Escape' || !this._mobileNavOpen) return;
+    event.preventDefault();
+    event.stopPropagation();
+    this._closeMobileNav();
   };
 
   private _handleOpenSettingsEvent = () => {
@@ -6828,7 +6897,7 @@ export class DwainsLayoutCard extends LitElement {
     });
   };
 
-  private _openMobileAreaSwitcher = () => {
+  private _openMobileAreaSwitcher = (event?: Event) => {
     if (!this._isMobile) return;
     if (!this._canLeaveSettings(() => this._openMobileAreaSwitcher())) return;
     this._selectedView = 'home';
@@ -6838,7 +6907,7 @@ export class DwainsLayoutCard extends LitElement {
     this._rememberAreaEditMode(null);
     this._updateUrlArea(null);
     this._clearSettingsEditState();
-    this._mobileNavOpen = true;
+    this._openMobileNav(event?.currentTarget as HTMLElement | undefined);
   };
 
   private _openMobileDeviceSwitcher = () => {
@@ -7082,8 +7151,22 @@ export class DwainsLayoutCard extends LitElement {
     );
   }
 
-  private _closeMobileNav() {
+  private _closeMobileNav(navigated = false) {
+    if (!this._mobileNavOpen) return;
     this._mobileNavOpen = false;
+    const opener = this._mobileNavOpener;
+    this._mobileNavOpener = undefined;
+    void this.updateComplete.then(() => {
+      if (this._mobileNavOpen || !this.isConnected) return;
+      if (!navigated && opener?.isConnected) {
+        opener.focus();
+        return;
+      }
+      const content = this.renderRoot.querySelector<HTMLElement>('.content-area');
+      const heading = content?.querySelector<HTMLElement>('h1');
+      if (heading) heading.tabIndex = -1;
+      (heading ?? content)?.focus({ preventScroll: true });
+    });
   }
 
   private _showMoreInfo(entityId: string) {
@@ -7525,11 +7608,6 @@ export class DwainsLayoutCard extends LitElement {
     });
   }
 
-  private _handleLightToggle(e: Event, areaId: string) {
-    e.stopPropagation(); // Prevent area selection
-    this._toggleAreaLights(areaId);
-  }
-
   private _updateEntityCards(_oldHass: HomeAssistant, newHass: HomeAssistant): void {
     if (!this.shadowRoot) return;
 
@@ -7599,30 +7677,38 @@ export class DwainsLayoutCard extends LitElement {
     });
   }
 
-  private async _toggleAreaLights(areaId: string) {
+  private async _setAreaLights(areaId: string, action: 'off' | 'toggle', offButton?: HTMLButtonElement) {
+    if (this._pendingAreaLightActions.has(areaId)) return;
     const entities = this._getFilteredAreaEntities(areaId);
     const lights = entities.filter(e => e.entity_id.startsWith('light.'));
     if (lights.length === 0) return;
 
     const allOff = this._areAllEntitiesOff(lights, 'light');
-    const confirmed = await this._confirmMasterActionIfNeeded('light', allOff, lights.length, areaId);
-    if (!confirmed) return;
-
-    const service = allOff ? 'turn_on' : 'turn_off';
+    if (action === 'off' && allOff) return;
+    const turnOn = action === 'toggle' && allOff;
     const entityIds = lights.map(e => e.entity_id);
 
-    this._setOptimisticEntityStates(entityIds, allOff ? 'on' : 'off');
-
+    this._pendingAreaLightActions.add(areaId);
     try {
-      await this.hass.callService('light', service, {
+      const confirmed = await this._confirmMasterActionIfNeeded('light', turnOn, lights.length, areaId);
+      if (!confirmed) return;
+
+      // The badge goes away when the last light turns off.
+      if (offButton && this.shadowRoot?.activeElement === offButton) {
+        offButton.closest('.area-button')?.querySelector<HTMLButtonElement>('.area-button-action')?.focus();
+      }
+      this._setOptimisticEntityStates(entityIds, turnOn ? 'on' : 'off');
+      await this.hass.callService('light', turnOn ? 'turn_on' : 'turn_off', {
         entity_id: entityIds
       });
 
-      this._showToast(this._t(allOff ? 'action.all_lights_on' : 'action.all_lights_off'));
+      this._showToast(this._t(turnOn ? 'action.all_lights_on' : 'action.all_lights_off'));
     } catch (err) {
       this._clearOptimisticEntityStates(entityIds);
       console.warn(`Failed to toggle lights in area ${areaId}:`, err);
       this._showToast(this._t('entity.lights_failed'));
+    } finally {
+      this._pendingAreaLightActions.delete(areaId);
     }
   }
 
