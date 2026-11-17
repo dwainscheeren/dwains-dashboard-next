@@ -19,6 +19,7 @@ import './utils/dd-card-host';
 import './dwains-person-tile';
 import { getEntityRegistry } from '../utils/entity-registry';
 import { isEntityActionAvailable } from '../utils/entity-availability';
+import { coverSupportsCommand, DeviceCommands, isDeviceCommand, type DeviceCommand } from '../utils/device-commands';
 import { closeDialogThenNavigate } from '../utils/dialog-history';
 import { getAreaConfigMap, getEntityConfigMap, resolveStatusEntityAreaId } from '../utils/entity-lookups';
 import { getDomainStates } from '../utils/state-index';
@@ -102,6 +103,7 @@ interface OptimisticEntityState {
 
 @customElement('dwains-dashboard-next-domain-entities-dialog')
 export class DwainsDomainEntitiesDialog extends LitElement {
+  private readonly _deviceCommands = new DeviceCommands(() => this.requestUpdate());
   @property({ attribute: false }) public hass!: HomeAssistant;
 
   @state() private _params?: DomainEntitiesDialogParams;
@@ -369,7 +371,9 @@ export class DwainsDomainEntitiesDialog extends LitElement {
       z-index: 3;
     }
 
-    .domain-entity-action:disabled {
+    .domain-entity-action:disabled,
+    .domain-entity-action[aria-disabled="true"],
+    .domain-action-button[aria-disabled="true"] {
       opacity: 0.36;
       cursor: not-allowed;
     }
@@ -1047,13 +1051,15 @@ export class DwainsDomainEntitiesDialog extends LitElement {
       <div class="room-segmented" role="group" aria-label=${group.areaName}>
         ${action.items.map(item => {
           const label = this._t(item.labelKey);
+          const targets = this._eligibleActionIds(entityIds, item.action);
           return html`
             <button
               class="room-segment ${item.current ? 'is-current' : ''}"
               type="button"
               title=${label}
               aria-label=${this._t('action.entity_action', { action: label, name: group.areaName })}
-              @click=${() => this._runRoomAction(group, entityIds, item.action, label)}
+              aria-disabled=${targets.length ? nothing : 'true'}
+              @click=${() => this._runRoomAction(group, targets, item.action, label)}
             >
               <ha-icon icon=${item.icon} aria-hidden="true"></ha-icon>
             </button>
@@ -1162,17 +1168,21 @@ export class DwainsDomainEntitiesDialog extends LitElement {
     if (!entityIds.length) return nothing;
 
     const color = this._entityColor(domain);
-    const actionButton = (label: string, icon: string, action: BulkDomainAction) => html`
+    const actionButton = (label: string, icon: string, action: BulkDomainAction) => {
+      const targets = this._eligibleActionIds(entityIds, action);
+      return html`
       <button
         class="domain-action-button"
         type="button"
         style=${`--domain-color: ${color};`}
-        @click=${() => this._runBulkDomainAction(entityIds, action, label)}
+        aria-disabled=${targets.length ? nothing : 'true'}
+        @click=${() => this._runBulkDomainAction(targets, action, label)}
       >
         <ha-icon icon=${icon}></ha-icon>
         <span>${label}</span>
       </button>
     `;
+    };
 
     if (['light', 'switch', 'fan', 'input_boolean'].includes(domain)) {
       return html`
@@ -1262,7 +1272,9 @@ export class DwainsDomainEntitiesDialog extends LitElement {
     const unavailable = this._isUnavailable(state);
     const tapToggles = !unavailable && tileTapToggles(this._params?.config?.settings, entity.entity_id);
     const tapOptions = this._tileTapOptions(entity.entity_id, tapToggles);
-    const statusText = this._entityStatusText(state, domain);
+    const reportedState = this._entityStatusText(state, domain);
+    const statusText = this._deviceCommands.isPending(entity.entity_id)
+      ? `${reportedState} · ${this._t('common.loading')}` : reportedState;
     const displayName = layout === 'row' ? name : fullName;
     const detailsLabel = this._t('action.entity_action', { action: this._t('action.more_info'), name: displayName });
     const tileButton = html`
@@ -1362,15 +1374,18 @@ export class DwainsDomainEntitiesDialog extends LitElement {
     }
 
     if (actionKind === 'lock') {
-      const unlocked = this._isEntityActiveForUi(state, domain);
+      const unlocked = ['unlocked', 'open'].includes(state.state);
+      const command = state.state === 'locked' ? 'unlock' : 'lock';
+      const label = this._t(`action.${command}`);
       return html`
         <button
           class="domain-entity-action domain-lock-action ${unlocked ? 'is-unlocked' : ''}"
           type="button"
-          title=${unlocked ? this._t('action.lock') : this._t('action.unlock')}
-          aria-label=${labelFor(unlocked ? this._t('action.lock') : this._t('action.unlock'))}
+          title=${label}
+          aria-label=${labelFor(label)}
           ?disabled=${unavailable}
-          @click=${(event: Event) => this._handleLockAction(event, state)}
+          aria-disabled=${this._deviceCommands.canSend(state, command) ? nothing : 'true'}
+          @click=${() => void this._sendDeviceCommand(state.entity_id, command)}
         >
           <ha-icon icon=${unlocked ? 'mdi:lock-open-variant-outline' : 'mdi:lock-outline'}></ha-icon>
         </button>
@@ -1387,9 +1402,9 @@ export class DwainsDomainEntitiesDialog extends LitElement {
   private _renderCoverActions(state: any) {
     const value = String(state?.state || '').toLowerCase();
     const unavailable = this._isUnavailable(state);
-    const canOpen = this._coverSupportsFeature(state, 1);
-    const canClose = this._coverSupportsFeature(state, 2);
-    const canStop = this._coverSupportsFeature(state, 8);
+    const canOpen = coverSupportsCommand(state, 'open_cover');
+    const canClose = coverSupportsCommand(state, 'close_cover');
+    const canStop = coverSupportsCommand(state, 'stop_cover');
     const name = this._entityDisplayName(state);
     const labelFor = (action: string) => this._t('action.entity_action', { action, name });
 
@@ -1402,7 +1417,8 @@ export class DwainsDomainEntitiesDialog extends LitElement {
             title=${this._t('action.open')}
             aria-label=${labelFor(this._t('action.open'))}
             ?disabled=${unavailable}
-            @click=${(event: Event) => this._handleCoverAction(event, state, 'open')}
+            aria-disabled=${this._deviceCommands.canSend(state, 'open_cover') ? nothing : 'true'}
+            @click=${() => void this._sendDeviceCommand(state.entity_id, 'open_cover')}
           >
             <ha-icon icon="mdi:arrow-up"></ha-icon>
           </button>
@@ -1414,7 +1430,8 @@ export class DwainsDomainEntitiesDialog extends LitElement {
             title=${this._t('action.stop')}
             aria-label=${labelFor(this._t('action.stop'))}
             ?disabled=${unavailable}
-            @click=${(event: Event) => this._handleCoverAction(event, state, 'stop')}
+            aria-disabled=${this._deviceCommands.canSend(state, 'stop_cover') ? nothing : 'true'}
+            @click=${() => void this._sendDeviceCommand(state.entity_id, 'stop_cover')}
           >
             <ha-icon icon="mdi:stop"></ha-icon>
           </button>
@@ -1426,7 +1443,8 @@ export class DwainsDomainEntitiesDialog extends LitElement {
             title=${this._t('action.close')}
             aria-label=${labelFor(this._t('action.close'))}
             ?disabled=${unavailable}
-            @click=${(event: Event) => this._handleCoverAction(event, state, 'close')}
+            aria-disabled=${this._deviceCommands.canSend(state, 'close_cover') ? nothing : 'true'}
+            @click=${() => void this._sendDeviceCommand(state.entity_id, 'close_cover')}
           >
             <ha-icon icon="mdi:arrow-down"></ha-icon>
           </button>
@@ -1437,6 +1455,7 @@ export class DwainsDomainEntitiesDialog extends LitElement {
 
   private async _runBulkDomainAction(entityIds: string[], action: BulkDomainAction, label: string): Promise<void> {
     const count = entityIds.length;
+    if (!count) return;
     const confirmed = await showConfirmDialog(this, {
       hass: this.hass,
       title: this._t('action.confirm_bulk', {
@@ -1453,8 +1472,15 @@ export class DwainsDomainEntitiesDialog extends LitElement {
     await this._executeBulkAction(entityIds, action);
   }
 
+  private _eligibleActionIds(entityIds: string[], action: BulkDomainAction): string[] {
+    return entityIds.filter(entityId => {
+      const state = this.hass.states[entityId];
+      return isDeviceCommand(action) ? this._deviceCommands.canSend(state, action) : isEntityActionAvailable(state);
+    });
+  }
+
   private async _executeBulkAction(entityIds: string[], action: BulkDomainAction): Promise<void> {
-    entityIds = entityIds.filter(entityId => isEntityActionAvailable(this.hass.states[entityId]));
+    entityIds = this._eligibleActionIds(entityIds, action);
     if (!entityIds.length) return;
     const domain = this._params?.domain || '';
     const optimisticState = action === 'turn_on' ? 'on' : action === 'turn_off' ? 'off' : undefined;
@@ -1466,13 +1492,8 @@ export class DwainsDomainEntitiesDialog extends LitElement {
         return;
       }
 
-      if (domain === 'cover') {
-        await this.hass.callService('cover', action, { entity_id: entityIds });
-        return;
-      }
-
-      if (domain === 'lock') {
-        await this.hass.callService('lock', action, { entity_id: entityIds });
+      if (isDeviceCommand(action) && await this._deviceCommands.send(this.hass, action, entityIds)) {
+        this._showToast(this._t('action.command_sent'));
       }
     } catch (err) {
       if (optimisticState) this._clearOptimisticEntityStates(entityIds);
@@ -1529,37 +1550,14 @@ export class DwainsDomainEntitiesDialog extends LitElement {
     this._showMoreInfo(entityId);
   }
 
-  private async _handleCoverAction(event: Event, state: any, action: 'open' | 'stop' | 'close'): Promise<void> {
-    event.stopPropagation();
-    const entityId = state?.entity_id;
-    if (!entityId) return;
-
-    const service = action === 'open' ? 'open_cover' : action === 'close' ? 'close_cover' : 'stop_cover';
-    const optimisticState = action === 'open' ? 'open' : action === 'close' ? 'closed' : undefined;
-    if (optimisticState) this._setOptimisticEntityStates([entityId], optimisticState);
-
+  private async _sendDeviceCommand(entityId: string, command: DeviceCommand): Promise<void> {
     try {
-      await this.hass.callService('cover', service, { entity_id: entityId });
+      if (await this._deviceCommands.send(this.hass, command, [entityId])) {
+        this._showToast(this._t('action.command_sent'));
+      }
     } catch (err) {
-      this._clearOptimisticEntityStates([entityId]);
-      console.warn(`Failed to ${action} cover ${entityId}:`, err);
-      this._showToast(this._t('entity.cover_failed'));
-    }
-  }
-
-  private async _handleLockAction(event: Event, state: any): Promise<void> {
-    event.stopPropagation();
-    const entityId = state?.entity_id;
-    if (!entityId) return;
-
-    try {
-      const unlocked = this._isEntityActiveForUi(state, 'lock');
-      this._setOptimisticEntityStates([entityId], unlocked ? 'locked' : 'unlocked');
-      await this.hass.callService('lock', unlocked ? 'lock' : 'unlock', { entity_id: entityId });
-    } catch (err) {
-      this._clearOptimisticEntityStates([entityId]);
-      console.warn(`Failed to toggle lock ${entityId}:`, err);
-      this._showToast(this._t('entity.lock_failed'));
+      console.warn(`Failed to run ${command} for ${entityId}:`, err);
+      this._showToast(this._t(entityId.startsWith('lock.') ? 'entity.lock_failed' : 'entity.cover_failed'));
     }
   }
 
@@ -1588,15 +1586,6 @@ export class DwainsDomainEntitiesDialog extends LitElement {
     if (domain === 'cover') return 'cover';
     if (domain === 'lock') return 'lock';
     return 'more';
-  }
-
-  private _coverSupportsFeature(state: any, feature: number): boolean {
-    const supported = Number(state?.attributes?.supported_features);
-    if (!Number.isFinite(supported) || supported <= 0) {
-      return feature === 1 || feature === 2;
-    }
-
-    return (supported & feature) !== 0;
   }
 
   private _entityStatusText(state: any, domain: string): string {

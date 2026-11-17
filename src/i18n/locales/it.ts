@@ -295,6 +295,7 @@ export const it = {
   'action.activate': 'Attiva',
   'action.open_camera': 'Apri telecamera',
   'action.turn_off': 'Spegni',
+  'action.command_sent': 'Comando inviato',
   'action.more_info': 'Altre informazioni',
   'action.entity_action': '{action}: {name}',
   'action.turn_on_all': 'Accendi tutto',
@@ -734,6 +735,7 @@ export const it = {
   'home_card.device_groups.description': 'Schede di stato per luci, interruttori, tapparelle e movimento.',
 
   'error.notifications_load': 'Impossibile caricare le notifiche persistenti di Home Assistant.',
+  'error.settings_conflict': 'Alcune impostazioni sono cambiate altrove. Chiudi le impostazioni, scarta questa bozza e riaprile.',
   'error.settings_save': 'Impossibile salvare le impostazioni della dashboard: {error}',
   'error.notification_dismiss': 'Impossibile ignorare questa notifica.',
   'error.notifications_dismiss_all': 'Impossibile ignorare tutte le notifiche.',

@@ -10,6 +10,7 @@ import type {
 import { ddLocale, ddLocalize, ddLocalizePlural } from '../utils/localize';
 import { sortAreas } from '../utils/area-entities';
 import { isEntityActionAvailable, isHiddenAsUnavailable } from '../utils/entity-availability';
+import { DeviceCommands, isDeviceCommand } from '../utils/device-commands';
 import { getDevicesPageHiddenEntityIdSet, isConfigEntityInArea } from '../utils/entity-lookups';
 import { updateStoredDashboardStrategy } from '../utils/dashboard-config-store';
 import { isNonAdminUser } from '../utils/security';
@@ -115,6 +116,7 @@ interface DeviceGroupCard {
  */
 @customElement('dwains-dashboard-next-devices-card')
 export class DwainsDevicesCard extends LitElement {
+  private readonly _deviceCommands = new DeviceCommands(() => this.requestUpdate());
   private _hass: any;
   private config?: DwainsDashboardConfig;
 
@@ -1271,13 +1273,18 @@ export class DwainsDevicesCard extends LitElement {
       <div class="room-segmented" role="group" aria-label=${area.name}>
         ${action.items.map((item) => {
           const label = this._t(item.labelKey);
+          const command = item.action;
+          const targets = isDeviceCommand(command)
+            ? entityIds.filter(entityId => this._deviceCommands.canSend(this._hass.states[entityId], command))
+            : entityIds;
           return html`
             <button
               class="room-segment ${item.current ? 'is-current' : ''}"
               type="button"
               title=${label}
               aria-label=${this._t('action.entity_action', { action: label, name: area.name })}
-              @click=${() => void this._runRoomAction(area, domain, entityIds, item.action, label)}
+              aria-disabled=${targets.length ? nothing : 'true'}
+              @click=${() => void this._runRoomAction(area, domain, targets, command, label)}
             >
               <ha-icon icon=${item.icon} aria-hidden="true"></ha-icon>
             </button>
@@ -1310,6 +1317,12 @@ export class DwainsDevicesCard extends LitElement {
 
     try {
       const reachableIds = entityIds.filter(entityId => isEntityActionAvailable(this._hass.states[entityId]));
+      if (isDeviceCommand(action)) {
+        if (await this._deviceCommands.send(this._hass, action, reachableIds)) {
+          fireEvent(this, 'hass-notification', { message: this._t('action.command_sent') });
+        }
+        return;
+      }
       if (reachableIds.length) await this._hass.callService(domain, action, { entity_id: reachableIds });
     } catch (err) {
       console.warn(`Failed to run ${action} for ${domain}:`, err);

@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import { updateStoredDashboardConfig, updateStoredDashboardStrategy } from '../src/utils/dashboard-config-store';
+import {
+  applyDashboardSettingsDraft,
+  createDashboardSettingsDraft,
+  DashboardSettingsConflict,
+  settingsEditorConfig,
+} from '../src/utils/dashboard-config';
 
 /** A Home Assistant connection with one stored dashboard config and slow calls. */
 function storedDashboard(initial: Record<string, any>, options: { failSaves?: number } = {}) {
@@ -23,6 +29,44 @@ function storedDashboard(initial: Record<string, any>, options: { failSaves?: nu
 }
 
 describe('updateStoredDashboardStrategy', () => {
+  it('saves only the editor changes over a newer page, room option and sibling setting', async () => {
+    const original = { settings: { show_weather: true, show_area_thermostat: true } };
+    const dashboard = storedDashboard({ strategy: original });
+    const baseline = settingsEditorConfig(original);
+    const edited = settingsEditorConfig({ ...original, settings: { ...original.settings, show_weather: false } });
+    const draft = createDashboardSettingsDraft(baseline, edited)!;
+
+    await Promise.all([
+      updateStoredDashboardStrategy(dashboard.hass, 'dwains', strategy => ({
+        ...strategy,
+        pages: [{ id: 'new-page' }],
+        areas_options: { kitchen: { group_order: ['light', 'cover'] } },
+        settings: { ...strategy?.settings, show_area_thermostat: false },
+      })),
+      updateStoredDashboardStrategy(dashboard.hass, 'dwains', strategy => applyDashboardSettingsDraft(strategy ?? {}, draft)),
+    ]);
+
+    expect(dashboard.stored().strategy).toEqual({
+      pages: [{ id: 'new-page' }],
+      areas_options: { kitchen: { group_order: ['light', 'cover'] } },
+      settings: { show_weather: false, show_area_thermostat: false },
+    });
+  });
+
+  it('rejects a conflicting edit before writing anything', async () => {
+    const initial = { settings: { home_sections_hidden: ['cameras'] } };
+    const edited = { settings: { home_sections_hidden: ['cameras', 'summaries'] } };
+    const latest = { settings: { home_sections_hidden: ['cameras', 'favorites'] } };
+    const dashboard = storedDashboard({ strategy: latest });
+    const draft = createDashboardSettingsDraft(settingsEditorConfig(initial), settingsEditorConfig(edited))!;
+
+    await expect(
+      updateStoredDashboardStrategy(dashboard.hass, 'dwains', strategy => applyDashboardSettingsDraft(strategy ?? {}, draft))
+    ).rejects.toBeInstanceOf(DashboardSettingsConflict);
+    expect(dashboard.stored().strategy).toEqual(latest);
+    expect(dashboard.callWS).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'lovelace/config/save' }));
+  });
+
   it('keeps both of two quick area option edits', async () => {
     const dashboard = storedDashboard({ strategy: { type: 'custom:dwains-dashboard-next', areas_options: {} } });
     const patchArea = (areaId: string, patch: Record<string, any>) =>

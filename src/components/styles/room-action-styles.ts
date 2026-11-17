@@ -5,6 +5,11 @@ import { css } from 'lit';
 // information popups and the room groups on the Devices page. The host sets
 // --room-accent to the colour of the device type.
 export const roomActionStyles = css`
+  .room-segment[aria-disabled="true"] {
+    opacity: .45;
+    cursor: default;
+  }
+
   .room-toggle {
     min-height: 32px;
     padding: 4px 5px 4px 10px;

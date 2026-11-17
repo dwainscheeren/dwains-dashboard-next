@@ -4,6 +4,8 @@ Dashboard settings are opened from the gear button in the dashboard header.
 
 Settings are split into pages so large dashboards remain manageable.
 
+Save applies the settings you edited. Other changes saved in the meantime are preserved. If the same setting changed elsewhere, the editor keeps your draft and shows a conflict without saving over the newer value.
+
 ## Dashboard
 
 Change the dashboard name and sidebar icon.

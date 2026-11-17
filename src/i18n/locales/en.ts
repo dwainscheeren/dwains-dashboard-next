@@ -293,6 +293,7 @@ export const en = {
   'action.activate': 'Activate',
   'action.open_camera': 'Open camera',
   'action.turn_off': 'Turn off',
+  'action.command_sent': 'Command sent',
   'action.more_info': 'More info',
   'action.entity_action': '{action}: {name}',
   'action.turn_on_all': 'Turn on all',
@@ -732,6 +733,7 @@ export const en = {
   'home_card.device_groups.description': 'Status cards such as lights, switches, covers and motion.',
 
   'error.notifications_load': 'Could not load Home Assistant persistent notifications.',
+  'error.settings_conflict': 'Some of these settings changed elsewhere. Close settings, discard this draft, and reopen to edit the current settings.',
   'error.settings_save': 'Could not save dashboard settings: {error}',
   'error.notification_dismiss': 'Could not dismiss this notification.',
   'error.notifications_dismiss_all': 'Could not dismiss all notifications.',

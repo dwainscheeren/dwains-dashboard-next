@@ -295,6 +295,7 @@ export const ptBR = {
   'action.activate': 'Ativar',
   'action.open_camera': 'Abrir câmera',
   'action.turn_off': 'Desligar',
+  'action.command_sent': 'Comando enviado',
   'action.more_info': 'Mais informações',
   'action.entity_action': '{action}: {name}',
   'action.turn_on_all': 'Ligar tudo',
@@ -734,6 +735,7 @@ export const ptBR = {
   'home_card.device_groups.description': 'Cartões de status como luzes, interruptores, cortinas e movimento.',
 
   'error.notifications_load': 'Não foi possível carregar as notificações persistentes do Home Assistant.',
+  'error.settings_conflict': 'Algumas configurações mudaram em outra sessão. Feche as configurações, descarte este rascunho e abra as configurações novamente.',
   'error.settings_save': 'Não foi possível salvar as configurações do painel: {error}',
   'error.notification_dismiss': 'Não foi possível dispensar esta notificação.',
   'error.notifications_dismiss_all': 'Não foi possível dispensar todas as notificações.',

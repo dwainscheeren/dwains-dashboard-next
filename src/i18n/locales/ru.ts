@@ -295,6 +295,7 @@ export const ru = {
   'action.activate': 'Активировать',
   'action.open_camera': 'Открыть камеру',
   'action.turn_off': 'Выключить',
+  'action.command_sent': 'Команда отправлена',
   'action.more_info': 'Подробнее',
   'action.entity_action': '{action}: {name}',
   'action.turn_on_all': 'Включить все',
@@ -734,6 +735,7 @@ export const ru = {
   'home_card.device_groups.description': 'Карточки состояния света, переключателей, приводов и движения.',
 
   'error.notifications_load': 'Не удалось загрузить сохраняемые уведомления Home Assistant.',
+  'error.settings_conflict': 'Некоторые настройки изменились в другом сеансе. Закройте настройки, отмените этот черновик и откройте настройки снова.',
   'error.settings_save': 'Не удалось сохранить настройки панели: {error}',
   'error.notification_dismiss': 'Не удалось скрыть это уведомление.',
   'error.notifications_dismiss_all': 'Не удалось скрыть все уведомления.',

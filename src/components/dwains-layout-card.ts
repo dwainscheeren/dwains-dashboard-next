@@ -14,8 +14,17 @@ import { getAreaData, clearAreaDataCache } from '../utils/area';
 import { AreaEntityResolver } from '../utils/area-entity-resolver';
 import { ManagedSubscription } from '../utils/managed-subscription';
 import { updateStoredDashboardStrategy } from '../utils/dashboard-config-store';
+import {
+  applyDashboardSettingsDraft,
+  createDashboardSettingsDraft,
+  DashboardSettingsConflict,
+  persistableConfig,
+  settingsEditorConfig,
+  type DashboardSettingsDraft,
+} from '../utils/dashboard-config';
 import { formatClock, msUntilNextMinute } from '../utils/clock';
 import { isEntityActionAvailable, isHiddenAsUnavailable, splitHiddenUnavailableEntities } from '../utils/entity-availability';
+import { coverSupportsCommand, DeviceCommands, roomDeviceCommand, supportsDeviceCommand, type DeviceCommand } from '../utils/device-commands';
 import { getAreaConfigMap, getEntityConfigMap, getHiddenPersonIdSet, resolveStatusEntityAreaId } from '../utils/entity-lookups';
 import { getDomainStates } from '../utils/state-index';
 import {
@@ -224,7 +233,7 @@ interface OptimisticEntityState {
 
 // Native Home Assistant tabs can unmount this card. Keep the draft in this
 // browser tab so reopening settings can resume it without writing to HA.
-const settingsDrafts = new Map<string, Partial<DwainsDashboardConfig>>();
+const settingsDrafts = new Map<string, DashboardSettingsDraft>();
 
 @customElement('dwains-dashboard-next-layout-card')
 export class DwainsLayoutCard extends LitElement {
@@ -287,6 +296,7 @@ export class DwainsLayoutCard extends LitElement {
   @state() private _generatedGroupDrag: { areaId: string; groupKey: string } | null = null;
   @state() private _generatedGroupDragOver: { areaId: string; groupKey: string } | null = null;
   @state() private _optimisticEntityStates: Record<string, OptimisticEntityState> = {};
+  private readonly _deviceCommands = new DeviceCommands(() => this.requestUpdate());
   private _pendingAreaLightActions = new Set<string>();
   @state() private _pendingAreaCoverActions = new Set<string>();
   @state() private _renderAllMobileHomeAreas = false;
@@ -331,7 +341,8 @@ export class DwainsLayoutCard extends LitElement {
   private _areaSidebarScrollTop = 0;
   private _areaSidebarRestoreRaf?: number;
   private _progressiveRenderCancel?: () => void;
-  private _pendingSettingsConfig?: Partial<DwainsDashboardConfig>;
+  private _settingsBaseline?: Record<string, unknown>;
+  private _pendingSettingsDraft?: DashboardSettingsDraft;
   private _settingsEditorInitialized = false;
 
   // Debounce timers
@@ -3780,7 +3791,9 @@ export class DwainsLayoutCard extends LitElement {
     const domain = entityId.split('.')[0] || 'unknown';
     const deviceClass = state.attributes?.device_class;
     const name = state.attributes?.friendly_name || registry?.name || entityId;
-    const formattedState = this._formatFavoriteState(state);
+    const reportedState = this._formatFavoriteState(state);
+    const formattedState = this._deviceCommands.isPending(entityId)
+      ? `${reportedState} · ${this._t('common.loading')}` : reportedState;
     const areaName = this._entityAreaName(entityId);
     const icon = registry?.icon || state.attributes?.icon || getDeviceClassIcon(domain, deviceClass) || getDomainIcon(domain);
     const activeState = this._favoriteActiveState(state, domain);
@@ -3832,6 +3845,7 @@ export class DwainsLayoutCard extends LitElement {
               ? name
               : this._t('action.entity_action', { action: this._favoriteQuickTitle(state, domain), name })}
             ?disabled=${isHiddenAsUnavailable(state)}
+            aria-disabled=${this._favoriteCommandUnavailable(state, domain) ? 'true' : nothing}
             @click=${(event: Event) => this._handleFavoriteQuickAction(event, state, domain)}
           >
             <ha-icon icon=${this._favoriteQuickIcon(state, domain)}></ha-icon>
@@ -3990,15 +4004,31 @@ export class DwainsLayoutCard extends LitElement {
   private _favoriteQuickTitle(state: any, domain: string): string {
     const value = String(state?.state || '').toLowerCase();
     if (domain === 'cover') return this._t(['open', 'opening'].includes(value) ? 'action.close' : 'action.open');
-    if (domain === 'lock') return this._t(value === 'unlocked' ? 'action.lock' : 'action.unlock');
+    if (domain === 'lock') return this._t(value === 'locked' ? 'action.unlock' : 'action.lock');
     if (['light', 'switch', 'fan', 'input_boolean'].includes(domain)) return this._t(value === 'off' ? 'action.turn_on' : 'action.turn_off');
     return this._t('action.more_info');
+  }
+
+  private _favoriteDeviceCommand(state: HassEntity, domain: string): DeviceCommand | undefined {
+    if (domain === 'cover') return ['open', 'opening'].includes(state.state) ? 'close_cover' : 'open_cover';
+    if (domain === 'lock') return state.state === 'locked' ? 'unlock' : 'lock';
+    return undefined;
+  }
+
+  private _favoriteCommandUnavailable(state: HassEntity, domain: string): boolean {
+    const command = this._favoriteDeviceCommand(state, domain);
+    return command !== undefined && !this._deviceCommands.canSend(state, command);
   }
 
   private async _handleFavoriteQuickAction(event: Event, state: any, domain: string): Promise<void> {
     event.stopPropagation();
     const entityId = state?.entity_id;
     if (!entityId) return;
+    const command = this._favoriteDeviceCommand(state, domain);
+    if (command) {
+      await this._sendDeviceCommand(entityId, command);
+      return;
+    }
     const affectedEntityIds = [entityId];
 
     try {
@@ -4006,18 +4036,6 @@ export class DwainsLayoutCard extends LitElement {
         const turnOn = !this._isEntityActiveForUi(state, domain);
         this._setOptimisticEntityState(entityId, turnOn ? 'on' : 'off');
         await this.hass.callService(domain, turnOn ? 'turn_on' : 'turn_off', { entity_id: entityId });
-        return;
-      }
-      if (domain === 'cover') {
-        const open = ['open', 'opening'].includes(String(state.state).toLowerCase());
-        this._setOptimisticEntityState(entityId, open ? 'closed' : 'open');
-        await this.hass.callService('cover', open ? 'close_cover' : 'open_cover', { entity_id: entityId });
-        return;
-      }
-      if (domain === 'lock') {
-        const unlocked = String(state.state).toLowerCase() === 'unlocked';
-        this._setOptimisticEntityState(entityId, unlocked ? 'locked' : 'unlocked');
-        await this.hass.callService('lock', unlocked ? 'lock' : 'unlock', { entity_id: entityId });
         return;
       }
     } catch (err) {
@@ -4914,8 +4932,18 @@ export class DwainsLayoutCard extends LitElement {
           ? this._areaTileState(openCovers, available.length, 'open')
           : this._t('common.unavailable');
       const offline = covers.length - available.length;
-      const openLabel = this._t('action.entity_action', { action: this._t('action.open_all'), name: label });
-      const closeLabel = this._t('action.entity_action', { action: this._t('action.close_all'), name: label });
+      const openTargets = available.filter(entity => supportsDeviceCommand(this.hass.states[entity.entity_id], 'open_cover'));
+      const closeTargets = available.filter(entity => supportsDeviceCommand(this.hass.states[entity.entity_id], 'close_cover'));
+      const openLabel = this._t('action.entity_action', {
+        action: this._t('action.covers_open_summary', { total: openTargets.length }), name: label,
+      });
+      const closeLabel = this._t('action.entity_action', {
+        action: this._t('action.covers_close_summary', {
+          active: closeTargets.filter(entity => this._isEntityActiveForUi(this.hass.states[entity.entity_id], 'cover')).length,
+          total: closeTargets.length,
+        }),
+        name: label,
+      });
       return html`
         <div class="dd-room-tile cover ${groupKey} has-actions ${isOpen ? 'is-on' : ''}" aria-busy=${String(pending)}>
           <span class="dd-room-tile-icon">
@@ -4935,8 +4963,8 @@ export class DwainsLayoutCard extends LitElement {
               type="button"
               title=${openLabel}
               aria-label=${openLabel}
-              ?disabled=${!available.length}
-              aria-disabled=${pending ? 'true' : nothing}
+              ?disabled=${!openTargets.length}
+              aria-disabled=${pending || !openTargets.some(entity => this._deviceCommands.canSend(this.hass.states[entity.entity_id], 'open_cover')) ? 'true' : nothing}
               @click=${() => void this._setAreaCoverState(areaId, true, groupKey)}
             >
               <ha-icon icon="mdi:arrow-up"></ha-icon>
@@ -4946,8 +4974,8 @@ export class DwainsLayoutCard extends LitElement {
               type="button"
               title=${closeLabel}
               aria-label=${closeLabel}
-              ?disabled=${!available.length}
-              aria-disabled=${pending ? 'true' : nothing}
+              ?disabled=${!closeTargets.length}
+              aria-disabled=${pending || !closeTargets.some(entity => this._deviceCommands.canSend(this.hass.states[entity.entity_id], 'close_cover')) ? 'true' : nothing}
               @click=${() => void this._setAreaCoverState(areaId, false, groupKey)}
             >
               <ha-icon icon="mdi:arrow-down"></ha-icon>
@@ -5400,26 +5428,32 @@ export class DwainsLayoutCard extends LitElement {
   }
 
   private _renderMobileDomainActions(
-    domain: string,
+    domain: 'cover' | 'lock',
     entities: EntityConfig[],
     actions: Array<{ turnOn: boolean; label: string; icon: string; active: boolean }>
   ) {
     return html`
       <div class="mobile-domain-master-actions domain-${domain}" role="group">
-        ${actions.map(action => html`
+        ${actions.map(action => {
+          const command = roomDeviceCommand(domain, action.turnOn);
+          const targets = entities.filter(entity => this._deviceCommands.canSend(this.hass.states[entity.entity_id], command));
+          const label = `${action.label} · ${this._tp('common.entity', targets.length)}`;
+          return html`
           <button
             class="mobile-domain-master-action ${action.active ? 'active' : ''}"
             type="button"
-            title=${action.label}
-            aria-label=${action.label}
+            title=${label}
+            aria-label=${label}
+            aria-disabled=${targets.length ? nothing : 'true'}
             @click=${(event: Event) => {
               event.stopPropagation();
-              void this._requestMobileGroupState(entities, action.turnOn, domain);
+              void this._requestMobileGroupState(targets, action.turnOn, domain);
             }}
           >
             <ha-icon icon=${action.icon}></ha-icon>
           </button>
-        `)}
+        `;
+        })}
       </div>
     `;
   }
@@ -5936,7 +5970,9 @@ export class DwainsLayoutCard extends LitElement {
     // (unless turned off) and use the second line for the device when that adds something.
     const name = areaEntityDisplayName(fullName, area.name, this.config?.settings);
     const deviceLabel = areaEntityDeviceLabel(name, this._entityDeviceName(entity.entity_id), area.name);
-    const statusText = this._mobileEntityStatusText(state, domain);
+    const reportedState = this._mobileEntityStatusText(state, domain);
+    const statusText = this._deviceCommands.isPending(entity.entity_id)
+      ? `${reportedState} · ${this._t('common.loading')}` : reportedState;
     const active = this._isEntityActiveForUi(state, domain);
     const actionKind = this._mobileEntityActionKind(domain);
     const tapToggles = !isHiddenAsUnavailable(state) && tileTapToggles(this.config?.settings, entity.entity_id);
@@ -6113,15 +6149,18 @@ export class DwainsLayoutCard extends LitElement {
     }
 
     if (actionKind === 'lock') {
-      const unlocked = this._isEntityActiveForUi(state, domain);
+      const unlocked = ['unlocked', 'open'].includes(state.state);
+      const command = state.state === 'locked' ? 'unlock' : 'lock';
+      const label = this._t(`action.${command}`);
       return html`
         <button
           class="mobile-entity-action mobile-lock-action ${unlocked ? 'is-unlocked' : ''}"
           type="button"
-          title=${unlocked ? this._t('action.lock') : this._t('action.unlock')}
-          aria-label=${labelFor(unlocked ? this._t('action.lock') : this._t('action.unlock'))}
+          title=${label}
+          aria-label=${labelFor(label)}
           ?disabled=${unavailable}
-          @click=${(event: Event) => this._handleMobileLockAction(event, state)}
+          aria-disabled=${this._deviceCommands.canSend(state, command) ? nothing : 'true'}
+          @click=${() => void this._sendDeviceCommand(state.entity_id, command)}
         >
           <ha-icon icon=${unlocked ? 'mdi:lock-open-variant-outline' : 'mdi:lock-outline'}></ha-icon>
         </button>
@@ -6152,9 +6191,9 @@ export class DwainsLayoutCard extends LitElement {
   private _renderMobileCoverActions(state: any) {
     const value = String(state?.state || '').toLowerCase();
     const unavailable = ['unavailable', 'unknown'].includes(value);
-    const canOpen = this._coverSupportsFeature(state, 1);
-    const canClose = this._coverSupportsFeature(state, 2);
-    const canStop = this._coverSupportsFeature(state, 8);
+    const canOpen = coverSupportsCommand(state, 'open_cover');
+    const canClose = coverSupportsCommand(state, 'close_cover');
+    const canStop = coverSupportsCommand(state, 'stop_cover');
     const name = this._entityDisplayName(state);
     const labelFor = (action: string) => this._t('action.entity_action', { action, name });
 
@@ -6167,7 +6206,8 @@ export class DwainsLayoutCard extends LitElement {
             title=${this._t('action.open')}
             aria-label=${labelFor(this._t('action.open'))}
             ?disabled=${unavailable}
-            @click=${(event: Event) => this._handleMobileCoverAction(event, state, 'open')}
+            aria-disabled=${this._deviceCommands.canSend(state, 'open_cover') ? nothing : 'true'}
+            @click=${() => void this._sendDeviceCommand(state.entity_id, 'open_cover')}
           >
             <ha-icon icon="mdi:arrow-up"></ha-icon>
           </button>
@@ -6179,7 +6219,8 @@ export class DwainsLayoutCard extends LitElement {
             title=${this._t('action.stop')}
             aria-label=${labelFor(this._t('action.stop'))}
             ?disabled=${unavailable}
-            @click=${(event: Event) => this._handleMobileCoverAction(event, state, 'stop')}
+            aria-disabled=${this._deviceCommands.canSend(state, 'stop_cover') ? nothing : 'true'}
+            @click=${() => void this._sendDeviceCommand(state.entity_id, 'stop_cover')}
           >
             <ha-icon icon="mdi:stop"></ha-icon>
           </button>
@@ -6191,7 +6232,8 @@ export class DwainsLayoutCard extends LitElement {
             title=${this._t('action.close')}
             aria-label=${labelFor(this._t('action.close'))}
             ?disabled=${unavailable}
-            @click=${(event: Event) => this._handleMobileCoverAction(event, state, 'close')}
+            aria-disabled=${this._deviceCommands.canSend(state, 'close_cover') ? nothing : 'true'}
+            @click=${() => void this._sendDeviceCommand(state.entity_id, 'close_cover')}
           >
             <ha-icon icon="mdi:arrow-down"></ha-icon>
           </button>
@@ -6247,37 +6289,14 @@ export class DwainsLayoutCard extends LitElement {
     }
   }
 
-  private async _handleMobileCoverAction(event: Event, state: any, action: 'open' | 'stop' | 'close'): Promise<void> {
-    event.stopPropagation();
-    const entityId = state?.entity_id;
-    if (!entityId) return;
-
-    const service = action === 'open' ? 'open_cover' : action === 'close' ? 'close_cover' : 'stop_cover';
-    const optimisticState = action === 'open' ? 'open' : action === 'close' ? 'closed' : undefined;
-    if (optimisticState) this._setOptimisticEntityState(entityId, optimisticState);
-
+  private async _sendDeviceCommand(entityId: string, command: DeviceCommand): Promise<void> {
     try {
-      await this.hass.callService('cover', service, { entity_id: entityId });
+      if (await this._deviceCommands.send(this.hass, command, [entityId])) {
+        this._showToast(this._t('action.command_sent'));
+      }
     } catch (err) {
-      this._clearOptimisticEntityStates([entityId]);
-      console.warn(`Failed to ${action} cover ${entityId}:`, err);
-      this._showToast(this._t('entity.cover_failed'));
-    }
-  }
-
-  private async _handleMobileLockAction(event: Event, state: any): Promise<void> {
-    event.stopPropagation();
-    const entityId = state?.entity_id;
-    if (!entityId) return;
-
-    try {
-      const unlocked = this._isEntityActiveForUi(state, 'lock');
-      this._setOptimisticEntityState(entityId, unlocked ? 'locked' : 'unlocked');
-      await this.hass.callService('lock', unlocked ? 'lock' : 'unlock', { entity_id: entityId });
-    } catch (err) {
-      this._clearOptimisticEntityStates([entityId]);
-      console.warn(`Failed to toggle lock ${entityId}:`, err);
-      this._showToast(this._t('entity.lock_failed'));
+      console.warn(`Failed to run ${command} for ${entityId}:`, err);
+      this._showToast(this._t(entityId.startsWith('lock.') ? 'entity.lock_failed' : 'entity.cover_failed'));
     }
   }
 
@@ -6350,6 +6369,7 @@ export class DwainsLayoutCard extends LitElement {
     turnOn: boolean,
     domain: string
   ): Promise<void> {
+    if (!entities.length) return;
     const confirmed = await this._confirmMasterActionIfNeeded(
       domain,
       turnOn,
@@ -6357,6 +6377,18 @@ export class DwainsLayoutCard extends LitElement {
       this._selectedArea || ''
     );
     if (!confirmed) return;
+    if (domain === 'cover' || domain === 'lock') {
+      const command = roomDeviceCommand(domain, turnOn);
+      try {
+        if (await this._deviceCommands.send(this.hass, command, entities.map(entity => entity.entity_id))) {
+          this._showToast(this._t('action.command_sent'));
+        }
+      } catch (err) {
+        console.warn(`Failed to run room command ${command}:`, err);
+        this._showToast(this._t('entity.group_failed'));
+      }
+      return;
+    }
     await this._setMobileGroupState(entities, turnOn, domain);
   }
 
@@ -6382,18 +6414,6 @@ export class DwainsLayoutCard extends LitElement {
           affectedEntityIds.push(...entityIds);
           this._setOptimisticEntityStates(entityIds, turnOn ? 'on' : 'off');
           return this.hass.callService(domain, turnOn ? 'turn_on' : 'turn_off', {
-            entity_id: entityIds,
-          });
-        }
-
-        if (domain === 'cover') {
-          return this.hass.callService('cover', turnOn ? 'open_cover' : 'close_cover', {
-            entity_id: entityIds,
-          });
-        }
-
-        if (domain === 'lock') {
-          return this.hass.callService('lock', turnOn ? 'unlock' : 'lock', {
             entity_id: entityIds,
           });
         }
@@ -6430,14 +6450,6 @@ export class DwainsLayoutCard extends LitElement {
     if (domain === 'lock') return 'lock';
     if (domain === 'scene') return 'scene';
     return 'more';
-  }
-
-  private _coverSupportsFeature(state: any, feature: number): boolean {
-    const supported = Number(state?.attributes?.supported_features);
-    if (!Number.isFinite(supported) || supported <= 0) {
-      return feature === 1 || feature === 2;
-    }
-    return (supported & feature) !== 0;
   }
 
   private _mobileEntityStatusText(state: any, domain: string): string {
@@ -6868,8 +6880,9 @@ export class DwainsLayoutCard extends LitElement {
 
   private _clearSettingsEditState(): void {
     const draftKey = this._settingsDraftKey();
-    if (settingsDrafts.get(draftKey) === this._pendingSettingsConfig) settingsDrafts.delete(draftKey);
-    this._pendingSettingsConfig = undefined;
+    if (settingsDrafts.get(draftKey) === this._pendingSettingsDraft) settingsDrafts.delete(draftKey);
+    this._pendingSettingsDraft = undefined;
+    this._settingsBaseline = undefined;
     this._settingsDirty = false;
     this._settingsSaveError = '';
     this._settingsSavePending = false;
@@ -7247,17 +7260,24 @@ export class DwainsLayoutCard extends LitElement {
     editor.hass = this.hass;
     if (!this._settingsEditorInitialized) {
       this._settingsEditorInitialized = true;
-      void editor.setConfig({ ...this.config, ...this._pendingSettingsConfig });
+      this._settingsBaseline = this._pendingSettingsDraft?.baseline ?? structuredClone(settingsEditorConfig(this.config));
+      void editor.setConfig({ ...this.config, ...this._pendingSettingsDraft?.edited });
     }
   }
 
   private _handleSettingsConfigChanged = (event: Event): void => {
     event.stopPropagation();
-    const detail = (event as CustomEvent<{ config?: Partial<DwainsDashboardConfig> }>).detail;
-    this._pendingSettingsConfig = detail?.config;
-    if (detail?.config) settingsDrafts.set(this._settingsDraftKey(), detail.config);
+    const detail = (event as CustomEvent<{ config?: Record<string, unknown> }>).detail;
+    const baseline = this._settingsBaseline;
+    const edited = detail?.config && structuredClone(detail.config);
+    this._pendingSettingsDraft = baseline && edited
+      ? this._settingsSavePending
+        ? { baseline, edited }
+        : createDashboardSettingsDraft(baseline, edited)
+      : undefined;
+    if (this._pendingSettingsDraft) settingsDrafts.set(this._settingsDraftKey(), this._pendingSettingsDraft);
     else settingsDrafts.delete(this._settingsDraftKey());
-    this._settingsDirty = Boolean(this._pendingSettingsConfig);
+    this._settingsDirty = Boolean(this._pendingSettingsDraft);
     this._settingsSaveError = '';
   };
 
@@ -7268,41 +7288,54 @@ export class DwainsLayoutCard extends LitElement {
   };
 
   private async _saveSettingsPage(): Promise<void> {
-    if (!this._pendingSettingsConfig || this._settingsSavePending || !this.hass) return;
+    if (!this._pendingSettingsDraft || this._settingsSavePending || !this.hass) return;
     if (!this._canManageDashboard()) return;
 
     this._settingsSavePending = true;
     this._settingsSaveError = '';
     // Save the settings as they were when Save was pressed.
-    const pendingConfig = this._pendingSettingsConfig;
+    const submitted = this._pendingSettingsDraft;
     const draftKey = this._settingsDraftKey();
+    let latestStrategy: Record<string, unknown> | undefined;
 
     try {
       // Queued behind other dashboard saves and applied to the latest stored config.
-      await updateStoredDashboardStrategy(this.hass, this._getDashboardUrlPath(), (strategy) => ({
-        ...(strategy || {}),
-        ...pendingConfig,
-      }));
+      const saved = await updateStoredDashboardStrategy(this.hass, this._getDashboardUrlPath(), strategy => {
+        latestStrategy = strategy ?? {};
+        return applyDashboardSettingsDraft(latestStrategy, submitted);
+      });
 
-      this.config = {
-        ...this.config,
-        ...pendingConfig,
-      };
+      if (saved?.strategy) this._applyStoredSettings(saved.strategy);
       this._settingsSaveError = '';
-      if (settingsDrafts.get(draftKey) === pendingConfig) settingsDrafts.delete(draftKey);
-      // Keep edits made while the save was running.
-      if (this._pendingSettingsConfig === pendingConfig) {
-        this._pendingSettingsConfig = undefined;
-        this._settingsDirty = false;
-        this._settingsEditorInitialized = false;
+      const current = settingsDrafts.get(draftKey);
+      if (current?.baseline === submitted.baseline) {
+        const remaining = createDashboardSettingsDraft(submitted.edited, current.edited);
+        if (remaining) settingsDrafts.set(draftKey, remaining);
+        else settingsDrafts.delete(draftKey);
+        if (this._pendingSettingsDraft === current) {
+          this._pendingSettingsDraft = remaining;
+          this._settingsBaseline = submitted.edited;
+          this._settingsDirty = Boolean(remaining);
+          this._settingsEditorInitialized = Boolean(remaining);
+        }
       }
       this.requestUpdate();
     } catch (err) {
       console.error('Failed to save Dwains Dashboard settings:', err);
-      this._settingsSaveError = this._t('error.settings_save', { error: String(err) });
+      if (err instanceof DashboardSettingsConflict) {
+        if (latestStrategy) this._applyStoredSettings(latestStrategy);
+        this._settingsSaveError = this._t('error.settings_conflict');
+      } else {
+        this._settingsSaveError = this._t('error.settings_save', { error: String(err) });
+      }
     } finally {
       this._settingsSavePending = false;
     }
+  }
+
+  private _applyStoredSettings(strategy: Record<string, unknown>): void {
+    const { areas, devices, entities, floors } = this.config;
+    this.config = { ...persistableConfig(strategy), areas, devices, entities, floors };
   }
 
   private _renderSettingsView(): TemplateResult {
@@ -7437,8 +7470,8 @@ export class DwainsLayoutCard extends LitElement {
     this._editMode = false;
     this._rememberAreaEditMode(null);
     this._updateUrlArea(null);
-    this._pendingSettingsConfig = settingsDrafts.get(this._settingsDraftKey());
-    this._settingsDirty = Boolean(this._pendingSettingsConfig);
+    this._pendingSettingsDraft = settingsDrafts.get(this._settingsDraftKey());
+    this._settingsDirty = Boolean(this._pendingSettingsDraft);
     this._settingsSaveError = '';
     this._settingsEditorInitialized = false;
     this._closeMobileNav();
@@ -7869,17 +7902,16 @@ export class DwainsLayoutCard extends LitElement {
     const requestKey = `${areaId}:${groupKey}`;
     if (this._pendingAreaCoverActions.has(requestKey)) return;
     const entities = this._getFilteredAreaEntities(areaId);
-    const covers = selectAreaCovers(entities, this.hass.states, groupKey)
-      .filter(entity => isEntityActionAvailable(this.hass.states[entity.entity_id]));
-    if (covers.length === 0) return;
+    const command = open ? 'open_cover' : 'close_cover';
+    const ids = selectAreaCovers(entities, this.hass.states, groupKey).map(entity => entity.entity_id)
+      .filter(entityId => this._deviceCommands.canSend(this.hass.states[entityId], command));
+    if (!ids.length) return;
 
     this._pendingAreaCoverActions = new Set([...this._pendingAreaCoverActions, requestKey]);
     try {
-      const confirmed = await this._confirmMasterActionIfNeeded('cover', open, covers.length, areaId);
+      const confirmed = await this._confirmMasterActionIfNeeded('cover', open, ids.length, areaId);
       if (!confirmed) return;
-      const entityIds = covers.map(entity => entity.entity_id)
-        .filter(entityId => isEntityActionAvailable(this.hass.states[entityId]));
-      if (entityIds.length) await this.hass.callService('cover', open ? 'open_cover' : 'close_cover', { entity_id: entityIds });
+      if (await this._deviceCommands.send(this.hass, command, ids)) this._showToast(this._t('action.command_sent'));
     } catch (err) {
       console.warn(`Failed to ${open ? 'open' : 'close'} covers in area ${areaId}:`, err);
       this._showToast(this._t('entity.covers_failed'));

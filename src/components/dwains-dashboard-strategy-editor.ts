@@ -36,7 +36,7 @@ import {
   type AreaStrategyGroup
 } from "../utils/area-entities";
 import { countReplacementRules, domainReplacementEntries, setDomainReplacement } from "../utils/blueprint-replacements";
-import { persistableConfig } from "../utils/dashboard-config";
+import { settingsEditorConfig } from "../utils/dashboard-config";
 import { isHiddenAsUnavailable } from "../utils/entity-availability";
 import { areaEntityDisplayName, hidesAreaNameInEntityNames } from "../utils/entity-names";
 import {
@@ -395,17 +395,8 @@ export class DwainsDashboardStrategyEditor extends LitElement {
   public async setConfig(config: any): Promise<void> {
     // Only store the user configuration, not live data
     this._config = {
-      ...persistableConfig(config),
+      ...settingsEditorConfig(config),
       type: config?.type || "custom:dwains-dashboard-next",
-      areas_display: config?.areas_display || {},
-      floors_display: config?.floors_display || {},
-      areas_options: config?.areas_options || {},
-      blueprint_replacements: config?.blueprint_replacements || {},
-      device_admission: config?.device_admission || {},
-      favorites: config?.favorites || [],
-      pages: config?.pages || [],
-      home_custom_cards: config?.home_custom_cards || [],
-      settings: config?.settings || {},
       // These will be populated from live data
       areas: [],
       devices: [],
@@ -5352,20 +5343,7 @@ export class DwainsDashboardStrategyEditor extends LitElement {
     };
 
     // Save the complete user configuration, but never the live registry data.
-    const merged = this._config;
-    const cleanConfig = {
-      ...persistableConfig(merged),
-      type: "custom:dwains-dashboard-next",
-      areas_display: merged.areas_display || {},
-      floors_display: merged.floors_display || {},
-      areas_options: merged.areas_options || {},
-      blueprint_replacements: merged.blueprint_replacements || {},
-      device_admission: merged.device_admission || {},
-      favorites: merged.favorites || [],
-      pages: merged.pages || [],
-      home_custom_cards: merged.home_custom_cards || [],
-      settings: merged.settings || {}
-    };
+    const cleanConfig = settingsEditorConfig(this._config);
 
     const event = new CustomEvent("config-changed", {
       detail: { config: cleanConfig },

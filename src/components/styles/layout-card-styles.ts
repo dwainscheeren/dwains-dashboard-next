@@ -3680,7 +3680,10 @@ export const layoutCardStyles = css`
         transform: scale(0.94);
       }
 
-      .mobile-entity-action:disabled {
+      .mobile-entity-action:disabled,
+      .mobile-entity-action[aria-disabled="true"],
+      .mobile-domain-master-action[aria-disabled="true"],
+      .favorite-quick-action[aria-disabled="true"] {
         opacity: 0.36;
         cursor: not-allowed;
       }
