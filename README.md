@@ -57,7 +57,7 @@ See the [screenshot gallery](docs/screenshots.md) for room controls, wall tablet
 
 ## Status
 
-Current release: `1.15.0`
+Current release: `1.15.1`
 
 ## Community And Support
 

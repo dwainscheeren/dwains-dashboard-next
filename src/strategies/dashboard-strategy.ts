@@ -121,6 +121,7 @@ export class DwainsDashboardStrategy implements LovelaceStrategy {
         title: page.name,
         path: page.id,
         icon: page.icon || 'mdi:puzzle',
+        panel: true,
         cards: [{ type: 'custom:dwains-dashboard-next-page-card', page, settings: dashboardConfig.settings || {} }]
       });
     }
@@ -130,6 +131,7 @@ export class DwainsDashboardStrategy implements LovelaceStrategy {
         title: ddLocalize(hass, 'sidebar.add_blueprint'),
         icon: 'mdi:plus',
         path: 'add-blueprint',
+        panel: true,
         cards: [{ type: 'custom:dwains-dashboard-next-page-card', add: true, settings: dashboardConfig.settings || {} }]
       });
     }

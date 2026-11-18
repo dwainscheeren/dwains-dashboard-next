@@ -241,11 +241,20 @@ describe('DwainsDashboardStrategy', () => {
     expect(dashboard.views.map((view) => view.path)).toEqual(['home', 'devices', 'energy', 'add-blueprint']);
 
     const page = viewByPath(dashboard.views, 'energy');
-    expect(page).toMatchObject({ title: 'Energy', icon: 'mdi:flash' });
-    expect(page.cards?.[0]).toEqual({
+    expect(page).toMatchObject({ title: 'Energy', icon: 'mdi:flash', panel: true });
+    expect(page.cards).toEqual([{
       type: 'custom:dwains-dashboard-next-page-card',
       page: PERSISTED.pages[0],
       settings: PERSISTED.settings,
+    }]);
+
+    expect(viewByPath(dashboard.views, 'add-blueprint')).toMatchObject({
+      panel: true,
+      cards: [{
+        type: 'custom:dwains-dashboard-next-page-card',
+        add: true,
+        settings: PERSISTED.settings,
+      }],
     });
   });
 
