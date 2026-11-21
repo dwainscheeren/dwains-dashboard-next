@@ -799,6 +799,8 @@ export const de = {
   'settings.home_outdoor_climate_areas_title': "Außenbereiche",
   'settings.home_outdoor_climate_areas_description': "Lege fest, welche Home-Assistant-Bereiche draußen liegen. Ihre zugewiesenen Temperatur- und Feuchtigkeitssensoren erscheinen in der Karte Außenklima und zählen nicht zum Raumklima.",
   'settings.home_climate_area_outdoor': "Für das Außenklima verwendet",
+  'settings.use_entity_name_only': "Nur Entitätsnamen verwenden",
+  'settings.use_entity_name_only_description': "Verwendet den Entitätsnamen statt des Gerätenamens, sofern vorhanden.",
   'settings.content_display': "Inhalte & Darstellung",
   'settings.behavior_access': "Verhalten & Zugriff",
   'settings.about_support': "Über & Support",
