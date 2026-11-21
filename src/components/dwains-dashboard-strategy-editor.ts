@@ -1602,6 +1602,13 @@ export class DwainsDashboardStrategyEditor extends LitElement {
               this._toggleHideUnavailableAreaEntities
             )}
             ${this._renderToggleSetting(
+              "mdi:form-textbox",
+              this._t('settings.use_entity_name_only'),
+              this._t('settings.use_entity_name_only_description'),
+              this._config?.settings?.use_entity_name_only === true,
+              this._toggleUseEntityNameOnly
+            )}
+            ${this._renderToggleSetting(
               "mdi:format-text",
               this._t('settings.hide_area_name'),
               this._t('settings.hide_area_name_description'),
@@ -5163,6 +5170,17 @@ export class DwainsDashboardStrategyEditor extends LitElement {
 
     this._fireConfigChanged(newConfig);
   }
+
+  private _toggleUseEntityNameOnly = (e: Event): void => {
+    if (!this._config) return;
+    this._fireConfigChanged({
+      ...this._config,
+      settings: {
+        ...this._config.settings,
+        use_entity_name_only: Boolean((e.target as any).checked),
+      },
+    });
+  };
 
   private _toggleHideAreaName = (e: Event): void => {
     if (!this._config) return;
