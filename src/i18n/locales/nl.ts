@@ -799,6 +799,8 @@ export const nl = {
   'settings.home_outdoor_climate_areas_title': "Buitenruimtes",
   'settings.home_outdoor_climate_areas_description': "Kies welke Home Assistant-ruimtes buiten zijn. Hun gekoppelde temperatuur- en luchtvochtigheidssensoren staan op de kaart Buitenklimaat en tellen niet mee voor het binnenklimaat.",
   'settings.home_climate_area_outdoor': "Gebruikt voor buitenklimaat",
+  'settings.use_entity_name_only': "Use entity names only",
+  'settings.use_entity_name_only_description': "Show the entity-specific name without the device name prefix. If no separate entity name is available, keep the full name.",
   'settings.content_display': "Content & display",
   'settings.behavior_access': "Behavior & access",
   'settings.about_support': "About & support",
