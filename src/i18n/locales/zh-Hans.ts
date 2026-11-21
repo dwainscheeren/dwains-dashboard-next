@@ -797,6 +797,8 @@ export const zhHans = {
   'settings.home_outdoor_climate_areas_title': "室外区域",
   'settings.home_outdoor_climate_areas_description': "选择哪些 Home Assistant 区域位于室外。它们指定的温度和湿度传感器会显示在室外气候卡片中，并且不计入室内气候。",
   'settings.home_climate_area_outdoor': "用于室外气候",
+  'settings.use_entity_name_only': "Use entity names only",
+  'settings.use_entity_name_only_description': "Show the entity-specific name without the device name prefix. If no separate entity name is available, keep the full name.",
   'settings.content_display': "Content & display",
   'settings.behavior_access': "Behavior & access",
   'settings.about_support': "About & support",
