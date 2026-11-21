@@ -62,7 +62,7 @@ import {
   AREA_COVER_GROUPS,
   type AreaCoverGroup,
 } from '../utils/area-entities';
-import { areaEntityDisplayName } from '../utils/entity-names';
+import { registryEntityDisplayName } from '../utils/entity-names';
 import { tileTapToggles } from '../utils/tile-tap';
 import { tileTap } from '../utils/tile-tap-directive';
 import { tileSurfaceStyles } from './styles/tile-surface-styles';
@@ -5968,7 +5968,7 @@ export class DwainsLayoutCard extends LitElement {
     const fullName = state.attributes?.friendly_name || getEntityRegistry(this.hass)[entity.entity_id]?.name || entity.entity_id;
     // The page already shows the room, so drop the area name from the tile
     // (unless turned off) and use the second line for the device when that adds something.
-    const name = areaEntityDisplayName(fullName, area.name, this.config?.settings);
+    const name = registryEntityDisplayName(fullName, area.name, this.config?.settings, getEntityRegistry(this.hass)[entity.entity_id]?.name);
     const deviceLabel = areaEntityDeviceLabel(name, this._entityDeviceName(entity.entity_id), area.name);
     const reportedState = this._mobileEntityStatusText(state, domain);
     const statusText = this._deviceCommands.isPending(entity.entity_id)

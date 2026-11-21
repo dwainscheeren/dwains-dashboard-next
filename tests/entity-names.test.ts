@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   areaEntityDisplayName,
+  registryEntityDisplayName,
   escapeRegExp,
   hidesAreaNameInEntityNames,
   stripAreaNameFromEntityName,
@@ -104,5 +105,25 @@ describe('area entity display names', () => {
     expect(areaEntityDisplayName('Kitchen lamp', 'Kitchen', {})).toBe('Lamp');
     expect(areaEntityDisplayName('Kitchen lamp', 'Kitchen', { hide_area_name_in_entity_names: false })).toBe('Kitchen lamp');
     expect(areaEntityDisplayName('Kitchen lamp', undefined, {})).toBe('Kitchen lamp');
+  });
+});
+
+
+describe('entity-only naming setting', () => {
+  const full = 'Shelly Power Strip 3D Drucker';
+  it('keeps the existing full-name behavior by default', () => {
+    expect(registryEntityDisplayName(full, 'Büro', {}, '3D Drucker')).toBe(full);
+  });
+  it('uses the registry entity name when explicitly enabled', () => {
+    expect(registryEntityDisplayName(full, 'Büro', { use_entity_name_only: true }, '3D Drucker')).toBe('3D Drucker');
+  });
+  it('handles area stripping independently of the entity-only setting', () => {
+    const name = 'Deckenlampe Schlafzimmer';
+    expect(registryEntityDisplayName('Device ' + name, 'Schlafzimmer', { use_entity_name_only: true }, name)).toBe('Deckenlampe');
+    expect(registryEntityDisplayName('Device ' + name, 'Schlafzimmer', { use_entity_name_only: true, hide_area_name_in_entity_names: false }, name)).toBe(name);
+  });
+  it('falls back to the full name when registry has no distinct name', () => {
+    expect(registryEntityDisplayName(full, 'Büro', { use_entity_name_only: true }, null)).toBe(full);
+    expect(registryEntityDisplayName(full, 'Büro', { use_entity_name_only: true }, '')).toBe(full);
   });
 });

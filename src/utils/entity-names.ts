@@ -104,3 +104,19 @@ export function areaEntityDisplayName(
 ): string {
   return hidesAreaNameInEntityNames(settings) ? stripAreaNameFromEntityName(name, areaName) : name;
 }
+
+/** Prefer the user's entity-specific registry name over a composed friendly_name.
+ * If Home Assistant exposes no independent entity name, preserve friendly_name.
+ * Area-name stripping remains a separate, independently controlled step.
+ */
+export function registryEntityDisplayName(
+  fullName: string,
+  areaName: string | null | undefined,
+  settings: DwainsDashboardSettings | null | undefined,
+  registryName?: string | null,
+): string {
+  const specificName = typeof registryName === 'string' ? registryName.trim() : '';
+  const selectedName = settings?.use_entity_name_only === true && specificName
+    ? specificName : fullName;
+  return areaEntityDisplayName(selectedName, areaName, settings);
+}
