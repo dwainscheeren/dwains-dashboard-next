@@ -822,6 +822,8 @@ export const ptBR = {
   'settings.home_outdoor_climate_areas_title': "Áreas externas",
   'settings.home_outdoor_climate_areas_description': "Escolha quais áreas do Home Assistant ficam ao ar livre. Os sensores de temperatura e umidade atribuídos a elas aparecem no cartão Clima externo e não entram no clima interno.",
   'settings.home_climate_area_outdoor': "Usada para o clima externo",
+  'settings.use_entity_name_only': "Use entity names only",
+  'settings.use_entity_name_only_description': "Show the entity-specific name without the device name prefix. If no separate entity name is available, keep the full name.",
   'settings.content_display': "Content & display",
   'settings.behavior_access': "Behavior & access",
   'settings.about_support': "About & support",
