@@ -822,6 +822,8 @@ export const it = {
   'settings.home_outdoor_climate_areas_title': "Zone esterne",
   'settings.home_outdoor_climate_areas_description': "Scegli quali stanze di Home Assistant si trovano all'esterno. I loro sensori di temperatura e umidità assegnati vengono mostrati nella scheda Clima esterno e non contano per il clima interno.",
   'settings.home_climate_area_outdoor': "Usata per il clima esterno",
+  'settings.use_entity_name_only': "Use entity names only",
+  'settings.use_entity_name_only_description': "Show the entity-specific name without the device name prefix. If no separate entity name is available, keep the full name.",
   'settings.content_display': "Content & display",
   'settings.behavior_access': "Behavior & access",
   'settings.about_support': "About & support",
