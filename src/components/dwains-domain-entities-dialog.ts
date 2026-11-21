@@ -8,7 +8,7 @@ import memoizeOne from 'memoize-one';
 import type { HassEntity, HomeAssistant } from '../types/home-assistant';
 import type { DwainsDashboardConfig, EntityConfig } from '../types/strategy';
 import { getDeviceClassName, getDomainName } from '../utils/domain-names';
-import { areaEntityDisplayName } from '../utils/entity-names';
+import { registryEntityDisplayName } from '../utils/entity-names';
 import { isEntityVisibleInArea, isRegistryEntryVisible } from '../utils/entity-visibility';
 import { getAreaIcon, getDeviceClassIcon, getDomainColor, getDomainIcon } from '../utils/icons';
 import { ddLocale, ddLocalize, ddLocalizePlural } from '../utils/localize';
@@ -1267,7 +1267,7 @@ export class DwainsDomainEntitiesDialog extends LitElement {
     const fullName = state.attributes?.friendly_name || getEntityRegistry(this.hass)[entity.entity_id]?.name || entity.entity_id;
     // The card shows the area above the name, so the name can leave it out.
     const areaName = this._entityAreaName(entity);
-    const name = areaEntityDisplayName(fullName, areaName, this._params?.config?.settings);
+    const name = registryEntityDisplayName(fullName, areaName, this._params?.config?.settings, getEntityRegistry(this.hass)[entity.entity_id]?.name);
     const active = this._isEntityActiveForUi(state, domain);
     const unavailable = this._isUnavailable(state);
     const tapToggles = !unavailable && tileTapToggles(this._params?.config?.settings, entity.entity_id);
