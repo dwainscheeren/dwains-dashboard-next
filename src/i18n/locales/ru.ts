@@ -822,6 +822,8 @@ export const ru = {
   'settings.home_outdoor_climate_areas_title': "Уличные зоны",
   'settings.home_outdoor_climate_areas_description': "Выберите, какие помещения Home Assistant находятся на улице. Их назначенные датчики температуры и влажности показываются в карточке климата на улице и не учитываются в климате в помещении.",
   'settings.home_climate_area_outdoor': "Используется для климата на улице",
+  'settings.use_entity_name_only': "Use entity names only",
+  'settings.use_entity_name_only_description': "Show the entity-specific name without the device name prefix. If no separate entity name is available, keep the full name.",
   'settings.content_display': "Content & display",
   'settings.behavior_access': "Behavior & access",
   'settings.about_support': "About & support",
