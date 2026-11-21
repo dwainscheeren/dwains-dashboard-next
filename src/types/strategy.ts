@@ -65,6 +65,8 @@ export interface DwainsDashboardSettings {
    * the area. Default on; only `false` turns it off.
    */
   hide_area_name_in_entity_names?: boolean;
+  /** Show registry entity names without the automatic device-name prefix. Default off. */
+  use_entity_name_only?: boolean;
   /**
    * Leave sensors that measure power or energy off the room pages. Only the
    * room pages change: the power numbers (Energy page, house power usage,
