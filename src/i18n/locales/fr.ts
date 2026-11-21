@@ -799,6 +799,8 @@ export const fr = {
   'settings.home_outdoor_climate_areas_title': "Espaces extérieurs",
   'settings.home_outdoor_climate_areas_description': "Choisissez quelles pièces de Home Assistant sont à l'extérieur. Leurs capteurs de température et d'humidité attribués apparaissent dans la carte Climat extérieur et ne comptent pas pour le climat intérieur.",
   'settings.home_climate_area_outdoor': "Utilisée pour le climat extérieur",
+  'settings.use_entity_name_only': "Use entity names only",
+  'settings.use_entity_name_only_description': "Show the entity-specific name without the device name prefix. If no separate entity name is available, keep the full name.",
   'settings.content_display': "Content & display",
   'settings.behavior_access': "Behavior & access",
   'settings.about_support': "About & support",
