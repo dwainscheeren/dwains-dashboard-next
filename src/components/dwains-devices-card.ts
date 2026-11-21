@@ -18,7 +18,7 @@ import { getAreaIcon, getDomainIcon, getDeviceClassIcon, getDomainColor } from '
 import { getDomainName, getDeviceClassName } from '../utils/domain-names';
 import { findReplacementAssignment, resolveEntityCardConfig } from '../utils/blueprint-replacements';
 import { withTileTapActions } from '../utils/tile-tap';
-import { areaEntityDisplayName } from '../utils/entity-names';
+import { registryEntityDisplayName } from '../utils/entity-names';
 import {
   NEW_DEVICE_WINDOW_HOURS,
   buildRecentDeviceSummaries,
@@ -821,7 +821,7 @@ export class DwainsDevicesCard extends LitElement {
 
     const fullName = this._hass.states?.[entityId]?.attributes?.friendly_name;
     if (typeof fullName !== 'string' || !fullName) return cardConfig;
-    const name = areaEntityDisplayName(fullName, areaName, this.config?.settings);
+    const name = registryEntityDisplayName(fullName, areaName, this.config?.settings, getEntityRegistry(this._hass)[entityId]?.name);
     return name === fullName ? cardConfig : { ...cardConfig, name };
   }
 
